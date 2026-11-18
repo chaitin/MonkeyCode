@@ -1,0 +1,3 @@
+BEGIN;
+ALTER TABLE hosts ADD COLUMN max_environments integer NOT NULL DEFAULT 0 CHECK(max_environments BETWEEN 0 AND 1000000);
+COMMIT;

@@ -75,7 +75,7 @@ export function HostCommand({
       setError("")
       showToast({ status: "success", title: text("copied") })
     } catch {
-      setError(text("copyFailed"))
+      showToast({ status: "error", title: text("copyFailed") })
     }
   }
 

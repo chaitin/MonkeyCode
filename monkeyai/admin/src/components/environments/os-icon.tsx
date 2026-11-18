@@ -14,18 +14,29 @@ const distributions: [RegExp, string][] = [
 export function OSIcon({
   name,
   avatar = false,
+  size = "lg",
 }: {
   name?: string
   avatar?: boolean
+  size?: "default" | "sm" | "lg"
 }) {
   const icon =
     distributions.find(([pattern]) => pattern.test(name ?? ""))?.[1] ??
     "icon-linux"
   if (avatar) {
     return (
-      <Avatar size="lg" aria-hidden="true">
+      <Avatar size={size} aria-hidden="true">
         <AvatarFallback>
-          <Iconfont name={icon} className="size-8" />
+          <Iconfont
+            name={icon}
+            className={
+              size === "sm"
+                ? "size-5"
+                : size === "default"
+                  ? "size-6"
+                  : "size-8"
+            }
+          />
         </AvatarFallback>
       </Avatar>
     )

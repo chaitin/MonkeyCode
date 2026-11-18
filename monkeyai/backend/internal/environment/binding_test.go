@@ -17,11 +17,11 @@ func TestRuntimeIdentityIsUniqueCompleteAndGenerationBound(t *testing.T) {
 	s, user, _ := fixture(t)
 	ctx := t.Context()
 	q := sqlc.New(s.pool)
-	first, err := s.Create(ctx, user, Creation{"first", "first"})
+	first, err := s.Create(ctx, user, Creation{testSpecification(), "first", "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := s.Create(ctx, user, Creation{"second", "second"})
+	second, err := s.Create(ctx, user, Creation{testSpecification(), "second", "second"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -62,12 +62,6 @@ type EnvironmentOperation struct {
 	FinishedAt    *time.Time `json:"finished_at"`
 }
 
-type EnvironmentQuota struct {
-	HostID          string `json:"host_id"`
-	UserID          string `json:"user_id"`
-	MaxEnvironments int32  `json:"max_environments"`
-}
-
 type EnvironmentRuntime struct {
 	EnvironmentID  string  `json:"environment_id"`
 	MachineID      *string `json:"machine_id"`

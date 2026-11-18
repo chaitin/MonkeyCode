@@ -39,7 +39,7 @@ func managedEnvironment(t *testing.T) (*Service, Result, string, *runtimeAuthori
 	}
 	auth := &runtimeAuthorizer{requestID: resource.ID()}
 	s.WithRuntime("https://ai.example.com", resource.ID(), auth)
-	created, err := s.Create(t.Context(), user, Creation{"项目", "runtime-test"})
+	created, err := s.Create(t.Context(), user, Creation{testSpecification(), "项目", "runtime-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestOldEngineCannotReceiveManagedEnvironment(t *testing.T) {
 	if _, err := s.pool.Exec(t.Context(), `UPDATE hosts SET report=report-'runtime_protocol' WHERE id=$1`, host); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Create(t.Context(), created.Environment.UserID, Creation{"旧宿主", "new"}); err == nil {
+	if _, err := s.Create(t.Context(), created.Environment.UserID, Creation{testSpecification(), "旧宿主", "new"}); err == nil {
 		t.Fatal("向旧 engine 调度托管运行时")
 	}
 }

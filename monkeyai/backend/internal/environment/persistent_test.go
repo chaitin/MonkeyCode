@@ -10,7 +10,7 @@ func TestPersistentContainerRestartKeepsInstance(t *testing.T) {
 	if _, err := service.pool.Exec(t.Context(), `UPDATE hosts SET report=report || '{"environment_protocol":2}'::jsonb WHERE id=$1`, host); err != nil {
 		t.Fatal(err)
 	}
-	created, err := service.Create(t.Context(), user, Creation{Name: "持久系统", RequestKey: "persistent-create"})
+	created, err := service.Create(t.Context(), user, Creation{SpecificationSelection: testSpecification(), Name: "持久系统", RequestKey: "persistent-create"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestPersistentContainerRestartKeepsInstance(t *testing.T) {
 
 func TestLegacyContainerCanEnterPersistentStop(t *testing.T) {
 	service, user, host := fixture(t)
-	created, err := service.Create(t.Context(), user, Creation{Name: "旧环境", RequestKey: "legacy-create"})
+	created, err := service.Create(t.Context(), user, Creation{SpecificationSelection: testSpecification(), Name: "旧环境", RequestKey: "legacy-create"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2099,3 +2099,23 @@ ALTER TABLE environment_billing_periods DROP CONSTRAINT IF EXISTS environment_bi
 
 ALTER TABLE environment_billing_periods ADD CONSTRAINT environment_billing_prepaid_hour
  CHECK(prepaid_until IS NULL OR prepaid_until=started_at+interval '1 hour');
+
+CREATE TABLE IF NOT EXISTS environment_specification_catalog (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    revision bigint NOT NULL DEFAULT 0 CHECK (revision >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS environment_specifications (
+    id uuid PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version >= 1),
+    cpu_millis bigint NOT NULL CHECK (cpu_millis BETWEEN 100 AND 256000),
+    memory_bytes bigint NOT NULL CHECK (memory_bytes BETWEEN 268435456 AND 1099511627776),
+    position integer NOT NULL CHECK (position >= 0),
+    deleted_at timestamptz
+);
+
+DROP TABLE environment_quotas;
+
+ALTER TABLE host_environment_configs DROP COLUMN user_max_environments;
+
+ALTER TABLE hosts DROP COLUMN max_environments;

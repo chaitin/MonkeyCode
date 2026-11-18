@@ -1,13 +1,9 @@
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { CpuIcon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { api } from "@/lib/api"
-import { GiB, MiB, units, type Resources } from "@/lib/environments"
 import { useEnvironmentData } from "@/hooks/use-environment-data"
 import { FormError, LoadState } from "./common"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
 import {
   GroupSelect,
@@ -42,9 +38,6 @@ type Setup = {
   host_id: string
   host_name: string
   grants: HostGrant[]
-  max_environments: number
-  user_max_environments: number
-  resource: Resources | null
   image_ready: boolean
   image_reason?: string
 }
@@ -131,24 +124,13 @@ function SetupForm({
   onBusy: (busy: boolean) => void
 }) {
   const { t, i18n } = useTranslation()
-  const resource = value.resource
-  const [values, setValues] = useState({
-    cpu: String((resource?.cpu_millis ?? 2000) / 1000),
-    memory: String((resource?.memory_bytes ?? 4 * GiB) / GiB),
-    temporary: String((resource?.temporary_bytes ?? 512 * MiB) / MiB),
-    tasks: String(resource?.host_tasks ?? 1024),
-    environments: String(value.max_environments || (resource ? 0 : 100)),
-    userEnvironments: String(value.user_max_environments),
-  })
   const root = groups.find((group) => !group.parentId)?.id
   const [authorization, setAuthorization] = useState(() => ({
     groupIds: value.grants?.length
       ? value.grants.flatMap((g) =>
           g.all_users && root ? [root] : g.group_id ? [g.group_id] : []
         )
-      : value.resource === null && root
-        ? [root]
-        : [],
+      : [],
     userIds: value.grants?.flatMap((g) => (g.user_id ? [g.user_id] : [])) ?? [],
   }))
   const [busy, setBusy] = useState(false)
@@ -157,39 +139,11 @@ function SetupForm({
     event.preventDefault()
     if (busy) return
     setError("")
-    let body
-    try {
-      const resource = {
-        cpu_millis: units(values.cpu, 1000),
-        memory_bytes: units(values.memory, GiB),
-        temporary_bytes: Math.min(
-          units(values.temporary, MiB),
-          Math.floor(units(values.memory, GiB) / 2 / 4096) * 4096
-        ),
-        host_tasks: units(values.tasks),
-      }
-      const max_environments = units(values.environments)
-      const user_max_environments = units(values.userEnvironments)
-      if (
-        resource.temporary_bytes > resource.memory_bytes / 2 ||
-        resource.temporary_bytes % 4096 !== 0 ||
-        max_environments > 1000000 ||
-        user_max_environments > 1000000
-      )
-        throw new Error()
-      const grants = [
+    const body = {
+      grants: [
         ...authorization.groupIds.map((group_id) => ({ group_id })),
         ...authorization.userIds.map((user_id) => ({ user_id })),
-      ]
-      body = {
-        resource,
-        max_environments,
-        user_max_environments,
-        grants,
-      }
-    } catch {
-      setError(t("environmentAdmin.setupInvalid"))
-      return
+      ],
     }
     setBusy(true)
     onBusy(true)
@@ -207,69 +161,14 @@ function SetupForm({
     }
   }
 
-  function number(
-    key: keyof typeof values,
-    label: string,
-    min: number,
-    max: number,
-    step = 1,
-    unit?: string
-  ) {
-    const id = `setup-${key}`
-    return (
-      <Field>
-        <FieldLabel id={`${id}-label`} htmlFor={id}>
-          {t(`environmentAdmin.${label}`)}
-        </FieldLabel>
-        <div className="relative">
-          <Input
-            id={id}
-            aria-labelledby={`${id}-label`}
-            aria-describedby={unit ? `${id}-unit` : undefined}
-            className="pe-12 tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            type="number"
-            required
-            min={min}
-            max={max}
-            step={step === 1 ? 1 : "any"}
-            value={values[key]}
-            onChange={(event) => {
-              const next = event.target.value
-              setValues((old) => ({
-                ...old,
-                [key]: next,
-              }))
-            }}
-          />
-          {unit && (
-            <span
-              id={`${id}-unit`}
-              className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-xs text-muted-foreground"
-            >
-              {unit}
-            </span>
-          )}
-        </div>
-      </Field>
-    )
-  }
-
   return (
     <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-col gap-5">
       <div className="-mx-1 min-h-0 min-w-0 space-y-4 overflow-y-auto overflow-x-hidden px-1">
         <fieldset disabled={busy} className="min-w-0 space-y-5">
-          <section className="space-y-3" aria-labelledby="setup-access-heading">
-            <h3
-              id="setup-access-heading"
-              className="flex items-center gap-2 text-sm font-medium"
-            >
-              <HugeiconsIcon
-                icon={UserGroupIcon}
-                className="size-4 text-muted-foreground"
-                aria-hidden="true"
-              />
-              {t("environmentAdmin.hostAccessTitle")}
-            </h3>
+          <Field>
+            <FieldLabel htmlFor="setup-host-access">
+              {t("pages.models.authorizedScope")}
+            </FieldLabel>
             <GroupSelect
               id="setup-host-access"
               options={groups}
@@ -281,92 +180,19 @@ function SetupForm({
                   userIds: [...next.userIds],
                 })
               }
-              label={t("environmentAdmin.hostAccessTitle")}
-              placeholder={t("environmentAdmin.hostAccessPlaceholder")}
+              label={t("pages.models.authorizedScope")}
+              placeholder={t("pages.models.authorizationPlaceholder")}
               emptyText={t("pages.models.noMatchingAuthorization")}
-              locale={i18n.language}
+              locale={i18n.resolvedLanguage ?? i18n.language}
               disabled={busy}
               multiple
               selectionMode="both"
               cascadeGroups
               searchable
               searchPlaceholder={t("pages.models.searchAuthorization")}
+              noResultsText={t("pages.models.noMatchingAuthorization")}
             />
-            <p className="text-xs text-muted-foreground">
-              {t("environmentAdmin.hostAccessHint")}
-            </p>
-          </section>
-          <section
-            className="space-y-4 border-t pt-5"
-            aria-labelledby="setup-resource-heading"
-          >
-            <div className="space-y-2">
-              <h3
-                id="setup-resource-heading"
-                className="flex items-center gap-2 text-sm font-medium"
-              >
-                <HugeiconsIcon
-                  icon={CpuIcon}
-                  className="size-4 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                {t("environmentAdmin.setupResource")}
-              </h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {t("environmentAdmin.billing.resourceHint")}
-              </p>
-            </div>
-            <div className="grid gap-4">
-              {number(
-                "cpu",
-                "setupCpu",
-                0.1,
-                256,
-                0.1,
-                t("environmentAdmin.setupCoreUnit")
-              )}
-              {number("memory", "setupMemory", 0.25, 1024, 0.25, "GiB")}
-            </div>
-          </section>
-          <section
-            className="space-y-4 border-t pt-5"
-            aria-labelledby="setup-quota-heading"
-          >
-            <div className="space-y-2">
-              <h3
-                id="setup-quota-heading"
-                className="flex items-center gap-2 text-sm font-medium"
-              >
-                <HugeiconsIcon
-                  icon={UserGroupIcon}
-                  className="size-4 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                {t("environmentAdmin.countLimitsTitle")}
-              </h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {t("environmentAdmin.countLimitsHint")}
-              </p>
-            </div>
-            <div className="grid gap-4">
-              {number(
-                "environments",
-                "hostMaxEnvironments",
-                0,
-                1000000,
-                1,
-                t("environmentAdmin.setupCountUnit")
-              )}
-              {number(
-                "userEnvironments",
-                "userMaxEnvironments",
-                0,
-                1000000,
-                1,
-                t("environmentAdmin.setupCountUnit")
-              )}
-            </div>
-          </section>
+          </Field>
         </fieldset>
         {!value.image_ready && (
           <p role="status" className="text-xs text-destructive">

@@ -15,13 +15,13 @@ func (taggedImage) Default(ctx context.Context, arch string) (string, string, er
 func TestVersionTagUsesSeparateDigestAndNewHostProtocol(t *testing.T) {
 	service, user, host := fixture(t)
 	service.WithImages(taggedImage{})
-	if _, err := service.Create(t.Context(), user, Creation{Name: "旧引擎", RequestKey: "tag-old-host"}); err == nil {
+	if _, err := service.Create(t.Context(), user, Creation{SpecificationSelection: testSpecification(), Name: "旧引擎", RequestKey: "tag-old-host"}); err == nil {
 		t.Fatal("将版本标签下发给仅支持摘要引用的旧引擎")
 	}
 	if _, err := service.pool.Exec(t.Context(), `UPDATE hosts SET report=report || '{"environment_protocol":3}'::jsonb WHERE id=$1`, host); err != nil {
 		t.Fatal(err)
 	}
-	created, err := service.Create(t.Context(), user, Creation{Name: "可读镜像", RequestKey: "version-tag-create"})
+	created, err := service.Create(t.Context(), user, Creation{SpecificationSelection: testSpecification(), Name: "可读镜像", RequestKey: "version-tag-create"})
 	if err != nil {
 		t.Fatal(err)
 	}

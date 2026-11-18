@@ -102,7 +102,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != latest || latest != 45 || dirty {
+	if version != latest || latest != 50 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string
@@ -167,9 +167,11 @@ func TestUpgradeFrom14(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	run("goto", "48")
 	checkRuntimeUpgradeReplay(t, conn)
 	checkEnvironmentReplay(t, conn)
 	checkResourceDefaultsReplay(t, conn)
+	run("up")
 	if _, err := conn.Exec(t.Context(), "UPDATE environments SET desired='deleted',phase='deleted',observed_generation=generation"); err != nil {
 		t.Fatal(err)
 	}

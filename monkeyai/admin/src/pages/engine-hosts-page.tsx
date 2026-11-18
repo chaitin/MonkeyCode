@@ -15,8 +15,15 @@ import { Link } from "react-router-dom"
 import { CONSOLE_ROUTES } from "@/lib/routes"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { CircularProgress } from "@/components/ui/circular-progress"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Card,
   CardHeader,
@@ -27,14 +34,17 @@ import {
 import { cn } from "@/lib/utils"
 import { Textarea } from "@/components/ui/textarea"
 import { HostStatus } from "@/components/environments/status-badge"
+import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
+import type { Grant } from "@/lib/resources"
 import { loadEngineHosts } from "@/lib/engine-hosts"
 import {
   HostUpgrade,
   type HostUpgradeState,
 } from "@/components/environments/host-upgrade"
 import { HostSetupDialog } from "@/components/environments/host-setup-dialog"
+import { SpecificationsDialog } from "@/components/environments/specifications-dialog"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Info, RefreshCw } from "lucide-react"
+import { Info } from "lucide-react"
 import {
   Add01Icon,
   MoreHorizontalIcon,
@@ -134,6 +144,7 @@ function relativeTime(
     .replace(/([0-9])(?=[一-龥])/g, "$1 ")
 }
 const missingValue = <span className="text-muted-foreground">—</span>
+const authorizationNames: ReadonlyMap<string, string> = new Map()
 
 function displayValue(value: string) {
   const trimmed = value.trim()
@@ -180,6 +191,7 @@ function usage(value?: Usage) {
 }
 
 type Host = {
+  grants: Grant[]
   id: string
   name: string
   architecture: string
@@ -187,7 +199,6 @@ type Host = {
   status: "pending" | "active" | "revoked"
   online: boolean
   enabled: boolean
-  max_environments: number
   user_id: string
   environment_count: number
   upgrade?: HostUpgradeState
@@ -209,6 +220,7 @@ type Enrollment = {
 }
 
 export function EngineHostsPage() {
+  const { showToast } = useAppToast()
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const relativeFormatter = useMemo(
@@ -222,13 +234,12 @@ export function EngineHostsPage() {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null)
-  const [copied, setCopied] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const [deleting, setDeleting] = useState<Host | null>(null)
   const [deleteError, setDeleteError] = useState("")
   const [scheduling, setScheduling] = useState<string | null>(null)
-  const [notice, setNotice] = useState("")
 
+  const [managingSpecifications, setManagingSpecifications] = useState(false)
   const [configuring, setConfiguring] = useState<Host | null>(null)
   const [checking, setChecking] = useState<Host | null>(null)
   const result = useEnvironmentData<{ items: Host[]; total: number }>(
@@ -257,7 +268,6 @@ export function EngineHostsPage() {
     setOpen(true)
     setBusy(true)
     setFormError("")
-    setCopied(false)
     try {
       const result = await api<Enrollment>(
         "/api/admin/v1/engine-host-enrollments",
@@ -278,18 +288,22 @@ export function EngineHostsPage() {
   async function changeScheduling(host: Host, enabled: boolean) {
     if (scheduling) return
     setScheduling(host.id)
-    setNotice("")
     try {
       await api(`/api/admin/v1/environment-hosts/${host.id}/scheduling`, {
         method: "PATCH",
         body: JSON.stringify({ enabled }),
       })
-      setNotice(text(enabled ? "schedulingEnabled" : "schedulingDisabled"))
+      showToast({
+        status: "success",
+        title: text(enabled ? "schedulingEnabled" : "schedulingDisabled"),
+      })
       refresh()
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : text("schedulingFailed")
-      )
+      showToast({
+        status: "error",
+        title:
+          error instanceof Error ? error.message : text("schedulingFailed"),
+      })
     } finally {
       setScheduling(null)
     }
@@ -298,10 +312,10 @@ export function EngineHostsPage() {
     if (!enrollment) return
     try {
       await navigator.clipboard.writeText(enrollment.command)
-      setCopied(true)
+      showToast({ status: "success", title: text("copied") })
       setFormError("")
     } catch {
-      setFormError(text("copyFailed"))
+      showToast({ status: "error", title: text("copyFailed") })
     }
   }
   async function deleteHost() {
@@ -314,7 +328,7 @@ export function EngineHostsPage() {
       })
       if (enrollment?.host_id === deleting.id) setEnrollment(null)
       if (checking?.id === deleting.id) setChecking(null)
-      setNotice(text("deleteSuccess"))
+      showToast({ status: "success", title: text("deleteSuccess") })
       setDeleting(null)
       refresh()
     } catch (err) {
@@ -331,7 +345,6 @@ export function EngineHostsPage() {
     if (!value) {
       setEnrollment(null)
       setFormError("")
-      setCopied(false)
     }
   }
   return (
@@ -340,14 +353,11 @@ export function EngineHostsPage() {
       headerAction={
         <div className="flex shrink-0 items-center gap-2">
           <Button
+            type="button"
             variant="outline"
-            size="icon"
-            aria-label={t("environmentAdmin.refresh")}
-            title={t("environmentAdmin.refresh")}
-            disabled={result.loading}
-            onClick={refresh}
+            onClick={() => setManagingSpecifications(true)}
           >
-            <RefreshCw aria-hidden="true" />
+            {t("environmentAdmin.specifications.title")}
           </Button>
           <Button
             variant={result.data?.total === 0 ? "default" : "outline"}
@@ -360,14 +370,6 @@ export function EngineHostsPage() {
         </div>
       }
     >
-      {notice && (
-        <p
-          role="status"
-          className="px-[var(--card-spacing)] py-3 text-sm text-muted-foreground"
-        >
-          {notice}
-        </p>
-      )}
       <CloudGrid
         singleColumn
         title={text("title")}
@@ -511,7 +513,6 @@ export function EngineHostsPage() {
                           disabled={busy}
                           onClick={() => {
                             setDeleting(host)
-                            setNotice("")
                             setDeleteError("")
                           }}
                         >
@@ -533,6 +534,11 @@ export function EngineHostsPage() {
                   !host.enabled && "border-gray-300 dark:border-gray-700"
                 )}
               >
+                <ResourceAuthorizationBadge
+                  grants={host.grants}
+                  groupNames={authorizationNames}
+                  memberNames={authorizationNames}
+                />
                 <HostStatus status={status} />
                 {typeof host.environment_count === "number" && (
                   <Badge
@@ -564,38 +570,83 @@ export function EngineHostsPage() {
                   </Badge>
                 )}
                 {system?.cpu && system.cpu.logical_cores > 0 && (
-                  <Badge variant="outline">
-                    {text("cpuCapacityBadge", {
-                      count: system.cpu.logical_cores,
-                    })}
-                  </Badge>
+                  <Tooltip>
+                    <Badge
+                      variant="outline"
+                      className="cursor-default"
+                      render={<TooltipTrigger render={<span />} tabIndex={0} />}
+                    >
+                      <CircularProgress value={system.cpu.usage_percent} />
+                      {text("cpuCapacityBadge", {
+                        count: system.cpu.logical_cores,
+                      })}
+                    </Badge>
+                    <TooltipContent>
+                      {text("cpuUsage")}: {percent(system.cpu.usage_percent)}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
                 {system?.memory && system.memory.total_bytes > 0 && (
-                  <Badge variant="outline">
-                    {text("memoryCapacityBadge", {
-                      size: Math.ceil(system.memory.total_bytes / 1024 ** 3),
-                    })}
-                  </Badge>
+                  <Tooltip>
+                    <Badge
+                      variant="outline"
+                      className="cursor-default"
+                      render={<TooltipTrigger render={<span />} tabIndex={0} />}
+                    >
+                      <CircularProgress value={usage(system.memory)} />
+                      {text("memoryCapacityBadge", {
+                        size: Math.ceil(system.memory.total_bytes / 1024 ** 3),
+                      })}
+                    </Badge>
+                    <TooltipContent>
+                      {text("memoryUsage")}: {percent(usage(system.memory))}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
                 {system?.disk && system.disk.total_bytes > 0 && (
-                  <Badge variant="outline">
-                    {text("diskCapacityBadge", {
-                      size: Math.ceil(system.disk.total_bytes / 1024 ** 3),
-                    })}
-                  </Badge>
+                  <Tooltip>
+                    <Badge
+                      variant="outline"
+                      className="cursor-default"
+                      render={<TooltipTrigger render={<span />} tabIndex={0} />}
+                    >
+                      <CircularProgress value={usage(system.disk)} />
+                      {text("diskCapacityBadge", {
+                        size: Math.ceil(system.disk.total_bytes / 1024 ** 3),
+                      })}
+                    </Badge>
+                    <TooltipContent>
+                      {text("diskUsage")}: {percent(usage(system.disk))}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </CardFooter>
             </Card>
           )
         })}
       </CloudGrid>
+      {managingSpecifications && (
+        <SpecificationsDialog
+          onClose={() => setManagingSpecifications(false)}
+          onSave={() => {
+            setManagingSpecifications(false)
+            showToast({
+              status: "success",
+              title: t("environmentAdmin.specifications.saved"),
+            })
+          }}
+        />
+      )}
       {configuring && (
         <HostSetupDialog
           host={configuring}
           close={() => setConfiguring(null)}
           saved={() => {
             setConfiguring(null)
-            setNotice(t("environmentAdmin.setupSaved"))
+            showToast({
+              status: "success",
+              title: t("environmentAdmin.setupSaved"),
+            })
             refresh()
           }}
         />
@@ -658,7 +709,7 @@ export function EngineHostsPage() {
                 <Collapsible defaultOpen className="rounded-lg border">
                   <CollapsibleTrigger
                     type="button"
-                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                    className="group flex w-full items-center gap-3 rounded-t-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
                   >
                     <span className="font-medium">
                       {text("engineInformation")}
@@ -694,12 +745,6 @@ export function EngineHostsPage() {
                               <span>{displayValue(detail.version || "")}</span>
                             </span>,
                           ] as const,
-                          [
-                            t("environmentAdmin.hostMaxEnvironments"),
-                            detail.max_environments == null
-                              ? missingValue
-                              : String(detail.max_environments),
-                          ],
                         ] as const
                       ).map(([label, value]) => (
                         <div
@@ -729,7 +774,7 @@ export function EngineHostsPage() {
                 <Collapsible defaultOpen className="rounded-lg border">
                   <CollapsibleTrigger
                     type="button"
-                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                    className="group flex w-full items-center gap-3 rounded-t-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
                   >
                     <span className="font-medium">{text("resourceUsage")}</span>
                     <HugeiconsIcon
@@ -931,7 +976,7 @@ export function EngineHostsPage() {
                 <Collapsible defaultOpen className="rounded-lg border">
                   <CollapsibleTrigger
                     type="button"
-                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                    className="group flex w-full items-center gap-3 rounded-t-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
                   >
                     <span className="font-medium">{text("systemDetails")}</span>
                     <HugeiconsIcon
@@ -1099,7 +1144,7 @@ export function EngineHostsPage() {
                   {text("close")}
                 </Button>
                 <Button disabled={expired} onClick={() => void copy()}>
-                  {copied ? text("copied") : text("copy")}
+                  {text("copy")}
                 </Button>
               </DialogFooter>
             </div>

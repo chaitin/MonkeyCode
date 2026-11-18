@@ -61,6 +61,10 @@ func pool(t *testing.T) *pgxpool.Pool {
 func profile() Profile {
 	return Profile{Architecture: "amd64", Image: "example.com/image@sha256:" + strings.Repeat("a", 64), NetworkPolicy: "isolated", Resource: Resources{CPUMillis: 1000, MemoryBytes: 512 << 20, HostTasks: 512, TemporaryBytes: 64 << 20}, Storage: Storage{WorkspaceBytes: 1 << 30, HomeBytes: 1 << 30, RuntimeBytes: 1 << 30, Inodes: 10000}}
 }
+func testSpecification() SpecificationSelection {
+	return SpecificationSelection{SpecificationID: "00000000-0000-0000-0000-000000000048", SpecificationVersion: 1}
+}
+
 func fixture(t *testing.T) (*Service, string, string) {
 	t.Helper()
 	db := pool(t)
@@ -68,7 +72,7 @@ func fixture(t *testing.T) (*Service, string, string) {
 	if _, err := db.Exec(t.Context(), "INSERT INTO users(id,name,email) VALUES($1::uuid,'环境测试',$1::text || '@example.com')", user); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(t.Context(), `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,report,max_environments) VALUES($1::uuid,$2,'test','amd64','v1','active',now(),'{"prerequisites_met":true,"environment_protocol":2,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}',100)`, host, user); err != nil {
+	if _, err := db.Exec(t.Context(), `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,report) VALUES($1::uuid,$2,'test','amd64','v1','active',now(),'{"prerequisites_met":true,"environment_protocol":2,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, user); err != nil {
 		t.Fatal(err)
 	}
 	q := sqlc.New(db)
@@ -80,6 +84,9 @@ func fixture(t *testing.T) (*Service, string, string) {
 		t.Fatal(err)
 	}
 	p := profile()
+	if err := q.InsertSpecification(t.Context(), sqlc.InsertSpecificationParams{ID: testSpecification().SpecificationID, CpuMillis: p.Resource.CPUMillis, MemoryBytes: p.Resource.MemoryBytes}); err != nil {
+		t.Fatal(err)
+	}
 	settings, _ := json.Marshal(p.Resource)
 	if _, err := db.Exec(t.Context(), "INSERT INTO host_environment_configs(host_id,resource) VALUES($2,$1)", settings, host); err != nil {
 		t.Fatal(err)
@@ -113,7 +120,7 @@ func observe(e View, phase string) Observation {
 }
 func TestLifecycleReservationsAndStaleReports(t *testing.T) {
 	s, user, host := fixture(t)
-	in := Creation{"项目 A", "create-1"}
+	in := Creation{testSpecification(), "项目 A", "create-1"}
 	created, err := s.Create(t.Context(), user, in)
 	if err != nil {
 		t.Fatal(err)
@@ -182,17 +189,13 @@ func TestLifecycleReservationsAndStaleReports(t *testing.T) {
 		t.Fatal("跨用户操作未拒绝")
 	}
 }
-func TestConcurrentCreationCannotOversubscribe(t *testing.T) {
-	s, user, host := fixture(t)
-	q := sqlc.New(s.pool)
-	if _, err := q.SetQuota(t.Context(), sqlc.SetQuotaParams{UserID: user, HostID: host, MaxEnvironments: 1}); err != nil {
-		t.Fatal(err)
-	}
+func TestConcurrentCreationHasNoCountLimit(t *testing.T) {
+	s, user, _ := fixture(t)
 	var wg sync.WaitGroup
 	results := make(chan error, 8)
 	for i := range 8 {
 		wg.Go(func() {
-			_, err := s.Create(t.Context(), user, Creation{"项目", resource.ID()})
+			_, err := s.Create(t.Context(), user, Creation{testSpecification(), "项目", resource.ID()})
 			_ = i
 			results <- err
 		})
@@ -205,18 +208,18 @@ func TestConcurrentCreationCannotOversubscribe(t *testing.T) {
 			success++
 		} else {
 			var e *failure
-			if !errors.As(err, &e) || e.code != "quota_exceeded" {
+			if !errors.As(err, &e) || e.code != "capacity_unavailable" {
 				t.Fatal(err)
 			}
 		}
 	}
-	if success != 1 {
+	if success != 8 {
 		t.Fatalf("成功数量 %d", success)
 	}
 }
 func TestReportsAreBoundToHostAndDesiredState(t *testing.T) {
 	s, user, host := fixture(t)
-	created, err := s.Create(t.Context(), user, Creation{"项目", "one"})
+	created, err := s.Create(t.Context(), user, Creation{testSpecification(), "项目", "one"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +279,7 @@ func TestHostCapacityAcrossUsers(t *testing.T) {
 	if _, err := q.SetScheduling(t.Context(), sqlc.SetSchedulingParams{HostID: host, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.pool.Exec(t.Context(), `UPDATE hosts SET max_environments=3,report=jsonb_set(report,'{system}','{"cpu":{"logical_cores":1},"memory":{"total_bytes":536870912}}') WHERE id=$1`, host); err != nil {
+	if _, err := s.pool.Exec(t.Context(), `UPDATE hosts SET report=jsonb_set(report,'{system}','{"cpu":{"logical_cores":1},"memory":{"total_bytes":536870912}}') WHERE id=$1`, host); err != nil {
 		t.Fatal(err)
 	}
 	users := make([]string, 8)
@@ -290,7 +293,7 @@ func TestHostCapacityAcrossUsers(t *testing.T) {
 	results := make(chan error, len(users))
 	for _, user := range users {
 		wg.Go(func() {
-			_, err := s.Create(t.Context(), user, Creation{"项目", resource.ID()})
+			_, err := s.Create(t.Context(), user, Creation{testSpecification(), "项目", resource.ID()})
 			results <- err
 		})
 	}
@@ -307,7 +310,7 @@ func TestHostCapacityAcrossUsers(t *testing.T) {
 			}
 		}
 	}
-	if success != 3 {
+	if success != len(users) {
 		t.Fatalf("宿主并发创建成功数量 %d", success)
 	}
 }
@@ -327,7 +330,7 @@ func TestHostAdmission(t *testing.T) {
 			if _, err := s.pool.Exec(t.Context(), query); err != nil {
 				t.Fatal(err)
 			}
-			_, err := s.Create(t.Context(), user, Creation{"项目", "one"})
+			_, err := s.Create(t.Context(), user, Creation{testSpecification(), "项目", "one"})
 			var e *failure
 			expected := "capacity_unavailable"
 			if name == "architecture" {
@@ -342,7 +345,7 @@ func TestHostAdmission(t *testing.T) {
 
 func TestFailedDeletionCanBeRetried(t *testing.T) {
 	s, user, host := fixture(t)
-	created, err := s.Create(t.Context(), user, Creation{"项目", "create"})
+	created, err := s.Create(t.Context(), user, Creation{testSpecification(), "项目", "create"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +399,7 @@ func TestSpecMatchesEngineContract(t *testing.T) {
 func TestNetworkCapabilityRequiredForCreateAndRestart(t *testing.T) {
 	s, user, host := fixture(t)
 	q := sqlc.New(s.pool)
-	creation := Creation{"联网项目", "network-create"}
+	creation := Creation{testSpecification(), "联网项目", "network-create"}
 	setReport := func(report string) {
 		t.Helper()
 		if _, err := s.pool.Exec(t.Context(), `UPDATE hosts SET report=$2::jsonb || jsonb_build_object('environment_protocol',2,'system',report->'system') WHERE id=$1`, host, report); err != nil {

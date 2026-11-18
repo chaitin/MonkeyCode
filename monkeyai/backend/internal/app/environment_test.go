@@ -76,10 +76,15 @@ func TestEnvironmentClientAPI(t *testing.T) {
 	call("GET", "/environments", manage, "", 403)
 	call("POST", "/environments", read, `{}`, 403)
 	call("GET", "/environments", read, "", 200)
+	call("GET", "/environment-specifications", "", "", 401)
+	call("GET", "/environment-specifications", legacy, "", 403)
+	call("GET", "/environment-specifications", manage, "", 403)
+	call("GET", "/environment-specifications", read, "", 200)
+	call("POST", "/environments", manage, `{"name":"缺少规格","request_key":"missing-spec"}`, 400)
 
 	host := resource.ID()
-	if _, err := db.Exec(ctx, `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,exchange_protocol,environment_synced_at,max_environments,report)
-	 VALUES($1,$2,'测试宿主','amd64','v1','active',now(),1,now(),100,'{"prerequisites_met":true,"environment_protocol":2,"runtime_protocol":1,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, users[0]); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,exchange_protocol,environment_synced_at,report)
+	 VALUES($1,$2,'测试宿主','amd64','v1','active',now(),1,now(),'{"prerequisites_met":true,"environment_protocol":2,"runtime_protocol":1,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, users[0]); err != nil {
 		t.Fatal(err)
 	}
 	q := sqlc.New(db)
@@ -89,6 +94,11 @@ func TestEnvironmentClientAPI(t *testing.T) {
 	p := environment.Profile{Architecture: "amd64", Image: "example.com/dev@sha256:" + strings.Repeat("a", 64), NetworkPolicy: "public-only",
 		Resource: environment.Resources{CPUMillis: 1000, MemoryBytes: 512 << 20, HostTasks: 512, TemporaryBytes: 64 << 20},
 		Storage:  environment.Storage{WorkspaceBytes: 1 << 30, HomeBytes: 1 << 30, RuntimeBytes: 1 << 30, Inodes: 10000}}
+	var catalog environment.SpecificationCatalog
+	if err := json.Unmarshal(call("GET", "/environment-specifications", read, "", 200).Body.Bytes(), &catalog); err != nil || len(catalog.Items) != 1 || catalog.Items[0].CPUMillis != 1000 || catalog.Items[0].MemoryBytes != 2<<30 || catalog.Items[0].Version != 1 {
+		t.Fatal("规格目录返回错误", err, catalog)
+	}
+	specificationFields := `,"specification_id":"` + catalog.Items[0].ID + `","specification_version":1`
 	raw, _ := json.Marshal(p.Resource)
 	if _, err := db.Exec(ctx, `INSERT INTO host_environment_configs(host_id,resource,billing) VALUES($2,$1,'{"enabled":true,"cpu_credits_per_core_hour":"1","memory_credits_per_gib_hour":"0"}')`, raw, host); err != nil {
 		t.Fatal(err)
@@ -105,7 +115,7 @@ func TestEnvironmentClientAPI(t *testing.T) {
 	if err := json.Unmarshal(call("GET", "/environment-hosts", other, "", 200).Body.Bytes(), &hosts); err != nil || len(hosts.Items) != 0 {
 		t.Fatalf("宿主目录授权越权：%v", err)
 	}
-	input := `{"name":"项目 A","request_key":"client-create","host_id":"` + host + `"}`
+	input := `{"name":"项目 A","request_key":"client-create","host_id":"` + host + `"` + specificationFields + `}`
 	call("POST", "/environments", manage, strings.TrimSuffix(input, "}")+` ,"preset_id":"`+resource.ID()+`"}`, 400)
 	call("POST", "/environments", manage, strings.TrimSuffix(input, "}")+`,"image":"arbitrary"}`, 400)
 	var created environment.Result
@@ -137,7 +147,7 @@ func TestEnvironmentClientAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	call("GET", "/environments/"+id, read, "", 200)
-	call("POST", "/environments", manage, `{"name":"已撤回","request_key":"revoked-create","host_id":"`+host+`"}`, 403)
+	call("POST", "/environments", manage, `{"name":"已撤回","request_key":"revoked-create","host_id":"`+host+`"`+specificationFields+`}`, 403)
 	if err := json.Unmarshal(call("GET", "/environment-hosts", read, "", 200).Body.Bytes(), &hosts); err != nil || len(hosts.Items) != 0 {
 		t.Fatalf("撤回后目录仍显示宿主：%v", err)
 	}
@@ -155,5 +165,5 @@ func TestEnvironmentClientAPI(t *testing.T) {
 	if _, err := db.Exec(ctx, "UPDATE credit_accounts SET balance=0 WHERE user_id=$1", users[0]); err != nil {
 		t.Fatal(err)
 	}
-	call("POST", "/environments", manage, `{"name":"余额不足","request_key":"client-unfunded"}`, 402)
+	call("POST", "/environments", manage, `{"name":"余额不足","request_key":"client-unfunded"`+specificationFields+`}`, 402)
 }

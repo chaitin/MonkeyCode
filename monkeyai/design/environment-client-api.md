@@ -9,7 +9,9 @@
 | 方法与路径 | 用途 | 权限 |
 | --- | --- | --- |
 | `GET /api/v1/environments` | 本人环境列表 | `environment:read` |
-| `POST /api/v1/environments` | 使用后台默认规格创建 | `environment:manage` |
+| `GET /api/v1/environment-specifications` | 全局可选规格与版本，不分页 | `environment:read` |
+| `GET /api/v1/environment-hosts` | 本人已授权宿主目录 | `environment:read` |
+| `POST /api/v1/environments` | 按所选全局规格创建 | `environment:manage` |
 | `GET /api/v1/environments/{id}` | 当前目标与最近观察结果 | `environment:read` |
 | `GET /api/v1/environments/{id}/operations` | 操作记录 | `environment:read` |
 | `POST /api/v1/environments/{id}/start` | 启动已确认停止的环境，新版宿主复用原容器 | `environment:manage` |
@@ -22,15 +24,37 @@
 
 ## 创建与重试
 
-直接调用创建接口，不需要查询预设或额度：
+先调用 `GET /api/v1/environment-specifications` 获取完整规格目录。接口需要 `environment:read`，不分页、不缓存：
 
 ```json
-{"name":"项目 A","request_key":"create-project-a-1"}
+{
+  "revision": 3,
+  "items": [
+    {"id":"11111111-1111-4111-8111-111111111111","version":2,"cpu_millis":2000,"memory_bytes":4294967296}
+  ]
+}
 ```
 
-返回 HTTP 202 和 `{environment,operation}`。CPU和内存使用选中宿主配置的环境规格；镜像取自server已准备的发行／导入清单，使用可读仓库和固定版本tag，SHA-256以image_digest独立保存并在拉取后校验；后台自动选择协议3及匹配架构的宿主，网络固定公网出站。创建时保存实际镜像摘要、资源及runtime版本快照；客户端不能传preset_id、名称之外的规格或镜像覆盖。后台仅在已授权且配置就绪的宿主中比较现有环境数／最大环境数，选择占用比例较低的宿主，不保存轮询权重。CPU／内存总规格允许超卖；单环境限制仍执行。离线、预检失败、镜像／runtime未准备或环境名额已满的宿主跳过。数量检查、环境创建、runtime记录和操作幂等在同一事务提交，支持多后台实例共享。宿主信息和standalone设备码无需交给用户批准。
+示例 ID 仅用于说明；实际请求必须使用接口返回的 ID 和版本。CPU 以毫核计（1000 为 1 核），内存以整数字节计；管理端显示 GB，按 1024³ 字节换算。空列表表示管理员尚未配置或已清空规格，应禁用新建入口并提示联系管理员，不能自动选取宿主旧规格或内置默认值。
 
-创建请求发送前保存 request_key；丢失响应或请求超时后使用完全相同的键和参数重试。键按用户隔离，相同请求返回同一环境与操作，同键不同参数返回 `409 idempotency_conflict`。保留该键直到获得确定结果。202 只表示目标已受理。
+用户选择后调用 `POST /api/v1/environments`：
+
+```json
+{
+  "name": "项目 A",
+  "specification_id": "11111111-1111-4111-8111-111111111111",
+  "specification_version": 2,
+  "request_key": "create-project-a-1"
+}
+```
+
+返回 HTTP 202 和 `{environment,operation}`。可选 `host_id` 用于固定已授权宿主；不允许提交 CPU、内存、镜像或其他底层参数。服务端在创建事务中校验规格是否存在、是否删除以及版本是否一致，以该规格的 CPU／内存核验余额和计算费用。缺少有效规格返回 `400 invalid_request`；旧客户端必须接入选择规格的新流程，服务端不会静默选择第一项。
+
+镜像取自 server 已准备的发行／导入清单，按架构匹配并固定摘要，网络固定公网出站。服务端只在已授权且配置就绪的宿主中比较现有环境数，选择数量较少者。CPU／内存允许超卖，不按物理剩余资源拒绝创建；宿主旧 resource 不再影响可用性。离线、预检失败、镜像／runtime 未准备时跳过对应宿主。规格校验、宿主选择、环境创建、首小时预扣和操作幂等受同一事务锁保护，支持多后台实例共享。
+
+创建时保存实际资源、镜像摘要和 runtime 版本快照；CPU／内存存于环境记录，隐藏资源参数保存在执行配置中。管理员后续编辑或删除全局规格不会修改已有实例、其计费资源或再次启动使用的资源。重启仍需满足原宿主在线、授权、状态与余额等条件，不会重新读取当前规格。
+
+创建请求发送前保存 request_key；丢失响应或请求超时后使用完全相同的键和参数重试。键按用户隔离，相同请求返回同一环境与操作，同键不同参数返回 `409 idempotency_conflict`。幂等参数包含规格 ID、规格版本和宿主选择。已成功请求即使规格后来修改或删除，原键与原参数重试仍返回原结果，不重复创建或扣款。遇到 specification_changed 或 specification_unavailable 时刷新列表，让用户重新选择，不擅自用新规格继续；重新选择后以新幂等键提交。保留原请求直到获得确定结果。202 只表示目标已受理。
 
 启停和删除的 JSON 请求体为：
 
@@ -70,15 +94,15 @@ ticket 有效期 15 分钟；按响应 expires_in 提前串行续期，携带原
 
 ## 宿主选择与授权范围
 
-`GET /api/v1/environment-hosts`需要environment:read，返回当前用户已获授权且已配置资源的宿主目录，授权过滤先于分页。字段包括id、name、architecture、resource、本人quota、billing、available和可选reason，不包含宿主私有报告或网络地址。available不承诺容量／余额，创建时仍以事务核验结果为准。
+`GET /api/v1/environment-hosts`需要environment:read，返回当前用户已获授权且已配置的宿主目录，授权过滤先于分页。字段包括id、name、architecture、全局billing、available和可选reason，不再返回resource，不包含宿主私有报告或网络地址。available不承诺最终准入／余额，创建时仍以事务核验结果为准。
 
-创建可增加可选host_id，明确使用某个已授权宿主。省略则保持自动调度，但规格、配额和价格都取选中宿主；同一幂等键改变host_id会冲突。用户不能指定任意资源或镜像覆盖。用户、分组及全员范围与项目现有授权一致，分组覆盖下级。
+创建可增加可选host_id，明确使用某个已授权宿主。省略则保持自动调度；规格来自全局目录，不限制宿主或用户环境数量，价格来自全局费用设置；同一幂等键改变host_id会冲突。用户不能指定任意资源或镜像覆盖。用户、分组及全员范围与项目现有授权一致，分组覆盖下级。
 
 撤回授权只禁止新的创建与再次启动，不打断既有运行或连接。Owner仍可查询、停止和删除自己的环境，停止后必须重新获该宿主授权才能启动。身份停用／删除或宿主身份撤销仍按原安全策略处理，不与宿主可用范围撤回混同。
 
 ## 服务端容量控制
 
-客户端不再提供预设列表与本人额度查询接口。后台在事务内核验宿主总环境数和用户在该宿主上的数量上限，不再限制CPU／内存分配总和或同时运行数。停止环境仍占名额，确认删除后释放；降低上限不清理已有环境，再次启动不重复申请名额。状态、授权和余额等检查继续执行。
+客户端使用新的全局规格目录；旧预设与本人独立额度查询接口不恢复。后台不限制宿主或用户环境数量，不限制CPU／内存分配总和或同时运行数。环境数量仅用于监控与自动调度负载均衡。状态、授权和余额等检查继续执行。
 
 持久目录继续保留，暂不管理磁盘额度。当前无数据purge接口，不能提示删除环境即清理持久数据。
 
@@ -89,11 +113,13 @@ ticket 有效期 15 分钟；按响应 expires_in 提前串行续期，携带原
 | `401 invalid_token` | 沿现有 OAuth 流程刷新或重新登录 |
 | `403 permission_denied` | 检查原客户端授权是否包含所需 scope |
 | `403 host_access_denied` | 未获选定宿主的新建／启动授权，联系管理员调整范围；已有运行不因此中断 |
-| `402 insufficient_credits` | 当前周期积分不为正，不能创建或启动收费环境；停止、删除及历史查询仍允许 |
+| `402 insufficient_credits` | 积分不足以预付一小时，不能创建或启动收费环境；停止、删除及历史查询仍允许 |
+| `400 invalid_request` | 缺少合法规格 ID／版本、字段无效或提交了任意资源覆盖 |
+| `409 specification_changed` | 所选规格已修改；刷新列表，让用户重新选择并以新键提交 |
+| `409 specification_unavailable` | 所选规格已删除或不存在；刷新列表，不自动替换规格 |
 | `409 idempotency_conflict` | 核对保存的请求，不用同一键提交其他参数 |
 | `409 generation_conflict` | 重新查询环境与操作记录 |
-| `409 quota_exceeded` | 用户在该宿主的环境数量已达上限；停止不释放名额，需确认删除或调整数量上限 |
-| `409 configuration_unavailable` | 联系管理员配置或启用默认环境规格 |
+| `409 configuration_unavailable` | 联系管理员检查默认镜像／runtime 是否准备就绪 |
 | `409 capacity_unavailable`、`host_unavailable` | 当前宿主容量或可用性不足，不能换宿主创建空数据目录 |
 | `409 environment_must_stop` | 等待当前实例停止确认后再启动 |
 | `409 environment_deleted` | 环境已进入删除流程，不能恢复运行 |
@@ -103,15 +129,15 @@ ticket 有效期 15 分钟；按响应 expires_in 提前串行续期，携带原
 
 ## 环境计费查询
 
-本轮只增加服务端能力，不实现客户端页面或通知。环境收费默认关闭；管理员配置单价并开启后，按分配CPU／内存和可确认运行秒数计量，每分钟结算，确认停止后结束。存储暂不收费，模型与工具另计；当前仅支持本地积分。
+本仓不实现客户端页面或通知。云电脑无独立计费开关，仍受系统总计费开关控制；CPU 默认每核每小时100积分，内存默认每GB每小时50积分（GB=1024³字节）。管理员可在全局费用设置调整单价，按实例快照中的 CPU／内存整小时预付，启动前扣一小时、到期续扣。提前停止不退款，同一环境在已付费小时内重启不重复扣费；调价从下一次续费生效。存储暂不收费，模型与工具另计；当前仅支持本地积分。
 
-本人列表／详情和管理端列表／详情可返回`billing`：`enabled`、`state`、`hourly_credits`、`settled_credits`、`settled_seconds`及可选`stop_reason`、`budget`。创建／操作响应可不含此扩展，需再次查询。积分为最多六位小数的十进制字符串，不能用浮点数推导实际扣款。
+客户端本人列表／详情可返回 `billing`：`enabled`、`state`、`hourly_credits`、`settled_credits`、`settled_seconds` 及可选 `prepaid_until`、`stop_reason`、`budget`。管理端列表／详情不再附带此计费扩展。创建／操作响应可不含此扩展，需再次查询。积分为最多六位小数的十进制字符串，不能用浮点数推导实际扣款。
 
 - `state`为disabled／waiting／running／stopped／unknown，表示计费状态，不替代环境phase／generation或connectable。
 - `hourly_credits`是当前配置下该环境实际规格的每小时价格；已停止时仅为再次运行的价格参考，不表示仍在扣费。累计已结算时长和积分来自持久账务。
-- `budget`按同一用户全部已确认运行环境汇总，不受当前分页或宿主筛选限制。包含账户余额、合计小时费率、运行环境数、预计剩余秒数和`low_balance`；预计不超过5分钟时标记低余额，无费率时剩余时间为null。停用／删除用户不补发新周期预算，但既有历史账户仍正常结算。
-- `billing_stop_reason=insufficient_credits`表示余额耗尽发起停止，尚需看环境代次和实际phase判断是否已停。停止过程尾费实收，可出现少量负余额；持久数据保留。billing_unavailable表示服务端因计费不可用发起停止。
-- 失联超过90秒或巡检失败无法确认的区间不延伸收费，恢复确认后另开时段；不把失败或失联当作已停止或已删除。状态查询不代表已向用户送达通知。
+- `budget` 按同一用户全部仍在运行目标且处于已付费小时内的环境汇总，不受当前分页或宿主筛选限制。包含账户余额、合计小时费率、环境数、距离最近付费到期的秒数和 `low_balance`；余额不足以给这些环境续付一小时即标记低余额，无有效付费小时则剩余时间为 null。
+- `billing_stop_reason=insufficient_credits` 表示余额不足以续付下一小时而发起停止，尚需看代次和实际 phase 判断是否已停；持久数据保留。新增预付不能透支，已付费小时不因其他消费而被撤销。billing_unavailable 表示服务端因计费不可用发起停止。
+- 既有按秒历史记录只结算已确认部分，不重算断线空档。已购买小时不因提前停止、失败或失联而退款；不能把失败或失联当作已确认停止或删除。状态查询不代表已向用户送达通知。
 
 ## 当前磁盘语义
 
@@ -121,11 +147,27 @@ ticket 有效期 15 分钟；按响应 expires_in 提前串行续期，携带原
 
 ## 管理端快速配置
 
-在「云环境 → 宿主管理 → 配置环境」为当前宿主独立保存资源、默认用户配额、单价与授权范围；修改A不会影响B。镜像由server发行／导入清单按宿主架构确定，资源在环境创建时冻结，之后修改宿主规格不改变已有环境。
+在「云电脑 → 宿主机 → 管理规格」配置全局 CPU／内存组合。弹窗从服务端加载，提交成功后持久保存；网络失败保留草稿，版本冲突时提示重新加载，不自动覆盖他人修改。在宿主「配置环境」中仅保存授权范围，CPU／内存配置已移除。全局价格在「费用设置」维护，镜像由 server 按架构准备。
 
-管理端`GET/PUT /api/admin/v1/environment-hosts/{id}/setup`原子保存`{resource,max_environments,user_max_environments,billing,grants}`，分别表示单环境规格、宿主总数量、默认每用户数量、价格及范围。没有配置或价格revision，最后有效提交覆盖；省略billing／grants保留原值。降低上限不删除或停止已有环境。个人配额接口`/environment-quotas/{user_id}?host_id=...`只保存max_environments。
+管理端 `GET/PUT /api/admin/v1/environment-specifications` 读取／原子替换完整目录：
 
-统一40直接创建八表：hosts、host_environment_configs、host_upgrades、environments、environment_runtimes、environment_operations、environment_quotas、environment_billing_periods；1～39不改。hosts含创建者user_id、enabled、max_environments和首次activated_at，配置、升级历史与runtime独立存储。环境spec不重复存ID／实例／代次／目标／CPU／内存，按列组装下发；创建幂等放在operations，价格按内容快照判断变化。删除environment_defaults和compute_reserved，控制使用按schema区分的事务级advisory lock。重放保持配置、授权和账务，开放或已收费时段、财务历史、待完成宿主／runtime更新及未确认删除环境阻止回退。旧开发数据库不能靠up、force或重放补齐差异，需要独立的数据保留迁移方案。
+```json
+{
+  "revision": 3,
+  "items": [
+    {"id":"11111111-1111-4111-8111-111111111111","version":2,"cpu_millis":4000,"memory_bytes":8589934592},
+    {"id":"22222222-2222-4222-8222-222222222222","version":0,"cpu_millis":2000,"memory_bytes":4294967296}
+  ]
+}
+```
+
+`revision` 是读取时的整表版本；新增项使用新的小写 UUID 和 `version:0`，已有项保留其 ID／当前版本。每次成功保存递增 revision；修改 CPU／内存递增条目 version，仅重排不变。省略已有项表示软删除；删除后的 ID 不可复用。最多 100 项，禁止重复 ID 或重复 CPU／内存组合，CPU 范围 100–256000 毫核，内存范围 268435456–1099511627776 字节。列表允许为空，不接受缺失或 null。冲突返回 `409 specifications_conflict`，整次事务回滚，必须重新加载后再编辑。
+
+隐藏执行限制由服务端生成：host_tasks=1024，temporary_bytes 为 min(512 MiB, 内存一半向下按 4096 字节对齐)。它们随环境资源快照保存，不接受客户端自定义。
+
+宿主 `GET/PUT /api/admin/v1/environment-hosts/{id}/setup` 保存 `{grants}`。不再接受或返回 resource；响应 billing 仅供读取，全局价格不能在此写入。宿主配置仍为最后有效提交覆盖；省略 grants 保留原授权。不设置数量上限，不删除或停止已有环境。个人配额接口已移除，宿主目录不再返回 quota。迁移49删除个人配额表及默认每用户数量字段；迁移50删除 hosts.max_environments，既有环境不受影响。
+
+统一40直接创建八表：hosts、host_environment_configs、host_upgrades、environments、environment_runtimes、environment_operations、environment_quotas、environment_billing_periods；1～39不改。迁移50后的hosts含创建者user_id、enabled和首次activated_at，配置、升级历史与runtime独立存储。环境spec不重复存ID／实例／代次／目标／CPU／内存，按列组装下发；创建幂等放在operations，价格按内容快照判断变化。删除environment_defaults和compute_reserved，控制使用按schema区分的事务级advisory lock。重放保持配置、授权和账务，开放或已收费时段、财务历史、待完成宿主／runtime更新及未确认删除环境阻止回退。旧开发数据库不能靠up、force或重放补齐差异，需要独立的数据保留迁移方案。
 
 宿主接入使用服务端签名短期凭证，host创建者取当前登录用户；重发撤销原待接入记录并产生新ID。心跳／交换用v2签名及/time取得的服务端时间，严格推进业务报告时间；重复或旧报告被拒绝，不能延长计费区间。不新增认证表或JSON状态，原宿主私钥及已运行环境保持。
 
@@ -161,6 +203,14 @@ ticket 有效期 15 分钟；按响应 expires_in 提前串行续期，携带原
 
 server 准备完整的双架构镜像，宿主仅从 server 的标准只读 Registry 拉取固定摘要，本地已有即复用。管理员可用 `POST /api/admin/v1/environment-images/sync` 同步来源、`GET /api/admin/v1/environment-images` 查询状态。来源未就绪时创建失败，不让宿主临时回源公网。镜像更新只影响新建／显式重建的环境，正常启停不会替换已有系统。
 
-## 发布要求
+## 全局规格发布与迁移
+
+部署顺序：先应用 `000048_environment_specifications`，再部署后端与管理端，最后让客户端按新接口选择规格。此变更不修改客户端应用代码。
+
+迁移新增独立规格表与目录版本表，初始目录包含 1 核 2 GB 规格，不会把历史宿主 CPU／内存组合自动公开为全局可选规格。历史宿主 resource 列暂留以保留原数据，但新配置、宿主目录与调度不再使用它；已有环境资源及账务数据不迁移、不重写。管理员删除默认规格后不会自动补回。
+
+新建请求必须携带规格 ID 与版本，旧客户端无规格的新建将返回400；历史已成功创建请求的原参数重放仍走原幂等记录。旧环境的启动、停止、删除不要求存在对应全局规格。回滚迁移会删除规格目录，不能在仍运行新版服务时执行；旧版按宿主预设创建的逻辑也无法自动理解新版宿主配置，回滚前需单独评估。
+
+## 运行时发布要求
 
 本轮需迁移 `000040_cloud_environments`、新版 engine 与配套 server 安装器。server 打包自动从官方 x64／arm64 的 release.json 固定同版本及修订，在线安装缓存官方原始程序，离线包携带相同原始文件；不再单独构建或二次发布 runtime。先更新 server 并准备镜像／runtime 文件，再升级宿主至 runtime_update_protocol=2。宿主在本架构无网络、无用户数据挂载的临时 gVisor 容器中校验内嵌信息，复用匹配的 OhMyAgent，缺失时自动释放；用户容器保持停止及原 ID，准备失败不切换原版本。旧四文件资源包及协议1仍兼容。宿主接入、调度、监控和 runtime 更新结构统一归入40；主线39直接升级到40。本PR未上线，不兼容旧11表开发结构；旧测试数据库须先备份并重建云环境结构，不能只修改版本号或force，详见[迁移说明](../backend/migrations/README.md)。

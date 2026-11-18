@@ -16,19 +16,16 @@ import (
 func setupFixture(t *testing.T) (*Service, string, string, Setup) {
 	t.Helper()
 	s, user, host := fixture(t)
-	return s, user, host, Setup{Resource: profile().Resource, MaxEnvironments: 100, UserMaxEnvironments: 3}
+	return s, user, host, Setup{}
 }
-func TestSetupSavesOnlyResourcesAndKeepsSnapshots(t *testing.T) {
+func TestSetupKeepsSnapshots(t *testing.T) {
 	s, user, host, in := setupFixture(t)
 	ctx := t.Context()
 	q := sqlc.New(s.pool)
 	if _, err := s.saveSetup(ctx, host, in); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.SetQuota(ctx, sqlc.SetQuotaParams{UserID: user, HostID: host, MaxEnvironments: 4}); err != nil {
-		t.Fatal(err)
-	}
-	created, err := s.Create(ctx, user, Creation{"original", "setup-before"})
+	created, err := s.Create(ctx, user, Creation{testSpecification(), "original", "setup-before"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,14 +33,8 @@ func TestSetupSavesOnlyResourcesAndKeepsSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in.Resource.CPUMillis = 1500
-	in.UserMaxEnvironments = 1
 	if _, err = s.saveSetup(ctx, host, in); err != nil {
 		t.Fatal(err)
-	}
-	limit, err := quota(ctx, q, user, host)
-	if err != nil || limit != 4 {
-		t.Fatal("个人覆盖被修改", limit, err)
 	}
 	after, err := q.GetEnvironment(ctx, sqlc.GetEnvironmentParams{ID: created.Environment.ID})
 	if err != nil || after.CpuMillis != 1000 || !bytes.Equal(before.Spec, after.Spec) {
@@ -67,30 +58,28 @@ func TestSetupSavesOnlyResourcesAndKeepsSnapshots(t *testing.T) {
 		}
 	}
 	replay, err := q.HostSetup(ctx, host)
-	if err != nil || !bytes.Equal(replay.Resource, current.Resource) || replay.UserMaxEnvironments != 1 {
+	if err != nil || !bytes.Equal(replay.Resource, current.Resource) {
 		t.Fatal("重放覆盖配置", err)
 	}
 }
-func TestSetupLastWriterWinsAndLowerLimitsPreserveEnvironments(t *testing.T) {
+func TestSetupSavesPreserveEnvironments(t *testing.T) {
 	s, user, host, in := setupFixture(t)
 	ctx := t.Context()
 	for _, key := range []string{"a", "b"} {
-		if _, err := s.Create(ctx, user, Creation{key, key}); err != nil {
+		if _, err := s.Create(ctx, user, Creation{testSpecification(), key, key}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	in.MaxEnvironments = 1
-	in.UserMaxEnvironments = 1
 	if _, err := s.saveSetup(ctx, host, in); err != nil {
-		t.Fatal("降低上限不应删除或拒绝保存", err)
+		t.Fatal("保存不应删除已有环境", err)
 	}
-	if _, err := s.Create(ctx, user, Creation{"blocked", "blocked"}); err == nil {
-		t.Fatal("数量超过新上限")
+	if _, err := s.Create(ctx, user, Creation{testSpecification(), "allowed", "allowed"}); err != nil {
+		t.Fatal("保存后应允许继续创建", err)
 	}
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
-	for _, count := range []int32{5, 6} {
-		wg.Go(func() { next := in; next.MaxEnvironments = count; _, err := s.saveSetup(ctx, host, next); errs <- err })
+	for range 2 {
+		wg.Go(func() { _, err := s.saveSetup(ctx, host, in); errs <- err })
 	}
 	wg.Wait()
 	close(errs)
@@ -99,14 +88,13 @@ func TestSetupLastWriterWinsAndLowerLimitsPreserveEnvironments(t *testing.T) {
 			t.Fatal("配置不再使用版本冲突", err)
 		}
 	}
-	in.MaxEnvironments = 7
 	out, err := s.saveSetup(ctx, host, in)
-	if err != nil || out.MaxEnvironments != 7 {
+	if err != nil || out.HostID != host {
 		t.Fatal("最后提交未生效", err)
 	}
 	used, err := sqlc.New(s.pool).HostUsage(ctx, host)
-	if err != nil || used != 2 {
-		t.Fatal("降低上限改变了已有环境", used, err)
+	if err != nil || used != 3 {
+		t.Fatal("保存改变了已有环境", used, err)
 	}
 }
 func TestSetupRoutesAndValidation(t *testing.T) {
@@ -118,12 +106,9 @@ func TestSetupRoutesAndValidation(t *testing.T) {
 	if get.Code != 200 || get.Header().Get("Cache-Control") != "no-store" || strings.Contains(get.Body.String(), `"revision"`) {
 		t.Fatal(get.Code, get.Body.String())
 	}
-	for _, change := range []func(*Setup){func(v *Setup) { v.Resource.CPUMillis = 0 }, func(v *Setup) { v.Resource.TemporaryBytes = v.Resource.MemoryBytes }, func(v *Setup) { v.MaxEnvironments = -1 }, func(v *Setup) { v.UserMaxEnvironments = -1 }} {
-		bad := in
-		change(&bad)
-		raw, _ := json.Marshal(bad)
+	for _, body := range []string{`{"max_environments":1}`, `{"max_environments":0}`} {
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest("PUT", "/environment-hosts/"+host+"/setup", strings.NewReader(string(raw))))
+		router.ServeHTTP(rec, httptest.NewRequest("PUT", "/environment-hosts/"+host+"/setup", strings.NewReader(body)))
 		if rec.Code != 400 {
 			t.Fatal(rec.Code, rec.Body.String())
 		}

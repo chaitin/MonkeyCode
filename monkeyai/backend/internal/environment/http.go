@@ -41,6 +41,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 func (s *Service) RegisterAgent(r chi.Router) {
+	r.With(identity.RequireScope("environment:read")).Get("/environment-specifications", s.getSpecifications)
 	r.With(identity.RequireScope("environment:read")).Get("/environment-hosts", s.accessibleHosts)
 	r.With(identity.RequireScope("environment:read")).Get("/environments", s.list(false))
 	r.With(identity.RequireScope("environment:read")).Get("/environments/{id}", s.get(false))
@@ -53,13 +54,13 @@ func (s *Service) RegisterAgent(r chi.Router) {
 	r.With(identity.RequireScope("environment:manage")).Delete("/environments/{id}", s.change(false, "deleted"))
 }
 func (s *Service) RegisterAdmin(r chi.Router) {
+	r.Get("/environment-specifications", s.getSpecifications)
+	r.Put("/environment-specifications", s.putSpecifications)
 	r.Get("/environment-hosts", s.hosts)
 	r.Put("/environment-hosts/{id}", s.setHost)
 	r.Patch("/environment-hosts/{id}/scheduling", s.setScheduling)
 	r.Get("/environment-hosts/{id}/setup", s.getSetup)
 	r.Put("/environment-hosts/{id}/setup", s.putSetup)
-	r.Get("/environment-quotas/{id}", s.getQuota)
-	r.Put("/environment-quotas/{id}", s.setQuota)
 	r.Get("/environments", s.list(true))
 	r.Get("/environments/{id}", s.get(true))
 	r.Get("/environments/{id}/operations", s.operations(true))
@@ -156,19 +157,23 @@ func (s *Service) list(admin bool) http.HandlerFunc {
 			}
 			items = append(items, item)
 		}
-		if err := s.billingViews(r.Context(), items); err != nil {
+		if err := s.enrichViews(r, items, admin); err != nil {
 			fail(w, r, err)
 			return
-		}
-		if admin {
-			if err := s.identities(r.Context(), items); err != nil {
-				fail(w, r, err)
-				return
-			}
 		}
 		respond(w, r, 200, map[string]any{"items": items, "page": page, "page_size": size})
 	}
 }
+func (s *Service) enrichViews(r *http.Request, items []View, admin bool) error {
+	if !admin {
+		return s.billingViews(r.Context(), items)
+	}
+	for i := range items {
+		items[i].BillingStopReason = ""
+	}
+	return s.identities(r.Context(), items)
+}
+
 func (s *Service) get(admin bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -186,21 +191,12 @@ func (s *Service) get(admin bool) http.HandlerFunc {
 			fail(w, r, err)
 			return
 		}
-		billed := []View{out}
-		if err := s.billingViews(r.Context(), billed); err != nil {
+		items := []View{out}
+		if err := s.enrichViews(r, items, admin); err != nil {
 			fail(w, r, err)
 			return
 		}
-		out = billed[0]
-		if admin {
-			items := []View{out}
-			if err := s.identities(r.Context(), items); err != nil {
-				fail(w, r, err)
-				return
-			}
-			out = items[0]
-		}
-		respond(w, r, 200, out)
+		respond(w, r, 200, items[0])
 	}
 }
 func (s *Service) operations(admin bool) http.HandlerFunc {
@@ -234,10 +230,9 @@ func (s *Service) operations(admin bool) http.HandlerFunc {
 }
 
 type Capacity struct {
-	Enabled         bool  `json:"enabled"`
-	CPUMillis       int64 `json:"cpu_millis"`
-	MemoryBytes     int64 `json:"memory_bytes"`
-	MaxEnvironments int32 `json:"max_environments"`
+	Enabled     bool  `json:"enabled"`
+	CPUMillis   int64 `json:"cpu_millis"`
+	MemoryBytes int64 `json:"memory_bytes"`
 }
 
 func (s *Service) hosts(w http.ResponseWriter, r *http.Request) {
@@ -254,23 +249,12 @@ func (s *Service) hosts(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		capacity := reportedCapacity(row.Report)
-		items = append(items, map[string]any{"host_id": row.HostID, "enabled": row.Enabled, "cpu_millis": capacity.CPUMillis, "memory_bytes": capacity.MemoryBytes, "max_environments": row.MaxEnvironments, "architecture": row.Architecture, "status": row.Status, "last_seen_at": row.LastSeenAt, "protocol": row.Protocol, "sync_at": row.SyncAt})
+		items = append(items, map[string]any{"host_id": row.HostID, "enabled": row.Enabled, "cpu_millis": capacity.CPUMillis, "memory_bytes": capacity.MemoryBytes, "architecture": row.Architecture, "status": row.Status, "last_seen_at": row.LastSeenAt, "protocol": row.Protocol, "sync_at": row.SyncAt})
 	}
 	respond(w, r, 200, map[string]any{"items": items, "page": page, "page_size": size})
 }
 func (s *Service) setHost(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Enabled         bool  `json:"enabled"`
-		MaxEnvironments int32 `json:"max_environments"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	if in.MaxEnvironments < 0 || in.MaxEnvironments > 1000000 {
-		fail(w, r, bad("环境数量上限无效"))
-		return
-	}
-	s.saveHostSettings(w, r, in.Enabled, &in.MaxEnvironments)
+	s.setScheduling(w, r)
 }
 func (s *Service) setScheduling(w http.ResponseWriter, r *http.Request) {
 	var in struct {
@@ -283,9 +267,9 @@ func (s *Service) setScheduling(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, bad("必须指定是否允许分配新环境"))
 		return
 	}
-	s.saveHostSettings(w, r, *in.Enabled, nil)
+	s.saveHostSettings(w, r, *in.Enabled)
 }
-func (s *Service) saveHostSettings(w http.ResponseWriter, r *http.Request, enabled bool, limit *int32) {
+func (s *Service) saveHostSettings(w http.ResponseWriter, r *http.Request, enabled bool) {
 	id := chi.URLParam(r, "id")
 	if !uuid.MatchString(id) {
 		fail(w, r, notFound)
@@ -303,72 +287,9 @@ func (s *Service) saveHostSettings(w http.ResponseWriter, r *http.Request, enabl
 		if _, err = q.SetScheduling(r.Context(), sqlc.SetSchedulingParams{HostID: id, Enabled: enabled}); err != nil {
 			return err
 		}
-		if limit != nil {
-			if err := q.SetHostLimit(r.Context(), sqlc.SetHostLimitParams{ID: id, MaxEnvironments: *limit}); err != nil {
-				return err
-			}
-		}
-		current, err := q.GetHost(r.Context(), id)
-		if err != nil {
-			return err
-		}
 		out = reportedCapacity(host.Report)
 		out.Enabled = enabled
-		out.MaxEnvironments = current.MaxEnvironments
 		return nil
-	})
-	if err != nil {
-		fail(w, r, err)
-		return
-	}
-	respond(w, r, 200, out)
-}
-func (s *Service) getQuota(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !uuid.MatchString(id) || !uuid.MatchString(r.URL.Query().Get("host_id")) {
-		fail(w, r, notFound)
-		return
-	}
-	q := sqlc.New(s.pool)
-	if _, err := q.ActiveUser(r.Context(), id); err != nil {
-		fail(w, r, err)
-		return
-	}
-	out, err := quota(r.Context(), q, id, r.URL.Query().Get("host_id"))
-	if err != nil {
-		fail(w, r, err)
-		return
-	}
-	respond(w, r, 200, sqlc.EnvironmentQuota{UserID: id, HostID: r.URL.Query().Get("host_id"), MaxEnvironments: out})
-}
-func (s *Service) setQuota(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		MaxEnvironments int32 `json:"max_environments"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if !uuid.MatchString(id) || in.MaxEnvironments < 0 || in.MaxEnvironments > 1000000 {
-		fail(w, r, bad("用户额度无效"))
-		return
-	}
-	host := r.URL.Query().Get("host_id")
-	if !uuid.MatchString(host) {
-		fail(w, r, bad("请指定宿主"))
-		return
-	}
-	var out sqlc.EnvironmentQuota
-	err := s.transaction(r.Context(), func(q *sqlc.Queries) error {
-		if _, err := q.HostSetup(r.Context(), host); err != nil {
-			return err
-		}
-		if _, err := q.ActiveUser(r.Context(), id); err != nil {
-			return err
-		}
-		var err error
-		out, err = q.SetQuota(r.Context(), sqlc.SetQuotaParams{UserID: id, HostID: host, MaxEnvironments: in.MaxEnvironments})
-		return err
 	})
 	if err != nil {
 		fail(w, r, err)

@@ -20,7 +20,7 @@ import (
 func TestDeletionCompletionTimestampAndRecovery(t *testing.T) {
 	s, user, host := fixture(t)
 	ctx := t.Context()
-	input := Creation{"删除回归", "create-deletion"}
+	input := Creation{testSpecification(), "删除回归", "create-deletion"}
 	created, err := s.Create(ctx, user, input)
 	if err != nil {
 		t.Fatal(err)
@@ -79,13 +79,9 @@ func TestDeletionCompletionTimestampAndRecovery(t *testing.T) {
 func TestAgentListExcludesDeletedBeforePagination(t *testing.T) {
 	s, user, host := fixture(t)
 	ctx := t.Context()
-	q := sqlc.New(s.pool)
-	if _, err := q.SetQuota(ctx, sqlc.SetQuotaParams{UserID: user, HostID: host, MaxEnvironments: 10}); err != nil {
-		t.Fatal(err)
-	}
 	var environments []View
 	for i, name := range []string{"运行目标", "等待删除", "删除失败", "已删除"} {
-		created, err := s.Create(ctx, user, Creation{name, "list-" + strconv.Itoa(i)})
+		created, err := s.Create(ctx, user, Creation{testSpecification(), name, "list-" + strconv.Itoa(i)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -180,12 +176,9 @@ func TestAgentListExcludesDeletedBeforePagination(t *testing.T) {
 }
 
 func TestDeletionMigrationBackfillsConfirmedHistory(t *testing.T) {
-	s, user, host := fixture(t)
+	s, user, _ := fixture(t)
 	ctx := t.Context()
 	q := sqlc.New(s.pool)
-	if _, err := q.SetQuota(ctx, sqlc.SetQuotaParams{UserID: user, HostID: host, MaxEnvironments: 10}); err != nil {
-		t.Fatal(err)
-	}
 	type sample struct {
 		desired, phase       string
 		generation, observed int64
@@ -202,7 +195,7 @@ func TestDeletionMigrationBackfillsConfirmedHistory(t *testing.T) {
 	var ids []string
 	for _, item := range samples {
 		id := resource.ID()
-		created, err := s.Create(ctx, user, Creation{"迁移回归", id})
+		created, err := s.Create(ctx, user, Creation{testSpecification(), "迁移回归", id})
 		if err != nil {
 			t.Fatal(err)
 		}

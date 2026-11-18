@@ -10,7 +10,7 @@ import (
 
 func TestRepeatedExchangeCannotAdvanceUsageBillingOrReopenPrices(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"replay", "replay-create"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "replay", "replay-create"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,9 +30,8 @@ func TestRepeatedExchangeCannotAdvanceUsageBillingOrReopenPrices(t *testing.T) {
 	}
 	settle(t, s, false)
 	cost(t, s, user, "30", 1)
-	cfg := hostSetup(t, s, host)
 	price := BillingConfig{Enabled: true, CPU: 7200_000000}
-	if _, err := s.saveSetup(t.Context(), host, Setup{Resource: *cfg.Resource, MaxEnvironments: cfg.MaxEnvironments, UserMaxEnvironments: cfg.UserMaxEnvironments, Billing: &price}); err != nil {
+	if _, err := s.saveSetup(t.Context(), host, Setup{Billing: &price}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.ExchangeAt(t.Context(), host, raw, stamp); err == nil {

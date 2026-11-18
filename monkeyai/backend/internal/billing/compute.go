@@ -28,7 +28,7 @@ func (s *Service) ComputeEnabled(ctx context.Context, tx pgx.Tx) (bool, error) {
 		return false, err
 	}
 	if p.Mode != "local" {
-		return false, fail(409, "environment_billing_mode_unavailable", "云环境计费暂仅支持本地积分，请先关闭云环境收费再切换计费模式")
+		return false, fail(409, "environment_billing_mode_unavailable", "云电脑计费仅支持本地积分，请切换为直接计费模式")
 	}
 	return true, nil
 }

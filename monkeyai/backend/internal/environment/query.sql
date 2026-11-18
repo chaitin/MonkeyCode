@@ -1,3 +1,29 @@
+-- name: SpecificationRevision :one
+SELECT revision FROM environment_specification_catalog WHERE singleton;
+
+-- name: AdvanceSpecificationRevision :exec
+UPDATE environment_specification_catalog SET revision=revision+1 WHERE singleton;
+
+-- name: ListSpecifications :many
+SELECT id,version,cpu_millis,memory_bytes FROM environment_specifications WHERE deleted_at IS NULL ORDER BY position,id;
+
+-- name: GetSpecification :one
+SELECT id,version,cpu_millis,memory_bytes FROM environment_specifications WHERE id=$1 AND deleted_at IS NULL;
+
+-- name: SpecificationExists :one
+SELECT EXISTS(SELECT 1 FROM environment_specifications WHERE id=$1);
+
+-- name: RetireSpecifications :exec
+UPDATE environment_specifications SET deleted_at=now() WHERE deleted_at IS NULL;
+
+-- name: InsertSpecification :exec
+INSERT INTO environment_specifications(id,cpu_millis,memory_bytes,position) VALUES($1,$2,$3,$4);
+
+-- name: UpdateSpecification :one
+UPDATE environment_specifications SET
+ version=version+CASE WHEN cpu_millis<>$2 OR memory_bytes<>$3 THEN 1 ELSE 0 END,
+ cpu_millis=$2,memory_bytes=$3,position=$4,deleted_at=NULL WHERE id=$1 RETURNING version;
+
 -- name: LockControl :exec
 SELECT pg_advisory_xact_lock(129678,hashtext(current_schema() || ':environments'));
 
@@ -5,29 +31,23 @@ SELECT pg_advisory_xact_lock(129678,hashtext(current_schema() || ':environments'
 SELECT id,architecture,status,last_seen_at,report FROM hosts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE;
 
 -- name: ListHosts :many
-SELECT id AS host_id,enabled,max_environments,exchange_protocol AS protocol,environment_synced_at AS sync_at,architecture,status,last_seen_at,report FROM hosts WHERE deleted_at IS NULL ORDER BY id LIMIT $1 OFFSET $2;
+SELECT id AS host_id,enabled,exchange_protocol AS protocol,environment_synced_at AS sync_at,architecture,status,last_seen_at,report FROM hosts WHERE deleted_at IS NULL ORDER BY id LIMIT $1 OFFSET $2;
 
 -- name: AvailableHosts :many
-SELECT h.id AS host_id,h.architecture,h.report,c.resource,h.max_environments,
+SELECT h.id AS host_id,h.architecture,h.report,
  (SELECT count(*) FROM environments e WHERE e.host_id=h.id AND NOT(e.desired='deleted' AND e.phase='deleted' AND e.observed_generation=e.generation))::bigint AS environment_count
 FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id
-WHERE c.resource IS NOT NULL AND h.enabled AND h.max_environments>0 AND h.exchange_protocol=1 AND h.environment_synced_at>now()-interval '90 seconds' AND h.status='active' AND h.deleted_at IS NULL
+WHERE h.enabled AND h.exchange_protocol=1 AND h.environment_synced_at>now()-interval '90 seconds' AND h.status='active' AND h.deleted_at IS NULL
 AND (NOT sqlc.arg(runtime_required)::boolean OR h.report->>'runtime_protocol'='1')
 AND h.last_seen_at>now()-interval '90 seconds' AND h.report->>'prerequisites_met'='true' AND h.architecture IN ('amd64','arm64')
 AND (sqlc.arg(network_policy)::text='isolated' OR (jsonb_typeof(h.report->'network_policies')='array' AND (h.report->'network_policies') ? sqlc.arg(network_policy)::text))
 ORDER BY h.id;
 
 -- name: GetHost :one
-SELECT id AS host_id,enabled,max_environments,exchange_protocol AS protocol,environment_synced_at AS sync_at FROM hosts WHERE id=$1;
+SELECT id AS host_id,enabled,exchange_protocol AS protocol,environment_synced_at AS sync_at FROM hosts WHERE id=$1;
 
 -- name: TouchHost :execrows
 UPDATE hosts SET exchange_protocol=1,environment_synced_at=$2 WHERE id=$1 AND (environment_synced_at IS NULL OR environment_synced_at<$2);
-
--- name: GetQuota :one
-SELECT * FROM environment_quotas WHERE user_id=sqlc.arg(user_id) AND host_id=sqlc.arg(host_id);
-
--- name: SetQuota :one
-INSERT INTO environment_quotas(user_id,host_id,max_environments) VALUES($1,$2,$3) ON CONFLICT(host_id,user_id) DO UPDATE SET max_environments=EXCLUDED.max_environments RETURNING *;
 
 -- name: ActiveUser :one
 SELECT id FROM users WHERE id=$1 AND status='active' AND deleted_at IS NULL;
@@ -138,8 +158,7 @@ SELECT NOT EXISTS(SELECT 1 FROM environment_runtimes WHERE machine_id=sqlc.arg(m
  AND e.generation=r.generation AND e.instance_id=r.instance_id AND u.status='active' AND u.deleted_at IS NULL AND h.status='active'
  AND (
   NOT EXISTS(SELECT 1 FROM settings c WHERE c.key='billing'
-   AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean
-   AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0))
+   AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0))
   OR NOT COALESCE((SELECT (value->>'enabled')::boolean FROM settings WHERE key='billing'),false)
   OR EXISTS(SELECT 1 FROM environment_billing_periods p WHERE p.environment_id=e.id AND p.prepaid_until>now() AND p.started_at<=now())
  )
@@ -188,7 +207,7 @@ UPDATE environment_billing_periods SET closed_at=confirmed_until WHERE user_id=$
 SELECT user_id FROM environment_billing_periods WHERE prepaid_until IS NULL AND (settled_seconds<EXTRACT(EPOCH FROM confirmed_until-started_at)
  OR (closed_at IS NULL AND confirmed_until<$1))
 UNION SELECT e.user_id FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.desired='running'
- AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
+  AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0)
 ORDER BY user_id;
 
 -- name: PendingBillingPeriods :many
@@ -213,34 +232,28 @@ SELECT environment_id,COALESCE(sum(settled_amount),0)::text AS amount,
 FROM environment_billing_periods WHERE environment_id=ANY(sqlc.arg(ids)::uuid[]) GROUP BY environment_id;
 
 -- name: HostSetup :one
-SELECT h.id,h.name,h.architecture,h.status,h.max_environments,c.resource,COALESCE(c.user_max_environments,3)::integer AS user_max_environments,
-COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing
+SELECT h.id,h.name,h.architecture,h.status,c.resource,
+('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing
 FROM hosts h LEFT JOIN host_environment_configs c ON c.host_id=h.id WHERE h.id=$1 AND h.deleted_at IS NULL;
 
 -- name: SetHostSetup :exec
-INSERT INTO host_environment_configs(host_id,resource,user_max_environments) VALUES($1,$2,$3)
-ON CONFLICT(host_id) DO UPDATE SET resource=EXCLUDED.resource,user_max_environments=EXCLUDED.user_max_environments;
-
--- name: SetHostLimit :exec
-UPDATE hosts SET max_environments=$2 WHERE id=$1;
+INSERT INTO host_environment_configs(host_id) VALUES($1)
+ON CONFLICT(host_id) DO NOTHING;
 
 -- name: CloseHostBillingPeriods :exec
 UPDATE environment_billing_periods p SET closed_at=confirmed_until FROM environments e WHERE p.environment_id=e.id AND e.host_id=$1 AND p.closed_at IS NULL AND p.prepaid_until IS NULL;
 
--- name: UserHostUsage :one
-SELECT count(*)::bigint AS environments FROM environments WHERE user_id=$1 AND host_id=$2 AND NOT(desired='deleted' AND phase='deleted' AND observed_generation=generation);
-
 -- name: UserEnvironmentHosts :many
-SELECT DISTINCT c.host_id,COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1;
+SELECT DISTINCT c.host_id,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1;
 
 -- name: BilledUserEnvironments :many
 SELECT e.* FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.user_id=$1 AND e.desired='running'
- AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
+  AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0)
 ORDER BY e.id FOR UPDATE OF e;
 
 -- name: AccessibleHostCandidates :many
-SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.max_environments,h.last_seen_at,h.environment_synced_at,h.report,c.resource,c.user_max_environments,COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing
-FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id WHERE h.deleted_at IS NULL AND c.resource IS NOT NULL ORDER BY h.id;
+SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.last_seen_at,h.environment_synced_at,h.report,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing
+FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id WHERE h.deleted_at IS NULL ORDER BY h.id;
 
 -- name: PaidBillingHour :one
 SELECT * FROM environment_billing_periods
@@ -256,16 +269,14 @@ SELECT DISTINCT ON(p.environment_id) p.* FROM environment_billing_periods p
 JOIN environments e ON e.id=p.environment_id
 JOIN host_environment_configs c ON c.host_id=e.host_id
 WHERE p.user_id=$1 AND p.prepaid_until>$2 AND p.started_at<=$2 AND e.desired='running' AND e.phase<>'failed'
-AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean
-AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
+AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0)
 ORDER BY p.environment_id,p.prepaid_until DESC;
 
 -- name: NextBillingExpiry :one
 SELECT COALESCE(min(p.prepaid_until),sqlc.arg(at)::timestamptz+interval '1 minute')::timestamptz AS expires_at
 FROM environment_billing_periods p JOIN environments e ON e.id=p.environment_id
 JOIN host_environment_configs c ON c.host_id=e.host_id
-WHERE e.desired='running' AND p.prepaid_until>sqlc.arg(at)::timestamptz
-AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean;
+WHERE e.desired='running' AND p.prepaid_until>sqlc.arg(at)::timestamptz;
 
 -- name: SetBillingStopReason :exec
 UPDATE environments SET billing_stop_reason=$2 WHERE id=$1;

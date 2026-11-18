@@ -9,19 +9,13 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
 
-type EnvironmentLimit struct {
-	MaxEnvironments int32 `json:"max_environments"`
-}
-
 type HostOption struct {
-	ID           string           `json:"id"`
-	Name         string           `json:"name"`
-	Architecture string           `json:"architecture"`
-	Resource     Resources        `json:"resource"`
-	Quota        EnvironmentLimit `json:"quota"`
-	Billing      BillingConfig    `json:"billing"`
-	Available    bool             `json:"available"`
-	Reason       string           `json:"reason,omitempty"`
+	ID           string        `json:"id"`
+	Name         string        `json:"name"`
+	Architecture string        `json:"architecture"`
+	Billing      BillingConfig `json:"billing"`
+	Available    bool          `json:"available"`
+	Reason       string        `json:"reason,omitempty"`
 }
 
 func (s *Service) accessibleHosts(w http.ResponseWriter, r *http.Request) {
@@ -47,26 +41,17 @@ func (s *Service) accessibleHosts(w http.ResponseWriter, r *http.Request) {
 		if !allowed {
 			continue
 		}
-		var resources Resources
-		if json.Unmarshal(h.Resource, &resources) != nil || resources.Validate() != nil {
-			continue
-		}
-		limits, err := quota(r.Context(), q, *user, h.ID)
-		if err != nil {
-			fail(w, r, err)
-			return
-		}
 		pricing, err := decodeBilling(h.Billing)
 		if err != nil {
 			fail(w, r, err)
 			return
 		}
-		option := HostOption{ID: h.ID, Name: h.Name, Architecture: h.Architecture, Resource: resources, Billing: pricing, Quota: EnvironmentLimit{limits}}
+		option := HostOption{ID: h.ID, Name: h.Name, Architecture: h.Architecture, Billing: pricing}
 		var report struct {
 			Ready bool `json:"prerequisites_met"`
 		}
 		_ = json.Unmarshal(h.Report, &report)
-		option.Available = h.Status == "active" && h.Enabled && h.MaxEnvironments > 0 && limits > 0 && report.Ready && h.LastSeenAt != nil && h.EnvironmentSyncedAt != nil && time.Since(*h.LastSeenAt) <= 90*time.Second && time.Since(*h.EnvironmentSyncedAt) <= 90*time.Second
+		option.Available = h.Status == "active" && h.Enabled && report.Ready && h.LastSeenAt != nil && h.EnvironmentSyncedAt != nil && time.Since(*h.LastSeenAt) <= 90*time.Second && time.Since(*h.EnvironmentSyncedAt) <= 90*time.Second
 		if !option.Available {
 			option.Reason = "host_unavailable"
 		}

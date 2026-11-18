@@ -11,7 +11,7 @@ import (
 func TestAdminEnvironmentIdentities(t *testing.T) {
 	s, user, host := fixture(t)
 	ctx := t.Context()
-	created, err := s.Create(ctx, user, Creation{"展示验证", "identities"})
+	created, err := s.Create(ctx, user, Creation{testSpecification(), "展示验证", "identities"})
 	if err != nil {
 		t.Fatal(err)
 	}

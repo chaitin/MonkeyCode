@@ -42,7 +42,7 @@ export function EnvironmentUsage({
             usage?.memory_bytes === undefined
               ? undefined
               : `${(usage.memory_bytes / MiB).toFixed(1)} MiB`,
-          total: `${(memory / GiB).toFixed(1)} GiB`,
+          total: `${(memory / GiB).toFixed(1)} GB`,
         },
       ].map((item) => (
         <div

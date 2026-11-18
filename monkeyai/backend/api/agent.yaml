@@ -8,10 +8,27 @@ servers:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/environment-specifications:
+    get:
+      summary: 查询全局可选云电脑规格
+      description: 需要 environment:read。返回完整且有序的有效规格列表，不分页；Cache-Control 为 no-store。空列表表示管理员尚未配置或已清空规格，不能新建。创建时必须同时提交所选 id 与 version，revision 仅用于管理端整表更新。
+      responses:
+        '200':
+          description: 全局规格目录。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentSpecificationCatalog'
+        '401':
+          description: 登录凭据无效或过期。
+        '403':
+          description: 缺少 environment:read。
+        '500':
+          description: 内部存储错误。
   /api/v1/environment-hosts:
     get:
       summary: 查询本人可使用的宿主
-      description: 需要environment:read；按用户、分组及全员授权过滤后分页。仅返回已配置宿主的名称、架构、规格、本人配额及费率，不暴露宿主私有报告。available是当前在线／镜像状态，最终创建仍在事务内校验容量、额度和余额。
+      description: 需要environment:read；按用户、分组及全员授权过滤后分页。仅返回已配置宿主的名称、架构及全局费率，不再返回宿主 resource，不暴露宿主私有报告。available是当前在线／镜像状态，最终创建仍在事务内校验宿主就绪状态、授权和余额。
       parameters:
       - {name: page, in: query, schema: {type: integer, minimum: 1}}
       - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
@@ -65,7 +82,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -91,12 +108,14 @@ paths:
           minimum: 1
           maximum: 100
     post:
-      summary: 使用后台默认规格创建环境
+      summary: 使用所选全局规格创建环境
       description: >-
-        客户端只提交 name 和 request_key，镜像和资源使用后台配置的默认环境规格。
-        服务端按宿主配置的 CPU 调度容量进行平滑加权轮询，跳过离线、未通过预检、能力不匹配或剩余容量不足的宿主。
-        request_key 按用户幂等，同键不同参数返回 409，重试不重新调度。
-        未配置默认规格返回 409 configuration_unavailable，容量不足返回 409 capacity_unavailable。
+        客户端提交 name、request_key、specification_id、specification_version，可选 host_id；不得传任意资源或镜像。
+        服务端在事务内校验规格及版本，按所选 CPU 和内存校验计费，并在已授权、在线、镜像及 runtime 就绪的宿主中选择环境数量最少者。
+        不限制宿主及用户环境数量，允许 CPU／内存超卖；宿主旧资源预设不参与准入。
+        request_key 按用户幂等并绑定规格、版本及宿主选择；成功请求即使规格后来修改或删除仍返回原环境，不重新调度或扣款。
+        缺少规格返回 400 invalid_request，已删除返回 409 specification_unavailable，版本变化返回 409 specification_changed。
+        镜像／runtime 未就绪返回 409 configuration_unavailable，没有可用宿主返回 409 capacity_unavailable。
         所有响应使用 Cache-Control: no-store。需要 environment:manage，只访问当前用户环境；旧 token 不会自动获得该权限。
       responses:
         '202':
@@ -130,7 +149,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -183,7 +202,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -237,7 +256,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -335,7 +354,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -402,7 +421,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -463,7 +482,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -5522,15 +5541,32 @@ components:
           format: int64
           minimum: 1
           maximum: 100
+    EnvironmentSpecification:
+      type: object
+      additionalProperties: false
+      required: [id, version, cpu_millis, memory_bytes]
+      properties:
+        id: {type: string, format: uuid, description: 稳定规格 ID，删除后不可复用}
+        version: {type: integer, format: int64, minimum: 1, description: CPU 或内存变化时递增；仅重排不变}
+        cpu_millis: {type: integer, format: int64, minimum: 100, maximum: 256000, description: CPU 毫核，1000 表示 1 核}
+        memory_bytes: {type: integer, format: int64, minimum: 268435456, maximum: 1099511627776, description: 内存字节；管理端显示 GB，按 1024³ 换算}
+    EnvironmentSpecificationCatalog:
+      type: object
+      additionalProperties: false
+      required: [revision, items]
+      properties:
+        revision: {type: integer, format: int64, minimum: 0, description: 整表版本，每次管理端成功保存后递增}
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/EnvironmentSpecification'}
     EnvironmentHostOption:
       type: object
-      required: [id, name, architecture, resource, quota, billing, available]
+      required: [id, name, architecture, billing, available]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
         architecture: {type: string}
-        resource: {$ref: 'host.yaml#/components/schemas/EnvironmentResource'}
-        quota: {$ref: 'admin.yaml#/components/schemas/EnvironmentDefaultQuota'}
         billing: {$ref: 'admin.yaml#/components/schemas/EnvironmentBillingConfig'}
         available: {type: boolean}
         reason: {type: string}
@@ -5539,11 +5575,22 @@ components:
       required:
       - name
       - request_key
+      - specification_id
+      - specification_version
       properties:
+        specification_id:
+          type: string
+          format: uuid
+          description: 从 environment-specifications 获取的有效规格 ID。
+        specification_version:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 用户选择时对应的规格版本；变化后需刷新并重新选择。
         host_id:
           type: string
           format: uuid
-          description: 可选已授权宿主。省略时在有权限且配置／容量满足的宿主间调度；资源和单价取选中宿主，幂等键绑定宿主选择。
+          description: 可选已授权宿主。省略时在有权限且就绪的宿主间调度；资源来自所选全局规格，价格来自全局计费配置，幂等键绑定宿主选择。
         name:
           type: string
           minLength: 1

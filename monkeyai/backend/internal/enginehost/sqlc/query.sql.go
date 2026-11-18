@@ -189,7 +189,7 @@ func (q *Queries) InstallationHost(ctx context.Context, id string) (Installation
 }
 
 const listHosts = `-- name: ListHosts :many
-SELECT id,user_id,name,architecture,version,status,activated_at,last_seen_at,report,created_at,enabled,max_environments,
+SELECT id,user_id,name,architecture,version,status,activated_at,last_seen_at,report,created_at,enabled,
 (SELECT count(*) FROM environments e WHERE e.host_id=hosts.id
  AND NOT(e.desired='deleted' AND e.phase='deleted' AND e.observed_generation=e.generation)) AS environment_count
 FROM hosts WHERE deleted_at IS NULL AND status <> 'pending' ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2
@@ -212,7 +212,6 @@ type ListHostsRow struct {
 	Report           []byte
 	CreatedAt        time.Time
 	Enabled          bool
-	MaxEnvironments  int32
 	EnvironmentCount int64
 }
 
@@ -237,7 +236,6 @@ func (q *Queries) ListHosts(ctx context.Context, arg ListHostsParams) ([]ListHos
 			&i.Report,
 			&i.CreatedAt,
 			&i.Enabled,
-			&i.MaxEnvironments,
 			&i.EnvironmentCount,
 		); err != nil {
 			return nil, err

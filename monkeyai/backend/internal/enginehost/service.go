@@ -187,7 +187,12 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		items = append(items, map[string]any{"environment_count": row.EnvironmentCount, "enabled": row.Enabled, "max_environments": row.MaxEnvironments, "user_id": row.UserID, "upgrade": upgrade, "id": row.ID, "name": row.Name, "architecture": row.Architecture, "version": row.Version, "status": row.Status, "online": online, "activated_at": row.ActivatedAt, "last_seen_at": row.LastSeenAt, "report": json.RawMessage(row.Report), "created_at": row.CreatedAt})
+		grants, err := resource.Grants(r.Context(), s.pool, "host", row.ID)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		items = append(items, map[string]any{"grants": grants, "environment_count": row.EnvironmentCount, "enabled": row.Enabled, "user_id": row.UserID, "upgrade": upgrade, "id": row.ID, "name": row.Name, "architecture": row.Architecture, "version": row.Version, "status": row.Status, "online": online, "activated_at": row.ActivatedAt, "last_seen_at": row.LastSeenAt, "report": json.RawMessage(row.Report), "created_at": row.CreatedAt})
 	}
 	total, err := q.CountHosts(r.Context())
 	if err != nil {

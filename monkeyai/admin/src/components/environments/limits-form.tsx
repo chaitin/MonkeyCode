@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
-import { units, type Capacity, type Quota } from "@/lib/environments"
-import { NumberField, FormError } from "./common"
+import { type Capacity } from "@/lib/environments"
+import { FormError } from "./common"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -14,16 +14,14 @@ export function LimitsForm({
   onBusy,
   close,
 }: {
-  value: Capacity | Quota
+  value: Capacity
   path: string
   onSaved: () => void
   onBusy?: (busy: boolean) => void
   close?: () => void
 }) {
   const { t } = useTranslation()
-  const host = "enabled" in value
-  const [enabled, setEnabled] = useState(host && value.enabled)
-  const [count, setCount] = useState(String(value.max_environments))
+  const [enabled, setEnabled] = useState(value.enabled)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
@@ -32,15 +30,7 @@ export function LimitsForm({
     if (busy) return
     setError("")
     setSuccess(false)
-    let body
-    try {
-      const max_environments = units(count)
-      if (max_environments > 1000000) throw new Error()
-      body = { max_environments, ...(host ? { enabled } : {}) }
-    } catch {
-      setError(t("environmentAdmin.invalidLimits"))
-      return
-    }
+    const body = { enabled }
     setBusy(true)
     onBusy?.(true)
     try {
@@ -57,32 +47,16 @@ export function LimitsForm({
   return (
     <form onSubmit={submit} className="space-y-5">
       <fieldset disabled={busy} className="space-y-5">
-        {host && (
-          <Field orientation="horizontal">
-            <FieldLabel htmlFor="capacity-enabled">
-              {t("environmentAdmin.scheduling")}
-            </FieldLabel>
-            <Switch
-              id="capacity-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
-          </Field>
-        )}
-        <NumberField
-          name="environments"
-          label={t("environmentAdmin.fields.environments")}
-          value={count}
-          onChange={(next) => {
-            setCount(next)
-            setSuccess(false)
-          }}
-          max={1000000}
-          step={1}
-        />
-        <p className="text-xs text-muted-foreground">
-          {t("environmentAdmin.countLimitsHint")}
-        </p>
+        <Field orientation="horizontal">
+          <FieldLabel htmlFor="capacity-enabled">
+            {t("environmentAdmin.scheduling")}
+          </FieldLabel>
+          <Switch
+            id="capacity-enabled"
+            checked={enabled}
+            onCheckedChange={setEnabled}
+          />
+        </Field>
       </fieldset>
       <FormError error={error} />
       {success && (

@@ -67,7 +67,7 @@ func settle(t *testing.T, s *Service, closedOnly bool) {
 
 func TestComputeMeterLifecycleAndIdempotency(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"计费环境", "create-meter"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "计费环境", "create-meter"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestComputeMeterLifecycleAndIdempotency(t *testing.T) {
 
 func TestComputeBalanceExhaustionStopsAndChargesTail(t *testing.T) {
 	s, user, host, at := meterFixture(t, "5")
-	e, err := s.Create(t.Context(), user, Creation{"余额环境", "create-debt"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "余额环境", "create-debt"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestComputeBalanceExhaustionStopsAndChargesTail(t *testing.T) {
 	if got := balance(t, s, user); got != "-5" {
 		t.Fatalf("尾费应实收，余额=%s", got)
 	}
-	_, err = s.Create(t.Context(), user, Creation{"不应创建", "create-denied"})
+	_, err = s.Create(t.Context(), user, Creation{testSpecification(), "不应创建", "create-denied"})
 	var denied *failure
 	if !errors.As(err, &denied) || denied.code != "insufficient_credits" {
 		t.Fatalf("负余额准入=%v", err)
@@ -134,7 +134,7 @@ func TestComputeBalanceExhaustionStopsAndChargesTail(t *testing.T) {
 
 func TestComputeUnknownIntervalIsNeverBackfilled(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"断线环境", "create-gap"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "断线环境", "create-gap"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestComputeUnknownIntervalIsNeverBackfilled(t *testing.T) {
 
 func TestComputeConcurrentSettlementAndRollback(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"并发环境", "create-concurrent"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "并发环境", "create-concurrent"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestComputeSplitsAccountCycle(t *testing.T) {
 		monday = monday.AddDate(0, 0, 7)
 	}
 	*at = monday.Add(-30 * time.Second).UTC()
-	e, err := s.Create(t.Context(), user, Creation{"跨期环境", "create-cycle"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "跨期环境", "create-cycle"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,23 +220,22 @@ func TestComputeSplitsAccountCycle(t *testing.T) {
 
 func TestComputeConfigChangeAndDisable(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"调价环境", "create-price"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "调价环境", "create-price"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	syncState(t, s, host, observe(e.Environment, "running"))
 	*at = at.Add(30 * time.Second)
 	syncState(t, s, host, observe(e.Environment, "running"))
-	var setup SetupView
 	if err = s.transaction(t.Context(), func(q *sqlc.Queries) error {
 		var err error
-		setup, err = s.setupView(t.Context(), q, host, s.pool)
+		_, err = s.setupView(t.Context(), q, host, s.pool)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
 	pricing := BillingConfig{Enabled: true, CPU: 7200_000000}
-	saved, err := s.saveSetup(t.Context(), host, Setup{Resource: *setup.Resource, MaxEnvironments: setup.MaxEnvironments, UserMaxEnvironments: setup.UserMaxEnvironments, Billing: &pricing})
+	saved, err := s.saveSetup(t.Context(), host, Setup{Billing: &pricing})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +250,7 @@ func TestComputeConfigChangeAndDisable(t *testing.T) {
 	settle(t, s, false)
 	cost(t, s, user, "50", 2)
 	pricing.Enabled = false
-	if _, err = s.saveSetup(t.Context(), host, Setup{Resource: *saved.Resource, MaxEnvironments: saved.MaxEnvironments, UserMaxEnvironments: saved.UserMaxEnvironments, Billing: &pricing}); err != nil {
+	if _, err = s.saveSetup(t.Context(), host, Setup{Billing: &pricing}); err != nil {
 		t.Fatal(err)
 	}
 	*at = at.Add(60 * time.Second)
@@ -266,11 +265,11 @@ func TestComputeConfigChangeAndDisable(t *testing.T) {
 
 func TestComputeBudgetIncludesAllRunningEnvironments(t *testing.T) {
 	s, user, host, at := meterFixture(t, "600")
-	a, err := s.Create(t.Context(), user, Creation{"环境一", "budget-a"})
+	a, err := s.Create(t.Context(), user, Creation{testSpecification(), "环境一", "budget-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := s.Create(t.Context(), user, Creation{"环境二", "budget-b"})
+	b, err := s.Create(t.Context(), user, Creation{testSpecification(), "环境二", "budget-b"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +299,7 @@ func TestComputeMinuteRoundingAccumulatesExactly(t *testing.T) {
 	if _, err := s.pool.Exec(t.Context(), `UPDATE host_environment_configs SET billing=$1`, pricing); err != nil {
 		t.Fatal(err)
 	}
-	e, err := s.Create(t.Context(), user, Creation{"小额计费", "create-small"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "小额计费", "create-small"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,16 +314,15 @@ func TestComputeMinuteRoundingAccumulatesExactly(t *testing.T) {
 
 func TestComputeRejectsInvalidPricingAndRemoteMode(t *testing.T) {
 	s, _, host, _ := meterFixture(t, "10000")
-	var setup SetupView
 	if err := s.transaction(t.Context(), func(q *sqlc.Queries) error {
 		var err error
-		setup, err = s.setupView(t.Context(), q, host, s.pool)
+		_, err = s.setupView(t.Context(), q, host, s.pool)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, pricing := range []BillingConfig{{Enabled: true, CPU: -1}, {Enabled: true, CPU: 1000000000000_000000}} {
-		if _, err := s.saveSetup(t.Context(), host, Setup{Resource: *setup.Resource, MaxEnvironments: setup.MaxEnvironments, UserMaxEnvironments: setup.UserMaxEnvironments, Billing: &pricing}); err == nil {
+		if _, err := s.saveSetup(t.Context(), host, Setup{Billing: &pricing}); err == nil {
 			t.Fatal("接受非法环境价格")
 		}
 	}
@@ -332,14 +330,14 @@ func TestComputeRejectsInvalidPricingAndRemoteMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	pricing := BillingConfig{Enabled: true, CPU: 1_000000}
-	if _, err := s.saveSetup(t.Context(), host, Setup{Resource: *setup.Resource, MaxEnvironments: setup.MaxEnvironments, UserMaxEnvironments: setup.UserMaxEnvironments, Billing: &pricing}); err == nil {
+	if _, err := s.saveSetup(t.Context(), host, Setup{Billing: &pricing}); err == nil {
 		t.Fatal("远程模式静默开启了本地环境收费")
 	}
 }
 
 func TestComputeDeletedUserStillSettlesHistoricalUsage(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"历史结算", "create-deleted-owner"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "历史结算", "create-deleted-owner"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +352,7 @@ func TestComputeDeletedUserStillSettlesHistoricalUsage(t *testing.T) {
 	if got := balance(t, s, user); got != "9970" {
 		t.Fatalf("删除用户导致历史费用丢失：%s", got)
 	}
-	if _, err = s.Create(t.Context(), user, Creation{"不应创建", "deleted-admission"}); err == nil {
+	if _, err = s.Create(t.Context(), user, Creation{testSpecification(), "不应创建", "deleted-admission"}); err == nil {
 		t.Fatal("已删除用户仍能新建环境")
 	}
 	syncState(t, s, host)
@@ -375,7 +373,7 @@ func TestComputeDeletedUserStillSettlesHistoricalUsage(t *testing.T) {
 
 func TestComputeInspectionFailureDoesNotExtendBilling(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"巡检失败", "create-inspection-failure"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "巡检失败", "create-inspection-failure"})
 	if err != nil {
 		t.Fatal(err)
 	}

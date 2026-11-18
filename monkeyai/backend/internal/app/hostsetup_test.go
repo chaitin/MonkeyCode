@@ -60,13 +60,13 @@ func TestHostSetupAdminAuthorizationAndIsolation(t *testing.T) {
 	}
 	call("GET", first, nil, "", 401)
 	call("GET", first, memberCookie, "", 403)
-	input := environment.Setup{Resource: environment.Resources{CPUMillis: 1000, MemoryBytes: 1 << 30, HostTasks: 512, TemporaryBytes: 64 << 20}, MaxEnvironments: 100, UserMaxEnvironments: 4}
+	input := environment.Setup{}
 	grants := []resource.Object{{"user_id": member}}
 	input.Grants = &grants
 	raw, _ := json.Marshal(input)
 	out := call("PUT", first, adminCookie, string(raw), 200)
 	var saved environment.SetupView
-	if err := json.Unmarshal(out.Body.Bytes(), &saved); err != nil || saved.HostID != first || saved.MaxEnvironments != 100 || len(saved.Grants) != 1 {
+	if err := json.Unmarshal(out.Body.Bytes(), &saved); err != nil || saved.HostID != first || len(saved.Grants) != 1 {
 		t.Fatalf("宿主授权配置未保存：%v %+v", err, saved)
 	}
 	allowed, err := resource.Allowed(ctx, db, "host", first, member)
@@ -78,11 +78,10 @@ func TestHostSetupAdminAuthorizationAndIsolation(t *testing.T) {
 		t.Fatal("管理角色绕过了宿主使用范围", err)
 	}
 	var other environment.SetupView
-	if err := json.Unmarshal(call("GET", second, adminCookie, "", 200).Body.Bytes(), &other); err != nil || other.Resource != nil || other.MaxEnvironments != 0 || len(other.Grants) != 0 {
+	if err := json.Unmarshal(call("GET", second, adminCookie, "", 200).Body.Bytes(), &other); err != nil || len(other.Grants) != 0 {
 		t.Fatal("宿主配置污染另一台宿主", err)
 	}
 	stale := input
-	stale.UserMaxEnvironments = 5
 	staleRaw, _ := json.Marshal(stale)
 	call("PUT", first, adminCookie, string(staleRaw), 200)
 	invalid := []resource.Object{{"user_id": "invalid"}}

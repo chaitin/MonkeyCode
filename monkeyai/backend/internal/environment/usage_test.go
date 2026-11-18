@@ -41,7 +41,7 @@ func TestUsageViewFreshness(t *testing.T) {
 func TestUsageLifecycle(t *testing.T) {
 	s, user, host := fixture(t)
 	ctx := t.Context()
-	created, err := s.Create(ctx, user, Creation{"占用采集", "usage"})
+	created, err := s.Create(ctx, user, Creation{testSpecification(), "占用采集", "usage"})
 	if err != nil {
 		t.Fatal(err)
 	}

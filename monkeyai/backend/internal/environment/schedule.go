@@ -14,8 +14,8 @@ type placement struct {
 	Resource                                 Resources
 }
 
-// 数量检查及创建受同一事务锁保护，硬件资源总量不参与准入。
-func (s *Service) schedule(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user, requested string) (placement, error) {
+// 宿主选择及创建受同一事务锁保护，环境数量仅用于负载均衡。
+func (s *Service) schedule(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user, requested string, r Resources) (placement, error) {
 	var selected placement
 	if requested != "" {
 		if err := hostAllowed(ctx, tx, requested, user); err != nil {
@@ -42,17 +42,6 @@ func (s *Service) schedule(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user
 			continue
 		}
 		authorized = true
-		if h.EnvironmentCount >= int64(h.MaxEnvironments) {
-			continue
-		}
-		var r Resources
-		if json.Unmarshal(h.Resource, &r) != nil || r.Validate() != nil {
-			continue
-		}
-		if err = reserveUser(ctx, q, user, h.HostID); err != nil {
-			lastErr = err
-			continue
-		}
 		if err = s.billingAdmission(ctx, q, tx, user, h.HostID, r.CPUMillis, r.MemoryBytes); err != nil {
 			lastErr = err
 			continue
@@ -79,7 +68,7 @@ func (s *Service) schedule(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user
 				continue
 			}
 		}
-		if chosen == nil || h.EnvironmentCount*int64(chosen.MaxEnvironments) < chosen.EnvironmentCount*int64(h.MaxEnvironments) {
+		if chosen == nil || h.EnvironmentCount < chosen.EnvironmentCount {
 			chosen = h
 			selected = placement{HostID: h.HostID, Architecture: h.Architecture, Image: reference, ImageDigest: digest, Resource: r}
 		}
@@ -93,5 +82,5 @@ func (s *Service) schedule(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user
 	if !authorized && len(candidates) > 0 {
 		return selected, &failure{403, "host_access_denied", "没有可用宿主的新建权限"}
 	}
-	return selected, conflict("capacity_unavailable", "没有已授权且配置、环境数量满足要求的在线宿主")
+	return selected, conflict("capacity_unavailable", "没有已授权且配置满足要求的在线宿主")
 }

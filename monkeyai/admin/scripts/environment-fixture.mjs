@@ -29,7 +29,6 @@ const profile = {
 let nextHostId=2000
 const nextHost=()=>uuid(nextHostId++)
 const setups = new Map()
-const quotaOverrides = new Map()
 let mode = "",
   requests = [],
   operations = new Map(),
@@ -39,7 +38,6 @@ const capacity = {
   enabled: false,
   cpu_millis: 16000,
   memory_bytes: 32 * GiB,
-  max_environments: 20,
   protocol: 1,
   architecture: "amd64",
   status: "active",
@@ -53,7 +51,6 @@ const hosts = [
     status: "active",
     online: true,
     enabled: true,
-    max_environments: 100,
     user_id: userID,
     activated_at: new Date().toISOString(),
     last_seen_at: new Date().toISOString(),
@@ -122,9 +119,8 @@ for (const host of hosts) {
     supported: host.name !== "旧版宿主机", can_upgrade: host.online && host.name !== "旧版宿主机", task: null,
   }
 }
-const quota = {user_id:userID,max_environments:3}
 const setupFor = (id) => {
-  if (!setups.has(id)) setups.set(id, {resource:null,max_environments:100,user_max_environments:3,billing:{enabled:false,cpu_credits_per_core_hour:"0.1",memory_credits_per_gib_hour:"0.025"},grants:[{group_id:uuid(0)}]})
+  if (!setups.has(id)) setups.set(id, {resource:null,billing:{enabled:false,cpu_credits_per_core_hour:"0.1",memory_credits_per_gib_hour:"0.025"},grants:[{group_id:uuid(0)}]})
   return setups.get(id)
 }
 const environments = Array.from({ length: 21 }, (_, i) => ({
@@ -208,11 +204,10 @@ if (process.env.FIXTURE_STATE) {
   requests = saved.requests ?? []
   mode = saved.mode ?? ""
   if (saved.capacity) Object.assign(capacity,saved.capacity)
-  if (saved.quota) Object.assign(quota,saved.quota)
   if (saved.environments) environments.splice(0,environments.length,...saved.environments)
   if (saved.setups) {
     for (const [id,setup] of Object.entries(saved.setups)) {
-      const normalized={...setupFor(id),...setup,max_environments:setup.max_environments ?? saved.capacity?.max_environments ?? 100,user_max_environments:setup.user_max_environments ?? setup.quota?.max_environments ?? 3}
+      const normalized={...setupFor(id),...setup}
       delete normalized.revision;delete normalized.billing_revision;delete normalized.quota
       setups.set(id,normalized)
     }
@@ -221,16 +216,14 @@ if (process.env.FIXTURE_STATE) {
     for (const host of hosts) {
       const setup=setupFor(host.id)
       if(last?.resource) setup.resource=last.resource
-      if(last?.quota) setup.user_max_environments=last.quota.max_environments
       if(last?.billing || saved.billing) setup.billing=last?.billing ?? saved.billing
     }
   }
-  if(saved.hosts) hosts.splice(0,hosts.length,...saved.hosts.map(h=>({...h,enabled:h.enabled ?? h.scheduling_enabled ?? false,max_environments:h.max_environments ?? 100,user_id:h.user_id ?? userID,activated_at:h.activated_at ?? null})))
-  if(saved.quota_overrides)for(const [key,value]of Object.entries(saved.quota_overrides))quotaOverrides.set(key,value)
+  if(saved.hosts) hosts.splice(0,hosts.length,...saved.hosts.map(h=>({...h,enabled:h.enabled ?? h.scheduling_enabled ?? false,user_id:h.user_id ?? userID,activated_at:h.activated_at ?? null})))
   if(saved.operations)operations=new Map(Object.entries(saved.operations))
   if(saved.idempotency)idempotency=new Map(Object.entries(saved.idempotency))
   nextHostId=saved.next_host_id ?? Math.max(2000,...hosts.map(h=>Number(h.id.slice(-12))+1))
-  for(const h of hosts){h.max_environments=setupFor(h.id).max_environments;delete h.scheduling_enabled;delete h.enrollment_expires_at}
+  for(const h of hosts){delete h.scheduling_enabled;delete h.enrollment_expires_at}
   for(const env of environments)delete env.compute_reserved
 }
 const server = createServer(async (req, res) => {
@@ -270,7 +263,7 @@ const server = createServer(async (req, res) => {
           }
         }
       }
-      return send({ mode, requests, environments: environments.map(withBilling), capacity, quota, hosts, next_host_id:nextHostId, quota_overrides:Object.fromEntries(quotaOverrides), operations:Object.fromEntries(operations), idempotency:Object.fromEntries(idempotency), billing: setupFor(hostID).billing, setups: Object.fromEntries(setups) })
+      return send({ mode, requests, environments: environments.map(withBilling), capacity, hosts, next_host_id:nextHostId, operations:Object.fromEntries(operations), idempotency:Object.fromEntries(idempotency), billing: setupFor(hostID).billing, setups: Object.fromEntries(setups) })
     }
     if (url.pathname.startsWith("/api/")) {
       const route = url.pathname.replace("/api/admin/v1/", "")
@@ -341,7 +334,6 @@ const server = createServer(async (req, res) => {
           status: "pending",
           online: false,
           enabled:false,
-          max_environments:0,
           user_id:userID,
           activated_at:null,
           last_seen_at: null,
@@ -406,9 +398,6 @@ const server = createServer(async (req, res) => {
         if (req.method === "PUT") {
           if (mode === "setup-save-error") return fail(503, "配置暂时无法保存")
           setup.resource = body.resource
-          setup.max_environments=body.max_environments
-          setup.user_max_environments=body.user_max_environments
-          const host=hosts.find(h=>h.id===id);if(host)host.max_environments=body.max_environments
           if (body.billing) setup.billing = body.billing
           if (body.grants) setup.grants = body.grants
         }
@@ -435,17 +424,9 @@ const server = createServer(async (req, res) => {
       if (route.startsWith("environment-hosts/") && req.method === "PUT") {
         const host=hosts.find(h=>h.id===route.split("/")[1])
         if(!host)return fail(404,"宿主不存在")
-        host.enabled=body.enabled;host.max_environments=body.max_environments
-        setupFor(host.id).max_environments=body.max_environments
+        host.enabled=body.enabled
         Object.assign(capacity,body)
         return send({...capacity,host_id:host.id})
-      }
-      if (route.startsWith("environment-quotas/")) {
-        const host = url.searchParams.get("host_id")
-        if (!host) return fail(400,"请指定宿主")
-        const user = route.split("/")[1], key = `${host}:${user}`
-        if (req.method === "PUT") quotaOverrides.set(key,{...body,host_id:host,user_id:user})
-        return send(quotaOverrides.get(key) ?? {max_environments:setupFor(host).user_max_environments,host_id:host,user_id:user})
       }
       if (route === "environments") {
         if (mode === "list-error") return fail(503, "环境列表暂不可用")

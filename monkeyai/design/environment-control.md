@@ -1,96 +1,76 @@
 # 环境控制链路
 
-本轮实现后台 → monkeyai-engine → containerd/gVisor 的目标同步与执行。客户端通过 API 使用后台默认规格创建环境，客户端页面由客户端工程实现，本仓仅交付接口；standalone 接入见 [运行时编排](../engine/RUNTIME.md)。`running` 表示容器进程运行，不能据此展示“可连接”。网络支持无外网的 `isolated` 和显式配置的 `public-only`；公网调度要求宿主报告网络能力，详见 [网络说明](../engine/NETWORK.md)。不支持容器内 Docker／Compose。
+本轮实现后台 → monkeyai-engine → containerd/gVisor 的目标同步与执行。客户端通过 API 选择全局规格创建环境，客户端页面由客户端工程实现，本仓仅交付接口；standalone 接入见 [运行时编排](../engine/RUNTIME.md)。`running` 表示容器进程运行，不能据此展示“可连接”。网络支持无外网的 `isolated` 和显式配置的 `public-only`；公网调度要求宿主报告网络能力，详见 [网络说明](../engine/NETWORK.md)。不支持容器内 Docker／Compose。
 
 ## 管理页面
 
-后台“云环境”导航包含：
+- 云电脑管理：分页列表、详情与操作记录、停止和删除；删除失败支持重试。
+- 宿主管理：生成安装命令、查看预检、配置授权范围、设置新建调度开关与撤销身份。
+- 全局「管理规格」：编辑所有宿主通用的 CPU／内存可选列表，支持新增、修改、删除与整表版本冲突保护。
+- 费用设置：统一配置 CPU／内存小时单价；宿主不再分别保存资源规格或价格。
 
-- 环境管理：分页列表、详情与操作记录、停止和删除；删除失败支持重试，停止和删除先确认后提交。
-- 环境预设：创建固定镜像和资源配置、启用和停用。规格保存后不可变，不提供修改已有预设的入口。
-- 宿主管理：生成安装命令、查看预检及撤销身份；页面显示宿主 UUID，与容量配置对应。
-- 宿主容量：配置可调度容量和开关，单独展示通信状态；通信正常不表示预检或最终隔离验收通过。
-- 环境额度：通过用户搜索选择账户，读取系统默认值或用户覆盖值并保存。
-
-客户端通过自己的授权发起创建；后台仅提供全局观察与停止／删除管理。页面不把容器 running 状态展示为可连接。
+客户端以自己的授权发起创建；后台仅提供全局观察与停止／删除管理。页面不把容器 running 状态等同于可连接。
 
 ## 接入顺序
 
-1. 部署合并迁移 000040_cloud_environments 和后端；安装器发行包必须包含本轮支持 exchange 的 engine。安装步骤见 [INSTALL.md](../engine/INSTALL.md)。
-2. 管理员生成安装命令，在 Linux 宿主安装并启动服务。engine 每约 15 秒上报预检，每约 3 秒同步目标；宿主无需开放入站控制端口。
-3. 使用管理员接口 `PUT /api/admin/v1/environment-hosts/{host_id}` 设置可调度容量，并显式启用。宿主默认关闭；容量不自动取整机总量，管理员需留出系统、缓存和其他开销。
-4. 管理员创建镜像与资源预设。镜像固定 SHA-256、匹配原生架构，并提供适合 UID/GID 1000 的长驻 Entrypoint/Cmd。
-5. 客户端 OAuth 授权显式申请 `environment:read environment:manage`，分别用于读取与修改。现有 token 不自动获得权限，runtime 的固定 scope 集合不接受这两个 scope。
-6. 调用创建 API，保存 environment.id 和 operation.id。轮询详情时同时检查 `generation`、`observed_generation`、`desired` 和 `phase`；状态达到目标且观察代次一致才算收敛。
+1. 备份数据库并停止旧后端，应用至迁移 `000050_remove_environment_host_limit`，再部署配套后端和管理端。迁移新增全局规格表并删除旧个人配额及宿主数量上限结构，不重写已有环境。
+2. 准备服务端镜像与 runtime，在 Linux 宿主安装并启动 engine。宿主无需开放入站控制端口，具体步骤见 [INSTALL.md](../engine/INSTALL.md)。
+3. 在宿主配置保存授权范围，启用新建调度。CPU／内存容量来自硬件报告，仅供展示，不用于禁止超卖。
+4. 在全局「管理规格」保存允许用户创建的 CPU／内存组合。初始提供 1 核 2 GB 规格，历史宿主资源不自动发布；没有规格时不能新建。
+5. 客户端 OAuth 授权申请 `environment:read environment:manage`，读取目录、让用户选规格后提交创建。原 token 不自动获得这些权限，runtime 的固定 scope 集合不接受它们。
+6. 保存 environment.id 与 operation.id，轮询时检查 generation、observed_generation、desired 和 phase。只有目标代次与观察代次一致才算收敛，可连接性另查 connectable。
 
-以下 JSON 为接口请求体示例，不包含真实镜像摘要或凭据。
+## 管理接口
 
-宿主容量设置：
-
-```json
-{
-  "enabled": true,
-  "cpu_millis": 16000,
-  "memory_bytes": 34359738368,
-  "storage_bytes": 536870912000,
-  "max_environments": 20
-}
-```
-
-`POST /api/admin/v1/environment-presets`：
+宿主调度 `PUT /api/admin/v1/environment-hosts/{host_id}`：
 
 ```json
-{
-  "name": "开发环境 2C4G",
-  "configuration": {
-    "architecture": "amd64",
-    "image": "registry.example.com/monkeyai/dev@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "network_policy": "isolated",
-    "resource": {
-      "cpu_millis": 2000,
-      "memory_bytes": 4294967296,
-      "host_tasks": 1024,
-      "temporary_bytes": 536870912
-    },
-    "storage": {
-      "workspace_bytes": 21474836480,
-      "home_bytes": 10737418240,
-      "runtime_bytes": 2147483648,
-      "inodes": 100000
-    }
-  }
-}
+{"enabled":true}
 ```
 
-预设配置不可修改，只能启停。规格改变时创建新预设，已创建环境继续使用原快照。`host_tasks` 只限制宿主进程／线程，不等同于沙箱内进程硬上限。
-
-`POST /api/v1/environments`：
+宿主设置 `PUT /api/admin/v1/environment-hosts/{host_id}/setup`：
 
 ```json
-{"name":"项目 A","request_key":"create-project-a-1"}
+{"grants":[]}
 ```
 
-返回 HTTP 202 和 `{environment, operation}`。客户端不能传镜像、任意资源、宿主路径或命令。创建幂等键在用户范围内唯一；相同键和参数重试返回同一环境与操作，不同参数返回 `idempotency_conflict`。
+grants 为空表示不允许任何用户新建或再次启动；省略则保留原范围。不设置宿主或用户环境数量上限，已有环境不受影响。
 
-`POST /api/v1/environments/{id}/stop`、`POST /api/v1/environments/{id}/start` 和 `DELETE /api/v1/environments/{id}` 都要求 JSON 请求体：
+全局规格使用 `GET/PUT /api/admin/v1/environment-specifications`。GET 返回 `{revision,items}`，PUT 提交读取时的 revision 和完整 items。新增项传新 UUID、version=0、cpu_millis 和 memory_bytes；已有项携带原 ID 与当前 version。删除通过省略该项完成，删除后的 ID 不可复用。最多 100 项，不允许重复资源组合。空数组关闭新建，null 或缺失列表无效。
+
+整表 revision 防止管理员相互覆盖；CPU／内存修改推进条目 version，重排不改变条目版本。更新目录和新建环境使用同一事务锁，避免新建读到部分修改。修改和删除均不重写旧实例快照。完整参数和错误见 [客户端接口](environment-client-api.md)。
+
+## 创建与生命周期
+
+客户端先调用 `GET /api/v1/environment-specifications`，再调用 `POST /api/v1/environments`。以下 ID 仅为示例，必须替换为目录中实际返回的 ID：
+
+```json
+{"name":"项目 A","specification_id":"11111111-1111-4111-8111-111111111111","specification_version":1,"request_key":"create-project-a-1"}
+```
+
+可选 host_id 固定已授权宿主。客户端不能传任意资源、镜像、宿主路径或命令。缺少规格返回400，删除／不存在返回 specification_unavailable，版本变化返回 specification_changed。客户端需刷新目录并让用户重新选择，不静默切换规格。
+
+返回 HTTP 202 和 `{environment,operation}`。幂等键按用户唯一，绑定名称、所选规格及其版本和宿主选择；相同键与原参数重试返回同一结果，即使规格后来改变或删除。不同参数返回 idempotency_conflict，不重复调度或扣款。
+
+启停与删除仍使用当前 generation 和 request_key：
 
 ```json
 {"generation":1,"request_key":"stop-project-a-1"}
 ```
 
-generation 是当前读取到的目标代次。成功修改后代次加一；同一请求丢失响应时沿用原幂等键重试，不要为网络重试生成新键。新的主动操作使用新键与最新代次。停止、删除可替代未完成目标，旧操作记为 superseded。失败不自动重做；先用新代次停止或删除，确认清理后再启动。删除失败可继续提交新一代删除，但不能复活已进入删除流程的环境。
+网络重试保持原键、原代次和原参数；新的主动操作使用新键与最新代次。停止、删除可以替代未完成目标。删除失败可继续发起新代次删除，但不能复活已进入删除流程的环境。
 
-环境详情的 phase 是最近观察结果，修改 desired 不会伪造观察结果。例如 desired=stopped、phase=running、observed_generation<generation 表示正在等待停止。操作成功只记录该次完成事件；容器之后退出，环境可变为 failed，历史成功操作仍保留。
+## 调度、快照与计费
 
-## 调度与额度
+调度筛选已授权、启用新建、在线且预检、协议、网络、默认镜像／runtime 满足要求的宿主；优先选择现有环境数最少者。心跳与同步须在 90 秒内。不限制宿主或用户环境数量，不以物理 CPU／内存余量准入，允许资源超卖。宿主旧 resource 不再参与候选筛选。
 
-创建使用宿主管理中配置的默认环境规格，客户端无需 preset_id。宿主按已配置 CPU 调度容量平滑加权轮询，跳过不可用或容量不足的宿主；轮询状态与创建同事务提交，幂等重试不重新调度。客户端预设与额度查询接口已移除，管理接口继续保留。最新调用约定见 [客户端接口](environment-client-api.md)。
+个人配额管理接口及宿主数量上限已移除。环境数量仅用于监控与自动调度负载均衡；已有实例再次启动仍检查授权、宿主状态和余额。
 
-后台先核对用户额度，再选同架构、已启用、预检通过、protocol=1 且心跳和同步均在 90 秒内的宿主。候选按 ID 顺序选择第一个容量满足者，首期不做复杂负载均衡。预留、目标修改和报告在单个全局事务锁下串行处理，适合第一期规模；扩展前需按用户和宿主拆锁并压测。
+环境保存所选 CPU／内存及隐藏执行限制的快照。host_tasks=1024，temporary_bytes 为 min(512 MiB, 内存一半向下按4096字节对齐)。镜像固定摘要并按架构选择。重启从实例快照恢复，不查询全局规格，删除或修改规格不会改变已有环境的资源及计费资源。
 
-用户默认额度为 3 个未删除环境、2 个计算预留、8 CPU、16 GiB 内存和 100 GiB 持久存储。管理员可用 `GET/PUT /api/admin/v1/environment-quotas/{user_id}` 覆盖。用户及宿主额度不能设为低于已预留用量。停止、失败、删除中的计算资源在确认回收前持续占用预留；只有收到当前实例和代次的 stopped/deleted 才释放。项目、用户与 runtime 三卷在停止、删除后继续占用存储预留，尚无 purge／配额释放接口。
+收费使用全局单价和实例实际资源，启动前预扣一小时，到期续扣；余额不足停止，数据保留。提前停止不退款，已付费小时内重启不重复收费。调价仅影响下一次购买小时，规格目录编辑不影响旧实例资源。
 
-环境绑定初次分配的宿主，重启复用三卷并生成新实例 ID。原宿主失联时不重新调度，以免创建空目录或出现双实例。停用宿主调度只禁止新建和重新启动，已有实例继续运行。用户停用后，下一次宿主同步生成停止目标；未来接入 runtime 后还需联动撤销设备访问。
+实例绑定原宿主，不自动迁移。持久容器重启复用原 instance_id 与三卷；原宿主不可用时不能通过新建空目录替代。停用新建调度仅阻止新建，不停止已有实例；撤回宿主授权会阻止再次启动，但不打断既有运行。
 
 ## 同步与恢复
 
@@ -105,12 +85,12 @@ engine 停止或失去认证后不再执行新命令，已有容器不会因此�
 ## 当前边界及验收
 
 - 宿主执行支持 gVisor，Firecracker 留在执行驱动边界；Kubernetes 后续作为后台供应实现接入。
-- 已有宿主安装管理、预设、容量、额度和环境管理页面。后台不代替用户创建或启动环境，用户创建仍由客户端 API 发起。
+- 已有宿主安装管理、全局规格、授权和环境管理页面。后台不代替用户创建或启动环境，用户创建仍由客户端 API 发起。
 - 已接入 public-only、standalone 自动授权与运行启动，以及中转可连接状态；客户端页面不属于本仓范围。原 runtime 工程保持不修改。
 - `workload_verified=false` 是尚未完成真机验收的标记。安装心跳 `workload_enabled=false` 也不能代替管理员调度开关。
 - 沙箱内固定任务上限和镜像缓存 GC 已有源码；数据 purge／备份恢复和失联隔离仍需后续完成。
 - 已有自动测试覆盖事务容量、权限、幂等、防重放、过期报告、取消和恢复；真实 Linux 宿主、XFS、gVisor 与客户端流程按 [实施记录](cloud-environment-implementation.md) 后续统一人工验收。
 
-发布顺序为数据库 → 后端 → engine → 新客户端。回滚前停止并确认所有实例；迁移 000040_cloud_environments 的 down 会删除控制记录但不会清理宿主容器或持久卷，不能用数据库回滚代替工作负载回收。首期协议只接受版本 1，不声称支持跨版本滚动兼容。
+全局规格发布顺序为数据库迁移50 → 后端与管理端 → 客户端接口适配；本变更不修改客户端应用代码。规格迁移 down 会删除目录，回滚前先停新版服务并备份，不能把全局规格自动转换回宿主预设。迁移40的 down 会删除控制记录但不会清理宿主容器或持久卷，不能用数据库回滚代替工作负载回收。
 
-客户端完整接入流程与本人额度查询见 [客户端接口](environment-client-api.md)。迁移 000040_cloud_environments 允许环境权限写入授权族约束，必须先于客户端申请新权限部署。
+客户端完整接入流程、规格选择与错误恢复见 [客户端接口](environment-client-api.md)。迁移 000040_cloud_environments 允许环境权限写入授权族约束，必须先于客户端申请新权限部署。

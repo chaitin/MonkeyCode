@@ -24,7 +24,7 @@ func cloudMigration(t *testing.T, s *Service, direction string) error {
 
 func TestCloudMigrationRejectsActiveEnvironmentRemoval(t *testing.T) {
 	s, user, host, _ := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"迁移保护", "create-migration"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "迁移保护", "create-migration"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestCloudMigrationRoundtripPreservesBusinessData(t *testing.T) {
 
 func TestComputeMigrationRejectsFinancialHistoryRemoval(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"账务保护", "create-financial"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "账务保护", "create-financial"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestComputeMigrationRejectsFinancialHistoryRemoval(t *testing.T) {
 
 func TestComputeContinuesAfterLedgerAndActivityCutover(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"分区切换", "create-cutover"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "分区切换", "create-cutover"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestComputeContinuesAfterLedgerAndActivityCutover(t *testing.T) {
 
 func TestComputeWaitsForUsableRuntime(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	e, err := s.Create(t.Context(), user, Creation{"等待可用", "create-ready"})
+	e, err := s.Create(t.Context(), user, Creation{testSpecification(), "等待可用", "create-ready"})
 	if err != nil {
 		t.Fatal(err)
 	}

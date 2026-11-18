@@ -7,13 +7,14 @@ import {
 } from "@/components/ui/tooltip"
 import { TablePagination } from "@/components/table-pagination"
 import {
-  ArrowDown02Icon,
+  ArrowRight01Icon,
   Search02Icon,
   Loading03Icon,
   MoreHorizontalIcon,
   ViewIcon,
   PauseIcon,
   Delete02Icon,
+  DotIcon,
 } from "@hugeicons/core-free-icons"
 import {
   DropdownMenu,
@@ -31,8 +32,6 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible"
-import { EnvironmentUsage } from "@/components/environments/environment-usage"
-import { EnvironmentBillingInfo } from "@/components/environments/environment-billing"
 import { EnvironmentStatus } from "@/components/environments/status-badge"
 import { OSIcon } from "@/components/environments/os-icon"
 import { UserAvatar } from "@/components/user-avatar"
@@ -45,7 +44,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
 } from "@/components/ui/alert-dialog"
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, ApiError } from "@/lib/api"
@@ -63,12 +62,10 @@ import { useEnvironmentData } from "@/hooks/use-environment-data"
 import {
   LoadState,
   EnvironmentTable,
-  Pagination,
-  Identity,
   FormError,
 } from "@/components/environments/common"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -81,7 +78,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog"
 
 type Action = {
@@ -102,7 +99,7 @@ const statuses = [
 ]
 const columns = [
   "createdAt",
-  "user",
+  "creator",
   "status",
   "name",
   "runtimeVersion",
@@ -371,7 +368,7 @@ export function EnvironmentsPage() {
                     )}
                   </TableCell>
                 )}
-                {visibleColumns.has("user") && (
+                {visibleColumns.has("creator") && (
                   <TableCell>
                     <button
                       type="button"
@@ -596,16 +593,79 @@ export function EnvironmentsPage() {
     </>
   )
 }
+function DetailSection({
+  title,
+  children,
+  defaultOpen = true,
+}: {
+  title: string
+  children: ReactNode
+  defaultOpen?: boolean
+}) {
+  return (
+    <Collapsible defaultOpen={defaultOpen} className="rounded-lg border">
+      <CollapsibleTrigger
+        type="button"
+        className="group flex w-full items-center gap-3 rounded-t-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+      >
+        <span className="font-medium">{title}</span>
+        <HugeiconsIcon
+          icon={ArrowRight01Icon}
+          strokeWidth={2}
+          aria-hidden="true"
+          className="ms-auto size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent keepMounted className="border-t">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function DetailRows({
+  items,
+}: {
+  items: readonly (readonly [string, ReactNode])[]
+}) {
+  return (
+    <dl className="divide-y">
+      {items.map(([label, value]) => (
+        <div
+          key={label}
+          className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-x-4 px-4 py-3 text-sm"
+        >
+          <dt className="min-w-0 break-words text-muted-foreground">{label}</dt>
+          <dd className="min-w-0 break-all text-right [&>button]:ms-auto">
+            {value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
-  const { t } = useTranslation()
-  const [page, setPage] = useState(1)
-  const path = `/api/admin/v1/environments/${encodeURIComponent(id)}`
+  const { t, i18n } = useTranslation()
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
+  const path = "/api/admin/v1/environments/" + encodeURIComponent(id)
   const result = useEnvironmentData<Environment>(path, true)
   const operations = useEnvironmentData<Page<Operation>>(
-    `${path}/operations?page=${page}&page_size=20`,
+    path + "/operations?page=1&page_size=20",
     true
   )
   const env = result.data
+  const date = (value: string) =>
+    new Date(value).toLocaleString(
+      i18n.resolvedLanguage ?? i18n.language,
+      TABLE_DATE_TIME_OPTIONS
+    )
+  const activeUsage =
+    env?.desired === "running" &&
+    env.phase === "running" &&
+    env.generation === env.observed_generation
+      ? env.usage
+      : undefined
   return (
     <Dialog
       open
@@ -614,217 +674,189 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
       }}
     >
       <DialogContent
-        className="max-h-[85dvh] w-[calc(100vw_-_2rem)] overflow-y-auto sm:max-w-3xl"
+        className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl"
         closeLabel={t("environmentAdmin.close")}
       >
         <DialogHeader>
-          <DialogTitle>
-            {env?.name || t("environmentAdmin.details")}
-          </DialogTitle>
-          <DialogDescription>
-            {t("environmentAdmin.detailHint")}
-          </DialogDescription>
+          <DialogTitle>{t("environmentAdmin.environmentDetails")}</DialogTitle>
         </DialogHeader>
-        <LoadState {...result} empty={false} />
-        {env && (
-          <div className="space-y-5">
-            <section className="space-y-4 rounded-xl bg-muted/40 p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <EnvironmentStatus environment={env} />
-                <span className="text-sm text-muted-foreground">
-                  {t(
-                    `environmentAdmin.${env.stale ? "connectionStale" : env.connectable ? "connectionReady" : "connectionUnavailable"}`
-                  )}
-                </span>
-              </div>
-              {env.reason && env.generation === env.observed_generation && (
-                <p className="text-sm text-destructive">
-                  {t(`environmentAdmin.reasons.${env.reason}`, {
-                    defaultValue: env.reason,
-                  })}
-                </p>
-              )}
-              <dl>
-                <Identity
-                  label={t("environmentAdmin.runtimeVersion")}
-                  value={
-                    env.runtime_version || t("environmentAdmin.runtimeUnknown")
-                  }
-                />
-              </dl>
-              <div className="grid gap-5 border-t pt-4 sm:grid-cols-2">
-                <div className="min-w-0">
-                  <p className="mb-2 text-xs text-muted-foreground">
-                    {t("environmentAdmin.user")}
-                  </p>
-                  <div className="flex items-center gap-2.5">
-                    <UserAvatar src={env.user?.avatar_url} size="default" />
-                    <div className="min-w-0">
-                      <p className="break-words text-sm font-medium">
-                        {env.user?.name ||
-                          env.user?.email ||
-                          t("environmentAdmin.unknownUser")}
+        <ScrollArea className="-me-6 flex min-h-0 flex-1 flex-col [&_[data-slot=scroll-area-viewport]]:min-h-0">
+          <div className="space-y-6 pe-6">
+            <LoadState {...result} empty={false} />
+            {env && (
+              <>
+                <section className="space-y-4 rounded-xl bg-muted/40 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-base font-semibold">
+                        {env.name}
                       </p>
-                      {env.user?.email && (
-                        <p className="mt-1 break-all text-xs text-muted-foreground">
-                          {env.user.email}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <p className="mb-2 text-xs text-muted-foreground">
-                    {t("environmentAdmin.host")}
-                  </p>
-                  <div className="flex items-center gap-2.5">
-                    <OSIcon name={env.host?.os_name} />
-                    <div className="min-w-0">
-                      <p className="break-words text-sm font-medium">
-                        {env.host?.hostname ||
-                          env.host?.name ||
-                          t("environmentAdmin.unknownHost")}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t(
+                          "environmentAdmin." +
+                            (env.stale
+                              ? "connectionStale"
+                              : env.connectable
+                                ? "connectionReady"
+                                : "connectionUnavailable")
+                        )}
                       </p>
-                      {env.host?.os_name && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {env.host.os_name}
-                        </p>
-                      )}
                     </div>
+                    {env.reason &&
+                    env.generation === env.observed_generation ? (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={<span tabIndex={0} className="inline-flex" />}
+                        >
+                          <EnvironmentStatus environment={env} />
+                        </TooltipTrigger>
+                        <TooltipContent className="whitespace-normal break-words">
+                          {t("environmentAdmin.reasons." + env.reason, {
+                            defaultValue: env.reason,
+                          })}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <EnvironmentStatus environment={env} />
+                    )}
                   </div>
-                </div>
-              </div>
-            </section>
-            <EnvironmentBillingInfo environment={env} />
-            <section className="space-y-3 rounded-lg border p-4">
-              <h3 className="text-sm font-medium">
-                {t("environmentAdmin.resourceUsage")}
-              </h3>
-              <div className="[&_.font-medium]:text-2xl">
-                <EnvironmentUsage environment={env} />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("environmentAdmin.usageHint")}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("environmentAdmin.sampledAt")} ·{" "}
-                {env.usage?.at ? new Date(env.usage.at).toLocaleString() : "—"}
-              </p>
-            </section>
-            <Collapsible className="rounded-lg border p-4">
-              <CollapsibleTrigger className="group/section flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                {t("environmentAdmin.technicalDetails")}
-                <HugeiconsIcon
-                  icon={ArrowDown02Icon}
-                  aria-hidden="true"
-                  className="size-4 group-aria-expanded/section:rotate-180"
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-4 space-y-5">
-                <dl className="grid gap-4 sm:grid-cols-2">
-                  <Identity
-                    label={t("environmentAdmin.environmentID")}
-                    value={env.id}
+                </section>
+                <DetailSection title={t("environmentAdmin.basicInfo")}>
+                  <DetailRows
+                    items={[
+                      [t("environmentAdmin.createdAt"), date(env.created_at)],
+                      [
+                        t("environmentAdmin.creator"),
+                        <button
+                          type="button"
+                          className="flex min-w-0 max-w-full items-center gap-2 rounded-sm text-start underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
+                          title={env.user?.email}
+                          disabled={!env.user_id}
+                          onClick={() => setAccountUserID(env.user_id)}
+                        >
+                          <UserAvatar src={env.user?.avatar_url} />
+                          <span className="min-w-0 truncate">
+                            {env.user?.name || env.user?.email || env.user_id}
+                          </span>
+                        </button>,
+                      ],
+                      [
+                        t("environmentAdmin.host"),
+                        <div className="flex items-center justify-end gap-2.5">
+                          <OSIcon name={env.host?.os_name} avatar size="sm" />
+                          <span className="min-w-0 break-words">
+                            {env.host?.hostname ||
+                              env.host?.name ||
+                              t("environmentAdmin.unknownHost")}
+                          </span>
+                        </div>,
+                      ],
+                      [
+                        "CPU",
+                        (activeUsage?.cpu_cores?.toFixed(2) ?? "—") +
+                          " / " +
+                          env.spec.resource.cpu_millis / 1000 +
+                          " CPU",
+                      ],
+                      [
+                        t("pages.engineHosts.memory"),
+                        (activeUsage?.memory_bytes === undefined
+                          ? "—"
+                          : (activeUsage.memory_bytes / MiB).toFixed(1) +
+                            " MiB") +
+                          " / " +
+                          (env.spec.resource.memory_bytes / MiB).toFixed(1) +
+                          " MiB",
+                      ],
+                    ]}
                   />
-                  <Identity
-                    label={t("environmentAdmin.instanceID")}
-                    value={env.instance_id}
-                  />
-                  <Identity
-                    label={t("environmentAdmin.user")}
-                    value={env.user_id}
-                  />
-                  <Identity
-                    label={t("environmentAdmin.host")}
-                    value={env.host_id}
-                  />
-                  <Identity
-                    label={t("environmentAdmin.generation")}
-                    value={`${env.observed_generation} / ${env.generation}`}
-                  />
-                  <Identity
-                    label={t("environmentAdmin.fields.tasks")}
-                    value={env.spec.resource.host_tasks}
-                  />
-                  <Identity
-                    label={t("environmentAdmin.fields.temporary")}
-                    value={env.spec.resource.temporary_bytes / MiB}
-                  />
-                  <Identity
-                    label={t("environmentAdmin.image")}
-                    value={env.spec.image}
-                  />
-                  <Identity
-                    label={t("environmentAdmin.network")}
-                    value={t(`environmentAdmin.${env.spec.network_policy}`)}
-                  />
-                </dl>
-                <div className="rounded-md border p-3">
-                  <h3 className="mb-3 font-medium">
-                    {t("environmentAdmin.volumes")}
-                  </h3>
-                  <ul className="space-y-2">
-                    {env.spec.volumes.map((volume) => (
-                      <li key={volume.id} className="text-sm">
-                        <p>
-                          {t(`environmentAdmin.volumeNames.${volume.purpose}`)}
-                        </p>
-                        <p className="break-all font-mono text-xs text-muted-foreground">
-                          {volume.id}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-        )}
-        <Collapsible className="rounded-lg border p-4">
-          <CollapsibleTrigger className="group/section flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            {t("environmentAdmin.operations")}
-            <HugeiconsIcon
-              icon={ArrowDown02Icon}
-              aria-hidden="true"
-              className="size-4 group-aria-expanded/section:rotate-180"
-            />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-3 space-y-3">
-            <LoadState {...operations} empty={!operations.data?.items.length} />
-            <ol className="divide-y">
-              {operations.data?.items.map((op) => (
-                <li key={op.id} className="space-y-1 py-3 text-sm">
-                  <div className="flex flex-wrap gap-2">
-                    <span>
-                      #{op.generation} ·{" "}
-                      {t(`environmentAdmin.targets.${op.desired}`)}
-                    </span>
-                    <Badge variant="outline">
-                      {t(`environmentAdmin.operationStates.${op.status}`)}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(op.created_at).toLocaleString()}
-                  </p>
-                  {op.reason && (
-                    <p className="text-destructive">
-                      {t(`environmentAdmin.reasons.${op.reason}`, {
-                        defaultValue: op.reason,
-                      })}
+                  {activeUsage && (env.stale || env.usage_stale) && (
+                    <p className="border-t px-4 py-3 text-xs text-muted-foreground">
+                      {t("pages.engineHosts.lastReport")}
                     </p>
                   )}
-                </li>
-              ))}
-            </ol>
-            <Pagination
-              page={page}
-              count={operations.data?.items.length ?? 0}
-              disabled={operations.loading || !!operations.error}
-              onChange={setPage}
-            />
-          </CollapsibleContent>
-        </Collapsible>
+                </DetailSection>
+                <DetailSection title={t("environmentAdmin.technicalDetails")}>
+                  <DetailRows
+                    items={[
+                      [t("environmentAdmin.environmentID"), env.id],
+                      [t("environmentAdmin.instanceID"), env.instance_id],
+                      [
+                        t("environmentAdmin.runtimeVersion"),
+                        env.runtime_version ||
+                          t("environmentAdmin.runtimeUnknown"),
+                      ],
+                      [t("environmentAdmin.image"), env.spec.image],
+                    ]}
+                  />
+                </DetailSection>
+              </>
+            )}
+            <DetailSection title={t("environmentAdmin.operations")}>
+              <div className="px-4 py-3 empty:hidden">
+                <LoadState
+                  {...operations}
+                  empty={!operations.data?.items.length}
+                />
+              </div>
+              <ol className="divide-y">
+                {operations.data?.items.map((op) => (
+                  <li
+                    key={op.id}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-x-4 px-4 py-3 text-sm"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <span>#{op.generation}</span>
+                      <HugeiconsIcon
+                        icon={DotIcon}
+                        className="size-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      {t("environmentAdmin.targets." + op.desired)}
+                      <HugeiconsIcon
+                        icon={DotIcon}
+                        className="size-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <span
+                        className={
+                          op.status === "failed"
+                            ? "text-destructive"
+                            : undefined
+                        }
+                      >
+                        {t("environmentAdmin.operationStates." + op.status)}
+                      </span>
+                    </span>
+                    <time
+                      dateTime={op.created_at}
+                      className="shrink-0 text-end text-muted-foreground"
+                    >
+                      {date(op.created_at)}
+                    </time>
+                  </li>
+                ))}
+              </ol>
+            </DetailSection>
+          </div>
+        </ScrollArea>
+        <DialogFooter className="shrink-0 items-center pt-4 sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            {t("environmentAdmin.observed")}：
+            {env?.observed_at ? date(env.observed_at) : "—"}
+          </p>
+          <Button size="sm" onClick={close}>
+            {t("environmentAdmin.close")}
+          </Button>
+        </DialogFooter>
       </DialogContent>
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
+        />
+      )}
     </Dialog>
   )
 }

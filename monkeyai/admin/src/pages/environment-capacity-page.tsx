@@ -89,10 +89,6 @@ export function EnvironmentCapacityPage() {
                 label={t("environmentAdmin.fields.memoryGiB")}
                 value={host.memory_bytes / GiB}
               />
-              <Identity
-                label={t("environmentAdmin.fields.environments")}
-                value={host.max_environments}
-              />
             </dl>
             <p className="text-xs text-muted-foreground">
               {t("environmentAdmin.lastSync")}：

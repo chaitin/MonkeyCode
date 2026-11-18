@@ -78,7 +78,6 @@ export function HostUpgrade({
   const [target, setTarget] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [notice, setNotice] = useState("")
   const [command, setCommand] = useState("")
   const value = host.upgrade
   if (!value) return null
@@ -96,14 +95,13 @@ export function HostUpgrade({
     if (busy || !target) return
     setBusy(true)
     setError("")
-    setNotice("")
     try {
       await api(`/api/admin/v1/engine-hosts/${host.id}/upgrade`, {
         method: "POST",
         body: JSON.stringify({ version: target }),
       })
       setTarget("")
-      setNotice(text("submitted"))
+      showToast({ status: "success", title: text("submitted") })
       refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : text("requestFailed"))
@@ -120,7 +118,6 @@ export function HostUpgrade({
     if (dialog) {
       setCommandOpen(true)
       setCommand("")
-      setNotice("")
     }
     try {
       const result = await api<{ command: string }>(
@@ -138,17 +135,15 @@ export function HostUpgrade({
     if (busy) return
     setCommandOpen(false)
     setError("")
-    setNotice("")
   }
 
   async function copy() {
     setError("")
-    setNotice("")
     try {
       await navigator.clipboard.writeText(command)
       showToast({ status: "success", title: text("copied") })
     } catch {
-      setError(text("copyFailed"))
+      showToast({ status: "error", title: text("copyFailed") })
     }
   }
 
@@ -161,7 +156,6 @@ export function HostUpgrade({
         onClick={() => {
           setTarget(value.target_version)
           setError("")
-          setNotice("")
         }}
       >
         {running
@@ -208,15 +202,6 @@ export function HostUpgrade({
           {text(`reasons.${task.reason || "upgrade_failed"}`)}
         </p>
       )}
-      {notice &&
-        !commandOpen &&
-        (notice !== text("submitted") ||
-          !task ||
-          task.status === "pending") && (
-          <p role="status" className="text-sm text-muted-foreground">
-            {notice}
-          </p>
-        )}
       {error && !target && !commandOpen && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -309,11 +294,6 @@ export function HostUpgrade({
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}
-              </p>
-            )}
-            {notice && (
-              <p role="status" className="text-sm text-muted-foreground">
-                {notice}
               </p>
             )}
             <DialogFooter>

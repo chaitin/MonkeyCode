@@ -5,7 +5,7 @@ INSERT INTO hosts(user_id,name,architecture,version) VALUES($1,$2,$3,$4) RETURNI
 UPDATE hosts SET status='revoked',deleted_at=now(),enabled=false WHERE id=$1 AND status='pending' AND public_key IS NULL AND deleted_at IS NULL;
 
 -- name: ListHosts :many
-SELECT id,user_id,name,architecture,version,status,activated_at,last_seen_at,report,created_at,enabled,max_environments,
+SELECT id,user_id,name,architecture,version,status,activated_at,last_seen_at,report,created_at,enabled,
 (SELECT count(*) FROM environments e WHERE e.host_id=hosts.id
  AND NOT(e.desired='deleted' AND e.phase='deleted' AND e.observed_generation=e.generation)) AS environment_count
 FROM hosts WHERE deleted_at IS NULL AND status <> 'pending' ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2;

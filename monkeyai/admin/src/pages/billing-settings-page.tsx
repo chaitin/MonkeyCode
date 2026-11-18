@@ -46,7 +46,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
 import type { EnvironmentBillingConfig } from "@/lib/environments"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
@@ -94,6 +93,10 @@ type PricingKey =
   | "cached_input_credits_per_million_tokens"
   | "output_credits_per_million_tokens"
 type PricingSettings = Pick<Policy, PricingKey>
+const environmentPricingFields = [
+  { key: "cpu_credits_per_core_hour", title: "CPU", unit: "核" },
+  { key: "memory_credits_per_gib_hour", title: "内存", unit: "GB" },
+] as const
 
 type Target = {
   id: string
@@ -112,6 +115,10 @@ export function BillingSettingsPage() {
   const [pricing, setPricing] = useState<PricingSettings | null>(null)
   const [environment, setEnvironment] =
     useState<EnvironmentBillingConfig | null>(null)
+  const [environmentDialogOpen, setEnvironmentDialogOpen] = useState(false)
+  const [environmentTarget, setEnvironmentTarget] = useState<
+    (typeof environmentPricingFields)[number]["key"]
+  >("cpu_credits_per_core_hour")
   const [cycle, setCycle] = useState("weekly")
   const [cycleDialogOpen, setCycleDialogOpen] = useState(false)
   const [cycleValue, setCycleValue] = useState("weekly")
@@ -300,7 +307,11 @@ export function BillingSettingsPage() {
     try {
       const values =
         section === "environment"
-          ? environment
+          ? environment && {
+              cpu_credits_per_core_hour: environment.cpu_credits_per_core_hour,
+              memory_credits_per_gib_hour:
+                environment.memory_credits_per_gib_hour,
+            }
           : section === "wallet"
             ? wallet
             : section === "pricing"
@@ -319,6 +330,7 @@ export function BillingSettingsPage() {
         }
       )
       setSettings(result)
+      if (section === "environment") setEnvironment(result.policy.environment)
       setQuotas((current) =>
         current ? { ...current, revision: result.policy.revision } : current
       )
@@ -332,7 +344,7 @@ export function BillingSettingsPage() {
             : section === "cycle"
               ? `重置设置已保存，将于 ${dateTime(result.next_refresh_at)} 重置，当前余额不变。`
               : section === "environment"
-                ? "云电脑计费已保存，新单价在下次预付时生效，已付费小时不变。"
+                ? "云电脑计费已保存。"
                 : "设置已保存，对新调用生效。",
       })
     } catch (e) {
@@ -949,79 +961,41 @@ export function BillingSettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>云电脑扣费规则</CardTitle>
-                <CardDescription>
-                  设置云电脑每小时的积分消耗。
-                </CardDescription>
+                <CardDescription>设置云电脑每小时的积分消耗。</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {environment ? (
-                  <>
-                    <div className="flex items-center justify-between gap-4">
-                      <FieldLabel htmlFor="environment-billing-enabled">
-                        启用云电脑计费
-                      </FieldLabel>
-                      <Switch
-                        id="environment-billing-enabled"
-                        checked={environment.enabled}
-                        disabled={
-                          !!busy || settings?.policy.charging_mode !== "local"
-                        }
-                        onCheckedChange={(enabled) =>
-                          setEnvironment({ ...environment, enabled })
-                        }
-                      />
-                    </div>
-                    {(
-                      [
-                        [
-                          "cpu_credits_per_core_hour",
-                          "CPU 单价（积分 / 核 / 小时）",
-                        ],
-                        [
-                          "memory_credits_per_gib_hour",
-                          "内存单价（积分 / GiB / 小时）",
-                        ],
-                      ] as const
-                    ).map(([key, label]) => (
-                      <Field key={key}>
-                        <FieldLabel htmlFor={key}>{label}</FieldLabel>
-                        <Input
-                          id={key}
-                          inputMode="decimal"
-                          value={environment[key]}
-                          disabled={!!busy}
-                          onChange={(event) =>
-                            setEnvironment({
-                              ...environment,
-                              [key]: event.target.value,
-                            })
-                          }
-                        />
-                      </Field>
+                  <ItemGroup className="gap-2">
+                    {environmentPricingFields.map((field) => (
+                      <Item key={field.key} variant="outline">
+                        <ItemContent>
+                          <ItemTitle>{field.title}</ItemTitle>
+                          <ItemDescription>
+                            {field.unit === "GB"
+                              ? "每 GB 每小时"
+                              : "每核每小时"}{" "}
+                            {format(settings!.policy.environment[field.key])}{" "}
+                            积分
+                          </ItemDescription>
+                        </ItemContent>
+                        <ItemActions>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={!!busy}
+                            onClick={() => {
+                              setEnvironment(settings!.policy.environment)
+                              setEnvironmentTarget(field.key)
+                              setEnvironmentDialogOpen(true)
+                            }}
+                          >
+                            {t("pages.billingSettings.modelPricing.configure")}
+                          </Button>
+                        </ItemActions>
+                      </Item>
                     ))}
-                    <p className="text-xs text-muted-foreground">
-                      支持 0 到 1000000
-                      积分，最多六位小数。关闭总计费开关时不扣费。
-                    </p>
-                    <Button
-                      disabled={
-                        !!busy ||
-                        !validCredits(environment.cpu_credits_per_core_hour) ||
-                        !validCredits(
-                          environment.memory_credits_per_gib_hour
-                        ) ||
-                        Number(environment.cpu_credits_per_core_hour) >
-                          1000000 ||
-                        Number(environment.memory_credits_per_gib_hour) >
-                          1000000 ||
-                        JSON.stringify(environment) ===
-                          JSON.stringify(settings?.policy.environment)
-                      }
-                      onClick={() => void save("environment")}
-                    >
-                      {busy === "environment" ? "保存中…" : "保存"}
-                    </Button>
-                  </>
+                  </ItemGroup>
                 ) : (
                   loadState(settingsLoadFailed, retrySettings)
                 )}
@@ -1185,6 +1159,102 @@ export function BillingSettingsPage() {
         </DialogContent>
       </Dialog>
       <Dialog
+        open={environmentDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && busy !== "environment") setEnvironmentDialogOpen(false)
+        }}
+      >
+        <DialogContent>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (
+                !environment ||
+                busy ||
+                !validCredits(environment.cpu_credits_per_core_hour) ||
+                !validCredits(environment.memory_credits_per_gib_hour) ||
+                Number(environment.cpu_credits_per_core_hour) > 1000000 ||
+                Number(environment.memory_credits_per_gib_hour) > 1000000
+              )
+                return
+              void save("environment").then((saved) => {
+                if (saved) setEnvironmentDialogOpen(false)
+              })
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                {environmentTarget === "cpu_credits_per_core_hour"
+                  ? "配置 CPU 扣费规则"
+                  : "配置内存扣费规则"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="my-6 space-y-4">
+              {environment &&
+                environmentPricingFields
+                  .filter((field) => field.key === environmentTarget)
+                  .map(({ key, title, unit }) => (
+                    <Field key={key}>
+                      <FieldLabel htmlFor={key}>{title} 单价</FieldLabel>
+                      <div className="relative">
+                        <Input
+                          id={key}
+                          inputMode="decimal"
+                          className="pe-44"
+                          aria-describedby={key + "-unit"}
+                          value={environment[key]}
+                          disabled={!!busy}
+                          aria-invalid={
+                            !validCredits(environment[key]) ||
+                            Number(environment[key]) > 1000000
+                          }
+                          onChange={(event) =>
+                            setEnvironment({
+                              ...environment,
+                              [key]: event.target.value,
+                            })
+                          }
+                        />
+                        <span
+                          id={key + "-unit"}
+                          className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-sm text-muted-foreground"
+                        >
+                          积分 / ({unit} * 小时)
+                        </span>
+                      </div>
+                    </Field>
+                  ))}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!!busy}
+                onClick={() => setEnvironmentDialogOpen(false)}
+              >
+                {t("pages.billingSettings.modelPricing.cancel")}
+              </Button>
+              <Button
+                type="submit"
+                loading={busy === "environment"}
+                disabled={
+                  !!busy ||
+                  !environment ||
+                  !validCredits(environment.cpu_credits_per_core_hour) ||
+                  !validCredits(environment.memory_credits_per_gib_hour) ||
+                  Number(environment.cpu_credits_per_core_hour) > 1000000 ||
+                  Number(environment.memory_credits_per_gib_hour) > 1000000 ||
+                  JSON.stringify(environment) ===
+                    JSON.stringify(settings?.policy.environment)
+                }
+              >
+                {t("pages.billingSettings.modelPricing.confirm")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={pricingTarget !== null}
         onOpenChange={(open) => {
           if (!open && busy !== "pricing") setPricingTarget(null)
@@ -1230,13 +1300,23 @@ export function BillingSettingsPage() {
               <FieldLabel htmlFor="model-pricing-value">
                 {t("pages.billingSettings.modelPricing.valueLabel")}
               </FieldLabel>
-              <Input
-                id="model-pricing-value"
-                inputMode="decimal"
-                value={pricingValue}
-                aria-invalid={!validCredits(pricingValue)}
-                onChange={(event) => setPricingValue(event.target.value)}
-              />
+              <div className="relative">
+                <Input
+                  id="model-pricing-value"
+                  inputMode="decimal"
+                  className="pe-44"
+                  aria-describedby="model-pricing-unit"
+                  value={pricingValue}
+                  aria-invalid={!validCredits(pricingValue)}
+                  onChange={(event) => setPricingValue(event.target.value)}
+                />
+                <span
+                  id="model-pricing-unit"
+                  className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-sm text-muted-foreground"
+                >
+                  积分 / 百万 Token
+                </span>
+              </div>
               {!validCredits(pricingValue) && (
                 <FieldDescription>
                   {t("pages.billingSettings.modelPricing.valueInvalid")}

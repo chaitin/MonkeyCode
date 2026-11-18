@@ -7,11 +7,20 @@ export type Resources = {
   host_tasks: number
   temporary_bytes: number
 }
+export type CloudSpecification = {
+  id: string
+  version: number
+  cpu_millis: number
+  memory_bytes: number
+}
+export type SpecificationCatalog = {
+  revision: number
+  items: CloudSpecification[]
+}
 export type Capacity = {
   enabled: boolean
   cpu_millis: number
   memory_bytes: number
-  max_environments: number
 }
 export type HostCapacity = Capacity & {
   host_id: string
@@ -21,35 +30,12 @@ export type HostCapacity = Capacity & {
   sync_at: string | null
   last_seen_at: string | null
 }
-export type Quota = {
-  host_id: string
-  user_id: string
-  max_environments: number
-}
 export type EnvironmentBillingConfig = {
   enabled: boolean
   cpu_credits_per_core_hour: string
   memory_credits_per_gib_hour: string
 }
-export type EnvironmentBilling = {
-  enabled: boolean
-  state: "disabled" | "waiting" | "running" | "stopped" | "unknown"
-  hourly_credits: string
-  settled_credits: string
-  settled_seconds: number
-  prepaid_until?: string
-  stop_reason?: "insufficient_credits" | "billing_unavailable"
-  budget?: {
-    balance: string
-    hourly_credits: string
-    remaining_seconds: number | null
-    running_environments: number
-    low_balance: boolean
-  }
-}
 export type Environment = {
-  billing?: EnvironmentBilling
-  billing_stop_reason?: "insufficient_credits" | "billing_unavailable"
   runtime_version?: string
   usage_stale?: boolean
   usage?: { at: string; cpu_cores?: number; memory_bytes?: number }

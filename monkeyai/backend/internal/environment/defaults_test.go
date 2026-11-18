@@ -26,13 +26,13 @@ func (images architectureImages) Default(ctx context.Context, arch string) (stri
 func TestDefaultImageChangeKeepsExistingSnapshot(t *testing.T) {
 	service, user, host := fixture(t)
 	ctx := t.Context()
-	first, err := service.Create(ctx, user, Creation{Name: "已有环境", RequestKey: "old-image"})
+	first, err := service.Create(ctx, user, Creation{SpecificationSelection: testSpecification(), Name: "已有环境", RequestKey: "old-image"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	nextImage := "example.com/next@sha256:" + strings.Repeat("b", 64)
 	service.WithImages(fixtureImages{nextImage})
-	second, err := service.Create(ctx, user, Creation{Name: "新环境", RequestKey: "new-image"})
+	second, err := service.Create(ctx, user, Creation{SpecificationSelection: testSpecification(), Name: "新环境", RequestKey: "new-image"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestSharedResourcesScheduleBothArchitectures(t *testing.T) {
 	service.WithImages(references)
 	counts := map[string]int{}
 	for i := range 3 {
-		created, err := service.Create(ctx, user, Creation{Name: "共享资源", RequestKey: fmt.Sprint("architecture-", i)})
+		created, err := service.Create(ctx, user, Creation{SpecificationSelection: testSpecification(), Name: "共享资源", RequestKey: fmt.Sprint("architecture-", i)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +76,7 @@ func TestSharedResourcesScheduleBothArchitectures(t *testing.T) {
 			t.Fatal(created)
 		}
 		var spec Spec
-		if json.Unmarshal(created.Environment.Spec, &spec) != nil || spec.Image != references[arch] || spec.Resource != profile().Resource {
+		if json.Unmarshal(created.Environment.Spec, &spec) != nil || spec.Image != references[arch] || spec.Resource != specificationResources(profile().Resource.CPUMillis, profile().Resource.MemoryBytes) {
 			t.Fatal("资源或镜像架构未自动适配", spec, arch)
 		}
 		counts[arch]++
@@ -89,7 +89,7 @@ func TestCreationRejectsUnpreparedDefaultWithoutReservations(t *testing.T) {
 	service, user, _ := fixture(t)
 	ctx := t.Context()
 	service.WithImages(architectureImages{})
-	_, err := service.Create(ctx, user, Creation{Name: "未准备", RequestKey: "unprepared-default"})
+	_, err := service.Create(ctx, user, Creation{SpecificationSelection: testSpecification(), Name: "未准备", RequestKey: "unprepared-default"})
 	var failure *failure
 	if !errors.As(err, &failure) || failure.code != "configuration_unavailable" {
 		t.Fatal(err)

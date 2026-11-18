@@ -31,6 +31,27 @@ export const enUS = {
     save: "Save changes",
   },
   environmentAdmin: {
+    specifications: {
+      title: "Manage specifications",
+      description:
+        "Configure up to 100 global cloud computer specifications. Changes and deletions do not affect existing computers. An empty list blocks new creation. GB means 1024³ bytes.",
+      cpu: "CPU",
+      memory: "Memory",
+      add: "Add specification",
+      empty: "No specifications yet. Add a CPU and memory configuration.",
+      saved: "Global specifications saved.",
+      reload: "Discard draft and reload",
+      limit: "A maximum of 100 specifications is allowed.",
+      cpuRow: "CPU (cores) for specification {{index}}",
+      memoryRow: "Memory (GB) for specification {{index}}",
+      removeRow: "Remove specification {{index}}",
+      invalid:
+        "Enter 0.1–256 CPU cores (up to 3 decimals) and 0.25–1024 GB of memory that converts to whole bytes.",
+      duplicate:
+        "Specifications with the same CPU and memory cannot be duplicated.",
+    },
+    creator: "Creator",
+    environmentDetails: "Cloud computer details",
     environmentName: "Cloud computer name",
     cloudHostsTitle: "Cloud Hosts",
     cloudHostsDescription: "Manage hosts and cloud environments.",
@@ -55,7 +76,8 @@ export const enUS = {
       "Actual usage / allocated limit. CPU percentage is relative to allocated cores. Memory excludes reclaimable file cache. Unavailable samples show —.",
     sampledAt: "Last sampled",
     allocatedResources: "Allocated resources",
-    technicalDetails: "Technical details and persistent directories",
+    basicInfo: "Basic information",
+    technicalDetails: "More information",
     connectionReady: "Ready to connect",
     connectionUnavailable: "Not currently connectable",
     connectionStale: "Awaiting status update",
@@ -64,8 +86,8 @@ export const enUS = {
 
     setupReload: "Reload configuration",
     setupAction: "Configure environments",
-    setupQuotaTotal: "Concurrent limit: {{cpu}} cores / {{memory}} GiB",
-    setupTitle: "Configure cloud environments",
+    setupQuotaTotal: "Concurrent limit: {{cpu}} cores / {{memory}} GB",
+    setupTitle: "Host configuration",
     setupDescription: "Applies to this host only.",
     hostAccessTitle: "Authorized users",
     hostAccessPlaceholder: "Select users, groups, or everyone",
@@ -77,11 +99,11 @@ export const enUS = {
       description:
         "Prepay whole hours for allocated CPU and memory. Early stops are not refunded; storage is currently free.",
       resourceHint:
-        "CPU and memory allocated by this host to each new environment. Existing environments remain unchanged.",
+        "New environments use the selected global specification. CPU and memory for existing environments remain unchanged.",
       cpuPrice: "CPU price",
       memoryPrice: "Memory price",
       cpuUnit: "credits / core·hour",
-      memoryUnit: "credits / GiB·hour",
+      memoryUnit: "credits / GB·hour",
       pricePrecision: "Up to 6 decimal places. Set 0 for a free resource.",
       invalidPrice:
         "Enter a nonnegative price with up to 6 decimal places within the supported billing range.",
@@ -128,27 +150,17 @@ export const enUS = {
     setupEnvironmentCount: "Environment limit",
     setupRunningCount: "Concurrent limit",
     setupCoreUnit: "cores",
-    setupCountUnit: "envs",
-    setupSpecSummary: "{{cpu}} cores / {{memory}} GiB",
-    setupQuota: "Per-user limits",
+    setupSpecSummary: "{{cpu}} cores / {{memory}} GB",
     setupCapacity: "Current host capacity",
-    setupQuotaHint: "Used for users without individual limits on this host.",
-    countLimitsTitle: "Environment counts",
-    hostMaxEnvironments: "Maximum environments on this host",
-    userMaxEnvironments: "Maximum environments per user",
-    countLimitsHint:
-      "Stopped environments count until deletion is confirmed. Zero blocks new environments.",
     activatedAt: "Activated at",
     setupImageReady:
       "The server manages the default development image and runtime.",
     setupImagePending:
       "The default image is not ready. Environments cannot be created yet.",
     setupCapacityHint:
-      "Reserve resources for the host OS. Initial suggestions reserve one CPU core and 1 GiB from reported totals.",
+      "Reserve resources for the host OS. Initial suggestions reserve one CPU core and 1 GB from reported totals.",
     setupChecksHint:
       "Preflight has not passed. You can save now; scheduling requires an online host with passing preflight.",
-    setupInvalid:
-      "Check the per-environment specification and environment count limits.",
     setupSaved:
       "Configuration saved. Environments can be created through the client API once the host is online and passes preflight.",
 
@@ -185,11 +197,10 @@ export const enUS = {
     close: "Close",
     cancel: "Cancel",
     name: "Name",
-    image: "Image",
+    image: "System image",
     architecture: "Architecture",
     volumeSummary:
-      "Workspace {{workspace}} GiB · Home {{home}} GiB · Runtime {{runtime}} GiB",
-    invalidLimits: "Enter an integer from 0 to 1000000.",
+      "Workspace {{workspace}} GB · Home {{home}} GB · Runtime {{runtime}} GB",
     scheduling: "Enabled",
     schedulingLabel: "Allow new assignments",
     capacityHint:
@@ -248,12 +259,12 @@ export const enUS = {
       memory: "Memory (MiB)",
       tasks: "Host task limit",
       temporary: "Temporary storage (MiB)",
-      workspace: "Workspace (GiB)",
-      home: "Home (GiB)",
-      runtime: "Runtime data (GiB)",
+      workspace: "Workspace (GB)",
+      home: "Home (GB)",
+      runtime: "Runtime data (GB)",
       inodes: "Inodes per volume",
-      memoryGiB: "Memory (GiB)",
-      storageGiB: "Persistent storage (GiB)",
+      memoryGiB: "Memory (GB)",
+      storageGiB: "Persistent storage (GB)",
       environments: "Environment limit",
       running: "Running limit",
     },

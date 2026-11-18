@@ -67,6 +67,7 @@ func (s *Service) transactionWithTx(ctx context.Context, fn func(*sqlc.Queries, 
 }
 
 type Creation struct {
+	SpecificationSelection
 	Name       string `json:"name"`
 	RequestKey string `json:"request_key"`
 }
@@ -83,6 +84,7 @@ func (s *Service) Create(ctx context.Context, user string, in Creation) (Result,
 	return s.CreateOnHost(ctx, user, "", in)
 }
 func (s *Service) CreateOnHost(ctx context.Context, user, requestedHost string, in Creation) (Result, error) {
+	selection := in.SpecificationSelection
 	var result Result
 	if !uuid.MatchString(user) || !validName(in.Name) || !key.MatchString(in.RequestKey) || requestedHost != "" && !uuid.MatchString(requestedHost) {
 		return result, bad("名称或幂等键无效")
@@ -90,6 +92,12 @@ func (s *Service) CreateOnHost(ctx context.Context, user, requestedHost string, 
 	requestHash := hash(in)
 	if requestedHost != "" {
 		requestHash = hash(resource.Object{"host_id": requestedHost, "name": in.Name, "request_key": in.RequestKey})
+	}
+	if selection.SpecificationID != "" || selection.SpecificationVersion != 0 {
+		requestHash = hash(struct {
+			Creation
+			HostID string `json:"host_id,omitempty"`
+		}{in, requestedHost})
 	}
 	err := s.transactionWithTx(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		if _, err := q.ActiveUser(ctx, user); errors.Is(err, pgx.ErrNoRows) {
@@ -112,14 +120,17 @@ func (s *Service) CreateOnHost(ctx context.Context, user, requestedHost string, 
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		if s.images == nil {
-			return conflict("configuration_unavailable", "server 尚未准备默认环境镜像")
-		}
-		selected, err := s.schedule(ctx, q, tx, user, requestedHost)
+		resources, err := selectedSpecification(ctx, q, selection)
 		if err != nil {
 			return err
 		}
-		resources := selected.Resource
+		if s.images == nil {
+			return conflict("configuration_unavailable", "server 尚未准备默认环境镜像")
+		}
+		selected, err := s.schedule(ctx, q, tx, user, requestedHost, resources)
+		if err != nil {
+			return err
+		}
 		hostID := selected.HostID
 		profile := Profile{Architecture: selected.Architecture, Image: selected.Image, ImageDigest: selected.ImageDigest, NetworkPolicy: "public-only", Resource: resources}
 		if err := profile.Validate(); err != nil {
@@ -177,28 +188,6 @@ func (s *Service) CreateOnHost(ctx context.Context, user, requestedHost string, 
 		s.wakeBilling()
 	}
 	return result, err
-}
-func quota(ctx context.Context, q *sqlc.Queries, user, host string) (int32, error) {
-	row, err := q.GetQuota(ctx, sqlc.GetQuotaParams{UserID: user, HostID: host})
-	if errors.Is(err, pgx.ErrNoRows) {
-		h, err := q.HostSetup(ctx, host)
-		return h.UserMaxEnvironments, err
-	}
-	return row.MaxEnvironments, err
-}
-func reserveUser(ctx context.Context, q *sqlc.Queries, user, host string) error {
-	limit, err := quota(ctx, q, user, host)
-	if err != nil {
-		return err
-	}
-	used, err := q.UserHostUsage(ctx, sqlc.UserHostUsageParams{UserID: user, HostID: host})
-	if err != nil {
-		return err
-	}
-	if used >= int64(limit) {
-		return conflict("quota_exceeded", "用户环境数量已达上限")
-	}
-	return nil
 }
 func (s *Service) Change(ctx context.Context, user *string, id, desired string, in Change) (Result, error) {
 	var result Result

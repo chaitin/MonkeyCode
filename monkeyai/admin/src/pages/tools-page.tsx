@@ -1286,7 +1286,7 @@ export function ToolsPage() {
                           id="mcp-advanced-trigger"
                           type="button"
                           disabled={editorPending}
-                          className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                          className="group flex w-full items-center gap-3 rounded-t-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
                         >
                           <span className="font-medium">
                             {t("pages.models.advancedOptions")}

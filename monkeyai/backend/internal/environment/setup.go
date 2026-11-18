@@ -2,7 +2,6 @@ package environment
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -15,23 +14,17 @@ import (
 )
 
 type Setup struct {
-	Resource            Resources          `json:"resource"`
-	MaxEnvironments     int32              `json:"max_environments"`
-	UserMaxEnvironments int32              `json:"user_max_environments"`
-	Billing             *BillingConfig     `json:"billing,omitempty"`
-	Grants              *[]resource.Object `json:"grants,omitempty"`
+	Billing *BillingConfig     `json:"billing,omitempty"`
+	Grants  *[]resource.Object `json:"grants,omitempty"`
 }
 type SetupView struct {
-	HostID              string            `json:"host_id"`
-	HostName            string            `json:"host_name"`
-	Resource            *Resources        `json:"resource"`
-	MaxEnvironments     int32             `json:"max_environments"`
-	UserMaxEnvironments int32             `json:"user_max_environments"`
-	Capacity            Capacity          `json:"capacity"`
-	ImageReady          bool              `json:"image_ready"`
-	ImageReason         string            `json:"image_reason,omitempty"`
-	Billing             BillingConfig     `json:"billing"`
-	Grants              []resource.Object `json:"grants"`
+	HostID      string            `json:"host_id"`
+	HostName    string            `json:"host_name"`
+	Capacity    Capacity          `json:"capacity"`
+	ImageReady  bool              `json:"image_ready"`
+	ImageReason string            `json:"image_reason,omitempty"`
+	Billing     BillingConfig     `json:"billing"`
+	Grants      []resource.Object `json:"grants"`
 }
 
 func (s *Service) defaultImage(ctx context.Context, arch string) (string, string, error) {
@@ -52,7 +45,7 @@ func (s *Service) setupView(ctx context.Context, q *sqlc.Queries, host string, d
 	if err != nil {
 		return SetupView{}, err
 	}
-	out := SetupView{HostID: h.ID, HostName: h.Name, MaxEnvironments: h.MaxEnvironments, UserMaxEnvironments: h.UserMaxEnvironments}
+	out := SetupView{HostID: h.ID, HostName: h.Name}
 	out.Billing, err = decodeBilling(h.Billing)
 	if err != nil {
 		return out, err
@@ -67,14 +60,6 @@ func (s *Service) setupView(ctx context.Context, q *sqlc.Queries, host string, d
 	}
 	out.Capacity = reportedCapacity(status.Report)
 	out.Capacity.Enabled = capacity.Enabled
-	out.Capacity.MaxEnvironments = capacity.MaxEnvironments
-	if len(h.Resource) > 0 && string(h.Resource) != "null" {
-		var r Resources
-		if json.Unmarshal(h.Resource, &r) != nil || r.Validate() != nil {
-			return out, errors.New("宿主环境规格无效")
-		}
-		out.Resource = &r
-	}
 	out.Grants, err = resource.Grants(ctx, db, "host", host)
 	if err != nil {
 		return out, err
@@ -118,11 +103,8 @@ func (s *Service) putSetup(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Service) saveSetup(ctx context.Context, id string, in Setup) (SetupView, error) {
 	var out SetupView
-	if !uuid.MatchString(id) || in.MaxEnvironments < 0 || in.MaxEnvironments > 1000000 || in.UserMaxEnvironments < 0 || in.UserMaxEnvironments > 1000000 {
-		return out, bad("环境数量上限无效")
-	}
-	if err := in.Resource.Validate(); err != nil {
-		return out, bad(err.Error())
+	if !uuid.MatchString(id) {
+		return out, bad("宿主 ID 无效")
 	}
 	if in.Grants != nil {
 		if err := validateHostGrants(*in.Grants); err != nil {
@@ -156,11 +138,7 @@ func (s *Service) saveSetup(ctx context.Context, id string, in Setup) (SetupView
 				return err
 			}
 		}
-		raw, _ := json.Marshal(in.Resource)
-		if err = q.SetHostSetup(ctx, sqlc.SetHostSetupParams{HostID: id, Resource: raw, UserMaxEnvironments: in.UserMaxEnvironments}); err != nil {
-			return err
-		}
-		if err = q.SetHostLimit(ctx, sqlc.SetHostLimitParams{ID: id, MaxEnvironments: in.MaxEnvironments}); err != nil {
+		if err = q.SetHostSetup(ctx, id); err != nil {
 			return err
 		}
 		out, err = s.setupView(ctx, q, id, tx)

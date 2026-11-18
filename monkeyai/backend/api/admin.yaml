@@ -1695,7 +1695,7 @@ paths:
                 - enabled
               - type: object
                 additionalProperties: false
-                required: [revision, enabled, cpu_credits_per_core_hour, memory_credits_per_gib_hour]
+                required: [revision, cpu_credits_per_core_hour, memory_credits_per_gib_hour]
                 properties:
                   revision: {type: integer}
                   enabled: {type: boolean}
@@ -6083,7 +6083,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6197,7 +6197,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6217,7 +6217,7 @@ paths:
           format: uuid
     delete:
       summary: 删除运行实例并保留持久目录
-      description: '环境确认删除后释放数量名额；失败可用新request_key和当前generation重试，不执行数据purge。所有响应不缓存。'
+      description: '环境确认删除后不再下发目标；失败可用新request_key和当前generation重试，不执行数据purge。所有响应不缓存。'
       responses:
         '202':
           description: 请求已接受；操作结果通过查询环境或操作列表获得。
@@ -6250,7 +6250,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6310,7 +6310,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6377,7 +6377,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6401,6 +6401,51 @@ paths:
         schema:
           type: string
           format: uuid
+  /api/admin/v1/environment-specifications:
+    get:
+      summary: 读取全局云电脑规格目录
+      description: 仅管理员可读。返回完整有序列表和整表 revision，不分页、不缓存；已有环境不依赖此目录启动。
+      responses:
+        '200':
+          description: 全局规格目录。
+          content:
+            application/json:
+              schema:
+                $ref: 'agent.yaml#/components/schemas/EnvironmentSpecificationCatalog'
+        '401':
+          description: 未登录。
+        '403':
+          description: 非管理员。
+    put:
+      summary: 原子替换全局云电脑规格目录
+      description: 提交完整 items 与读取时的 revision；最多 100 项，允许空数组关闭新建，不接受 null。新增项使用新的小写 UUID 和 version=0；已有项保留 id 与 version。CPU／内存改变时该项 version 递增，仅重排不变；每次成功提交 revision 递增。遗漏的项软删除，已删除 ID 不得复用。相同 CPU／内存组合或重复 ID 返回400，目录或条目版本冲突返回409 specifications_conflict，不部分保存。修改／删除不改写已有环境资源快照、计费资源或再次启动条件。所有响应不缓存。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentSpecificationCatalogInput'
+      responses:
+        '200':
+          description: 保存后的完整目录，包含最新版本。
+          content:
+            application/json:
+              schema:
+                $ref: 'agent.yaml#/components/schemas/EnvironmentSpecificationCatalog'
+        '400':
+          description: 规格、列表或版本字段无效。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentError'}
+        '401':
+          description: 未登录。
+        '403':
+          description: 非管理员。
+        '409':
+          description: specifications_conflict；重新加载目录后再编辑，禁止直接覆盖其他管理员的更新。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentError'}
   /api/admin/v1/environment-hosts:
     get:
       summary: 查询宿主环境容量
@@ -6437,7 +6482,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6464,8 +6509,8 @@ paths:
           maximum: 100
   /api/admin/v1/environment-hosts/{id}/setup:
     get:
-      summary: 读取全局环境资源与用户额度
-      description: 只保存资源与默认用户额度，不接受名称、镜像、架构或网络策略配置。默认镜像来自server导入清单，架构自动适配宿主；镜像准备状态只读返回。容量使用最新硬件报告全量，调度开关独立保存。已有环境快照不变，个人配额优先。所有响应不缓存。
+      summary: 读取宿主授权范围
+      description: 读取当前宿主的授权范围和镜像准备状态，不返回宿主 resource 或数量上限。默认镜像由服务端按架构准备；capacity 反映硬件报告，billing 是只读全局计费配置。调度开关独立保存。所有响应不缓存。
       parameters:
       - name: id
         in: path
@@ -6505,7 +6550,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6517,8 +6562,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
     put:
-      summary: 原子保存全局环境资源与默认用户额度
-      description: 当前宿主独立保存规格、宿主最大环境数、每用户默认数量、计费及授权，最后有效提交覆盖，不使用配置revision。数量包含已停止环境，确认删除后释放；允许CPU／内存总规格超卖，降低上限不删除或停止现有环境。修改价格只影响后续可确认区间，已有执行规格不改写。
+      summary: 原子保存宿主授权范围
+      description: 当前宿主独立保存授权范围，最后有效提交覆盖，不使用配置 revision。resource 和数量上限不再接受；计费到全局费用设置修改。允许 CPU／内存总规格超卖，不限制宿主或用户环境数量，不删除或停止现有环境。
       parameters:
       - name: id
         in: path
@@ -6558,7 +6603,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6611,7 +6656,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6676,7 +6721,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
         '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          description: 版本、幂等键、状态、计费或宿主准入冲突；响应 error.code 区分原因。
           content:
             application/json:
               schema:
@@ -6693,125 +6738,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/EnvironmentCapacityInput'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-  /api/admin/v1/environment-quotas/{id}:
-    parameters:
-    - name: host_id
-      in: query
-      required: true
-      schema: {type: string, format: uuid}
-      description: 配额所属宿主，统计和校验仅限该宿主。
-    get:
-      summary: 查询用户在宿主上的环境配额
-      description: 'id是用户UUID，host_id是宿主UUID；未设置个人覆盖时使用该宿主的默认用户配额。所有响应使用Cache-Control: no-store。'
-      responses:
-        '200':
-          description: 成功。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentQuota'
-        '400':
-          description: 请求参数、字段或大小无效。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '401':
-          description: 登录凭据无效或过期。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '403':
-          description: 缺少管理员角色或对应 environment scope。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '404':
-          description: 资源不存在或不属于当前用户。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '500':
-          description: 内部存储或服务错误。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    put:
-      summary: 设置用户环境额度
-      description: ' 所有响应使用 Cache-Control: no-store。'
-      responses:
-        '200':
-          description: 成功。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentQuota'
-        '400':
-          description: 请求参数、字段或大小无效。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '401':
-          description: 登录凭据无效或过期。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '403':
-          description: 缺少管理员角色或对应 environment scope。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '404':
-          description: 资源不存在或不属于当前用户。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '409':
-          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-        '500':
-          description: 内部存储或服务错误。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvironmentError'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EnvironmentQuotaInput'
       parameters:
       - name: id
         in: path
@@ -10417,18 +10343,11 @@ components:
         degraded: {type: boolean}
         warnings: {type: array, items: {type: string}}
         items: {type: array, items: {$ref: '#/components/schemas/KbSearchResult'}}
-    EnvironmentDefaultQuota:
-      type: object
-      additionalProperties: false
-      required: [max_environments]
-      description: 用户在指定宿主的环境持有数量，含停止及未确认删除的环境；0禁止新建，不代表无限。
-      properties:
-        max_environments: {type: integer, minimum: 0, maximum: 1000000}
     EnvironmentBillingConfig:
       type: object
       additionalProperties: false
       required: [enabled, cpu_credits_per_core_hour, memory_credits_per_gib_hour]
-      description: 全局配置，适用于所有宿主机，默认关闭且不继承旧宿主计价；仅通过费用设置保存。启动前按分配CPU和内存预扣完整一小时，到期续扣；提前停止不退款，已付费期限内重启不重复扣费。存储暂不收费，仅支持本地积分。调价从下一次续费生效，历史按秒账单仍按已确认用量结清。
+      description: 全局配置，适用于所有宿主机，无独立关闭开关；enabled 为兼容字段，始终为 true。CPU 默认每核每小时100积分，内存默认每GB每小时50积分（GB=1024³字节），不继承旧宿主计价；仅通过费用设置保存，仍受系统总计费开关控制。启动前按分配CPU和内存预扣完整一小时，到期续扣；提前停止不退款，已付费期限内重启不重复扣费。存储暂不收费，仅支持本地积分。调价从下一次续费生效，历史按秒账单仍按已确认用量结清。
       properties:
         enabled: {type: boolean}
         cpu_credits_per_core_hour:
@@ -10444,40 +10363,47 @@ components:
         group_id: {type: string, format: uuid}
         all_users: {type: boolean}
         usage_requirement: {type: string, enum: [optional]}
+    EnvironmentSpecificationCatalogInput:
+      type: object
+      additionalProperties: false
+      required: [revision, items]
+      properties:
+        revision: {type: integer, format: int64, minimum: 0}
+        items:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, version, cpu_millis, memory_bytes]
+            properties:
+              id: {type: string, format: uuid, pattern: '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'}
+              version: {type: integer, format: int64, minimum: 0, description: 新增为0，已有项携带最新版本}
+              cpu_millis: {type: integer, format: int64, minimum: 100, maximum: 256000}
+              memory_bytes: {type: integer, format: int64, minimum: 268435456, maximum: 1099511627776}
     EnvironmentSetupInput:
       type: object
       additionalProperties: false
-      required: [resource, max_environments, user_max_environments]
       properties:
-        max_environments: {type: integer, minimum: 0, maximum: 1000000, description: 宿主上全部未确认删除环境的数量上限}
-        user_max_environments: {type: integer, minimum: 0, maximum: 1000000, description: 本宿主每位用户的默认数量上限}
-        resource:
-          $ref: host.yaml#/components/schemas/EnvironmentResource
         grants:
           type: array
           items: {$ref: '#/components/schemas/HostGrantInput'}
           description: 省略时保留现有范围；显式空数组撤回全部新建／启动权限，不打断已有环境。
     EnvironmentSetup:
       type: object
-      description: 当前宿主独立保存资源、用户配额和授权范围。billing 为只读全局计费配置，须到费用设置统一修改。
-      required: [host_id, host_name, max_environments, user_max_environments, resource, capacity, image_ready, billing, grants]
+      description: 当前宿主独立保存授权范围，不设置环境数量上限。CPU／内存规格独立全局管理；billing 为只读全局计费配置，须到费用设置统一修改。
+      required: [host_id, host_name, capacity, image_ready, billing, grants]
       properties:
         host_id: {type: string, format: uuid}
         host_name: {type: string}
         grants:
           type: array
           items: {$ref: '#/components/schemas/ResourceGrant'}
-        max_environments: {type: integer, minimum: 0, maximum: 1000000}
-        user_max_environments: {type: integer, minimum: 0, maximum: 1000000}
-        resource:
-          oneOf:
-          - $ref: host.yaml#/components/schemas/EnvironmentResource
-          - type: 'null'
         capacity:
           $ref: '#/components/schemas/EnvironmentCapacity'
         image_ready:
           type: boolean
-          description: server默认镜像是否已准备当前宿主架构；不影响保存资源，但未就绪不能创建环境。
+          description: server默认镜像是否已准备当前宿主架构；不影响保存授权，但未就绪不能创建环境。
         image_reason:
           type: string
           description: 默认镜像未就绪的原因。
@@ -10574,11 +10500,6 @@ components:
       - created_at
       - deleted_at
       properties:
-        billing:
-          $ref: agent.yaml#/components/schemas/EnvironmentBilling
-        billing_stop_reason:
-          type: string
-          enum: [insufficient_credits, billing_unavailable]
         runtime_version:
           type: string
           description: 最近一次宿主上报的 runtime 版本，未知为空。
@@ -10827,18 +10748,16 @@ components:
     EnvironmentCapacityInput:
       type: object
       additionalProperties: false
-      required: [enabled,max_environments]
+      required: [enabled]
       properties:
         enabled: {type: boolean}
-        max_environments: {type: integer, minimum: 0, maximum: 1000000}
     EnvironmentCapacity:
-      description: CPU与内存是宿主硬件报告，仅用于监控。准入只检查未确认删除环境数量，停止环境仍占名额；max_environments为0禁止新建。
+      description: CPU与内存是宿主硬件报告，仅用于监控，不作为准入容量；不设置环境数量上限，enabled控制是否允许新建调度。
       type: object
       required:
       - enabled
       - cpu_millis
       - memory_bytes
-      - max_environments
       properties:
         enabled:
           type: boolean
@@ -10852,11 +10771,6 @@ components:
           format: int64
           minimum: 0
           maximum: 9223372036854775807
-        max_environments:
-          type: integer
-          format: int64
-          minimum: 0
-          maximum: 1000000
       additionalProperties: false
     EnvironmentHost:
       type: object
@@ -10865,7 +10779,6 @@ components:
       - enabled
       - cpu_millis
       - memory_bytes
-      - max_environments
       - protocol
       - sync_at
       properties:
@@ -10884,11 +10797,6 @@ components:
           format: int64
           minimum: 0
           maximum: 17592186044416
-        max_environments:
-          type: integer
-          format: int64
-          minimum: 0
-          maximum: 1000000
         protocol:
           type: integer
           format: int64
@@ -10914,7 +10822,6 @@ components:
             - enabled
             - cpu_millis
             - memory_bytes
-            - max_environments
             - protocol
             - sync_at
             - architecture
@@ -10936,11 +10843,6 @@ components:
                 format: int64
                 minimum: 0
                 maximum: 17592186044416
-              max_environments:
-                type: integer
-                format: int64
-                minimum: 0
-                maximum: 10000
               protocol:
                 type: integer
                 format: int64
@@ -10975,20 +10877,6 @@ components:
           format: int64
           minimum: 1
           maximum: 100
-    EnvironmentQuotaInput:
-      type: object
-      additionalProperties: false
-      required: [max_environments]
-      description: 仅限制用户在指定宿主上的环境数量，停止仍计数；允许降低到已有数量以下，不清理现有环境。
-      properties:
-        max_environments: {type: integer, minimum: 0, maximum: 1000000}
-    EnvironmentQuota:
-      type: object
-      required: [host_id, user_id, max_environments]
-      properties:
-        host_id: {type: string, format: uuid}
-        user_id: {type: string, format: uuid}
-        max_environments: {type: integer, minimum: 0, maximum: 1000000}
     EngineUpgradeTask:
       type: object
       required: [id, from_version, version, status, reason, created_at, updated_at]
@@ -11016,6 +10904,7 @@ components:
     EngineHost:
       type: object
       required:
+      - grants
       - environment_count
       - id
       - name
@@ -11025,12 +10914,16 @@ components:
       - online
       - user_id
       - enabled
-      - max_environments
       - activated_at
       - last_seen_at
       - report
       - created_at
       properties:
+        grants:
+          type: array
+          description: 宿主授权范围，包含用户或分组名称；全员授权使用虚拟根分组表示。
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
         environment_count:
           type: integer
           format: int64
@@ -11040,7 +10933,6 @@ components:
         enabled:
           type: boolean
           description: 是否允许新建环境调度；关闭不停止已有环境。
-        max_environments: {type: integer, minimum: 0, maximum: 1000000}
         upgrade:
           $ref: '#/components/schemas/EngineUpgrade'
         id:

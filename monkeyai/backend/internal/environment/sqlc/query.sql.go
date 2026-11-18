@@ -11,8 +11,8 @@ import (
 )
 
 const accessibleHostCandidates = `-- name: AccessibleHostCandidates :many
-SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.max_environments,h.last_seen_at,h.environment_synced_at,h.report,c.resource,c.user_max_environments,COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing
-FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id WHERE h.deleted_at IS NULL AND c.resource IS NOT NULL ORDER BY h.id
+SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.last_seen_at,h.environment_synced_at,h.report,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing
+FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id WHERE h.deleted_at IS NULL ORDER BY h.id
 `
 
 type AccessibleHostCandidatesRow struct {
@@ -21,12 +21,9 @@ type AccessibleHostCandidatesRow struct {
 	Architecture        string     `json:"architecture"`
 	Status              string     `json:"status"`
 	Enabled             bool       `json:"enabled"`
-	MaxEnvironments     int32      `json:"max_environments"`
 	LastSeenAt          *time.Time `json:"last_seen_at"`
 	EnvironmentSyncedAt *time.Time `json:"environment_synced_at"`
 	Report              []byte     `json:"report"`
-	Resource            []byte     `json:"resource"`
-	UserMaxEnvironments int32      `json:"user_max_environments"`
 	Billing             []byte     `json:"billing"`
 }
 
@@ -45,12 +42,9 @@ func (q *Queries) AccessibleHostCandidates(ctx context.Context) ([]AccessibleHos
 			&i.Architecture,
 			&i.Status,
 			&i.Enabled,
-			&i.MaxEnvironments,
 			&i.LastSeenAt,
 			&i.EnvironmentSyncedAt,
 			&i.Report,
-			&i.Resource,
-			&i.UserMaxEnvironments,
 			&i.Billing,
 		); err != nil {
 			return nil, err
@@ -73,11 +67,20 @@ func (q *Queries) ActiveUser(ctx context.Context, id string) (string, error) {
 	return id, err
 }
 
+const advanceSpecificationRevision = `-- name: AdvanceSpecificationRevision :exec
+UPDATE environment_specification_catalog SET revision=revision+1 WHERE singleton
+`
+
+func (q *Queries) AdvanceSpecificationRevision(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, advanceSpecificationRevision)
+	return err
+}
+
 const availableHosts = `-- name: AvailableHosts :many
-SELECT h.id AS host_id,h.architecture,h.report,c.resource,h.max_environments,
+SELECT h.id AS host_id,h.architecture,h.report,
  (SELECT count(*) FROM environments e WHERE e.host_id=h.id AND NOT(e.desired='deleted' AND e.phase='deleted' AND e.observed_generation=e.generation))::bigint AS environment_count
 FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id
-WHERE c.resource IS NOT NULL AND h.enabled AND h.max_environments>0 AND h.exchange_protocol=1 AND h.environment_synced_at>now()-interval '90 seconds' AND h.status='active' AND h.deleted_at IS NULL
+WHERE h.enabled AND h.exchange_protocol=1 AND h.environment_synced_at>now()-interval '90 seconds' AND h.status='active' AND h.deleted_at IS NULL
 AND (NOT $1::boolean OR h.report->>'runtime_protocol'='1')
 AND h.last_seen_at>now()-interval '90 seconds' AND h.report->>'prerequisites_met'='true' AND h.architecture IN ('amd64','arm64')
 AND ($2::text='isolated' OR (jsonb_typeof(h.report->'network_policies')='array' AND (h.report->'network_policies') ? $2::text))
@@ -93,8 +96,6 @@ type AvailableHostsRow struct {
 	HostID           string `json:"host_id"`
 	Architecture     string `json:"architecture"`
 	Report           []byte `json:"report"`
-	Resource         []byte `json:"resource"`
-	MaxEnvironments  int32  `json:"max_environments"`
 	EnvironmentCount int64  `json:"environment_count"`
 }
 
@@ -111,8 +112,6 @@ func (q *Queries) AvailableHosts(ctx context.Context, arg AvailableHostsParams) 
 			&i.HostID,
 			&i.Architecture,
 			&i.Report,
-			&i.Resource,
-			&i.MaxEnvironments,
 			&i.EnvironmentCount,
 		); err != nil {
 			return nil, err
@@ -127,7 +126,7 @@ func (q *Queries) AvailableHosts(ctx context.Context, arg AvailableHostsParams) 
 
 const billedUserEnvironments = `-- name: BilledUserEnvironments :many
 SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at, e.deleted_at FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.user_id=$1 AND e.desired='running'
- AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
+  AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0)
 ORDER BY e.id FOR UPDATE OF e
 `
 
@@ -246,7 +245,7 @@ const billingUsers = `-- name: BillingUsers :many
 SELECT user_id FROM environment_billing_periods WHERE prepaid_until IS NULL AND (settled_seconds<EXTRACT(EPOCH FROM confirmed_until-started_at)
  OR (closed_at IS NULL AND confirmed_until<$1))
 UNION SELECT e.user_id FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.desired='running'
- AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
+  AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0)
 ORDER BY user_id
 `
 
@@ -722,15 +721,14 @@ func (q *Queries) GetEnvironment(ctx context.Context, arg GetEnvironmentParams) 
 }
 
 const getHost = `-- name: GetHost :one
-SELECT id AS host_id,enabled,max_environments,exchange_protocol AS protocol,environment_synced_at AS sync_at FROM hosts WHERE id=$1
+SELECT id AS host_id,enabled,exchange_protocol AS protocol,environment_synced_at AS sync_at FROM hosts WHERE id=$1
 `
 
 type GetHostRow struct {
-	HostID          string     `json:"host_id"`
-	Enabled         bool       `json:"enabled"`
-	MaxEnvironments int32      `json:"max_environments"`
-	Protocol        int32      `json:"protocol"`
-	SyncAt          *time.Time `json:"sync_at"`
+	HostID   string     `json:"host_id"`
+	Enabled  bool       `json:"enabled"`
+	Protocol int32      `json:"protocol"`
+	SyncAt   *time.Time `json:"sync_at"`
 }
 
 func (q *Queries) GetHost(ctx context.Context, id string) (GetHostRow, error) {
@@ -739,26 +737,9 @@ func (q *Queries) GetHost(ctx context.Context, id string) (GetHostRow, error) {
 	err := row.Scan(
 		&i.HostID,
 		&i.Enabled,
-		&i.MaxEnvironments,
 		&i.Protocol,
 		&i.SyncAt,
 	)
-	return i, err
-}
-
-const getQuota = `-- name: GetQuota :one
-SELECT host_id, user_id, max_environments FROM environment_quotas WHERE user_id=$1 AND host_id=$2
-`
-
-type GetQuotaParams struct {
-	UserID string `json:"user_id"`
-	HostID string `json:"host_id"`
-}
-
-func (q *Queries) GetQuota(ctx context.Context, arg GetQuotaParams) (EnvironmentQuota, error) {
-	row := q.db.QueryRow(ctx, getQuota, arg.UserID, arg.HostID)
-	var i EnvironmentQuota
-	err := row.Scan(&i.HostID, &i.UserID, &i.MaxEnvironments)
 	return i, err
 }
 
@@ -776,6 +757,29 @@ func (q *Queries) GetRuntime(ctx context.Context, environmentID string) (Environ
 		&i.InstanceID,
 		&i.Generation,
 		&i.RuntimeVersion,
+	)
+	return i, err
+}
+
+const getSpecification = `-- name: GetSpecification :one
+SELECT id,version,cpu_millis,memory_bytes FROM environment_specifications WHERE id=$1 AND deleted_at IS NULL
+`
+
+type GetSpecificationRow struct {
+	ID          string `json:"id"`
+	Version     int64  `json:"version"`
+	CpuMillis   int64  `json:"cpu_millis"`
+	MemoryBytes int64  `json:"memory_bytes"`
+}
+
+func (q *Queries) GetSpecification(ctx context.Context, id string) (GetSpecificationRow, error) {
+	row := q.db.QueryRow(ctx, getSpecification, id)
+	var i GetSpecificationRow
+	err := row.Scan(
+		&i.ID,
+		&i.Version,
+		&i.CpuMillis,
+		&i.MemoryBytes,
 	)
 	return i, err
 }
@@ -817,20 +821,18 @@ func (q *Queries) HostEnvironment(ctx context.Context, arg HostEnvironmentParams
 }
 
 const hostSetup = `-- name: HostSetup :one
-SELECT h.id,h.name,h.architecture,h.status,h.max_environments,c.resource,COALESCE(c.user_max_environments,3)::integer AS user_max_environments,
-COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing
+SELECT h.id,h.name,h.architecture,h.status,c.resource,
+('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing
 FROM hosts h LEFT JOIN host_environment_configs c ON c.host_id=h.id WHERE h.id=$1 AND h.deleted_at IS NULL
 `
 
 type HostSetupRow struct {
-	ID                  string `json:"id"`
-	Name                string `json:"name"`
-	Architecture        string `json:"architecture"`
-	Status              string `json:"status"`
-	MaxEnvironments     int32  `json:"max_environments"`
-	Resource            []byte `json:"resource"`
-	UserMaxEnvironments int32  `json:"user_max_environments"`
-	Billing             []byte `json:"billing"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Architecture string `json:"architecture"`
+	Status       string `json:"status"`
+	Resource     []byte `json:"resource"`
+	Billing      []byte `json:"billing"`
 }
 
 func (q *Queries) HostSetup(ctx context.Context, id string) (HostSetupRow, error) {
@@ -841,9 +843,7 @@ func (q *Queries) HostSetup(ctx context.Context, id string) (HostSetupRow, error
 		&i.Name,
 		&i.Architecture,
 		&i.Status,
-		&i.MaxEnvironments,
 		&i.Resource,
-		&i.UserMaxEnvironments,
 		&i.Billing,
 	)
 	return i, err
@@ -930,6 +930,27 @@ func (q *Queries) InactiveTargets(ctx context.Context, hostID string) ([]Environ
 	return items, nil
 }
 
+const insertSpecification = `-- name: InsertSpecification :exec
+INSERT INTO environment_specifications(id,cpu_millis,memory_bytes,position) VALUES($1,$2,$3,$4)
+`
+
+type InsertSpecificationParams struct {
+	ID          string `json:"id"`
+	CpuMillis   int64  `json:"cpu_millis"`
+	MemoryBytes int64  `json:"memory_bytes"`
+	Position    int32  `json:"position"`
+}
+
+func (q *Queries) InsertSpecification(ctx context.Context, arg InsertSpecificationParams) error {
+	_, err := q.db.Exec(ctx, insertSpecification,
+		arg.ID,
+		arg.CpuMillis,
+		arg.MemoryBytes,
+		arg.Position,
+	)
+	return err
+}
+
 const listEnvironments = `-- name: ListEnvironments :many
 SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at, e.deleted_at FROM environments e
 CROSS JOIN LATERAL (
@@ -1014,7 +1035,7 @@ func (q *Queries) ListEnvironments(ctx context.Context, arg ListEnvironmentsPara
 }
 
 const listHosts = `-- name: ListHosts :many
-SELECT id AS host_id,enabled,max_environments,exchange_protocol AS protocol,environment_synced_at AS sync_at,architecture,status,last_seen_at,report FROM hosts WHERE deleted_at IS NULL ORDER BY id LIMIT $1 OFFSET $2
+SELECT id AS host_id,enabled,exchange_protocol AS protocol,environment_synced_at AS sync_at,architecture,status,last_seen_at,report FROM hosts WHERE deleted_at IS NULL ORDER BY id LIMIT $1 OFFSET $2
 `
 
 type ListHostsParams struct {
@@ -1023,15 +1044,14 @@ type ListHostsParams struct {
 }
 
 type ListHostsRow struct {
-	HostID          string     `json:"host_id"`
-	Enabled         bool       `json:"enabled"`
-	MaxEnvironments int32      `json:"max_environments"`
-	Protocol        int32      `json:"protocol"`
-	SyncAt          *time.Time `json:"sync_at"`
-	Architecture    string     `json:"architecture"`
-	Status          string     `json:"status"`
-	LastSeenAt      *time.Time `json:"last_seen_at"`
-	Report          []byte     `json:"report"`
+	HostID       string     `json:"host_id"`
+	Enabled      bool       `json:"enabled"`
+	Protocol     int32      `json:"protocol"`
+	SyncAt       *time.Time `json:"sync_at"`
+	Architecture string     `json:"architecture"`
+	Status       string     `json:"status"`
+	LastSeenAt   *time.Time `json:"last_seen_at"`
+	Report       []byte     `json:"report"`
 }
 
 func (q *Queries) ListHosts(ctx context.Context, arg ListHostsParams) ([]ListHostsRow, error) {
@@ -1046,7 +1066,6 @@ func (q *Queries) ListHosts(ctx context.Context, arg ListHostsParams) ([]ListHos
 		if err := rows.Scan(
 			&i.HostID,
 			&i.Enabled,
-			&i.MaxEnvironments,
 			&i.Protocol,
 			&i.SyncAt,
 			&i.Architecture,
@@ -1128,6 +1147,42 @@ func (q *Queries) ListRuntimes(ctx context.Context, ids []string) ([]Environment
 			&i.InstanceID,
 			&i.Generation,
 			&i.RuntimeVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSpecifications = `-- name: ListSpecifications :many
+SELECT id,version,cpu_millis,memory_bytes FROM environment_specifications WHERE deleted_at IS NULL ORDER BY position,id
+`
+
+type ListSpecificationsRow struct {
+	ID          string `json:"id"`
+	Version     int64  `json:"version"`
+	CpuMillis   int64  `json:"cpu_millis"`
+	MemoryBytes int64  `json:"memory_bytes"`
+}
+
+func (q *Queries) ListSpecifications(ctx context.Context) ([]ListSpecificationsRow, error) {
+	rows, err := q.db.Query(ctx, listSpecifications)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSpecificationsRow{}
+	for rows.Next() {
+		var i ListSpecificationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Version,
+			&i.CpuMillis,
+			&i.MemoryBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -1274,7 +1329,6 @@ SELECT COALESCE(min(p.prepaid_until),$1::timestamptz+interval '1 minute')::times
 FROM environment_billing_periods p JOIN environments e ON e.id=p.environment_id
 JOIN host_environment_configs c ON c.host_id=e.host_id
 WHERE e.desired='running' AND p.prepaid_until>$1::timestamptz
-AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean
 `
 
 func (q *Queries) NextBillingExpiry(ctx context.Context, at time.Time) (time.Time, error) {
@@ -1498,6 +1552,15 @@ func (q *Queries) ReportState(ctx context.Context, arg ReportStateParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const retireSpecifications = `-- name: RetireSpecifications :exec
+UPDATE environment_specifications SET deleted_at=now() WHERE deleted_at IS NULL
+`
+
+func (q *Queries) RetireSpecifications(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, retireSpecifications)
+	return err
+}
+
 const runtimeAccess = `-- name: RuntimeAccess :one
 SELECT NOT EXISTS(SELECT 1 FROM environment_runtimes WHERE machine_id=$1::uuid) OR EXISTS(
  SELECT 1 FROM environments e JOIN environment_runtimes r ON r.environment_id=e.id JOIN users u ON u.id=e.user_id JOIN hosts h ON h.id=e.host_id
@@ -1505,8 +1568,7 @@ SELECT NOT EXISTS(SELECT 1 FROM environment_runtimes WHERE machine_id=$1::uuid) 
  AND e.generation=r.generation AND e.instance_id=r.instance_id AND u.status='active' AND u.deleted_at IS NULL AND h.status='active'
  AND (
   NOT EXISTS(SELECT 1 FROM settings c WHERE c.key='billing'
-   AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean
-   AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0))
+   AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0))
   OR NOT COALESCE((SELECT (value->>'enabled')::boolean FROM settings WHERE key='billing'),false)
   OR EXISTS(SELECT 1 FROM environment_billing_periods p WHERE p.environment_id=e.id AND p.prepaid_until>now() AND p.started_at<=now())
  )
@@ -1584,51 +1646,14 @@ func (q *Queries) SetBillingStopReason(ctx context.Context, arg SetBillingStopRe
 	return err
 }
 
-const setHostLimit = `-- name: SetHostLimit :exec
-UPDATE hosts SET max_environments=$2 WHERE id=$1
-`
-
-type SetHostLimitParams struct {
-	ID              string `json:"id"`
-	MaxEnvironments int32  `json:"max_environments"`
-}
-
-func (q *Queries) SetHostLimit(ctx context.Context, arg SetHostLimitParams) error {
-	_, err := q.db.Exec(ctx, setHostLimit, arg.ID, arg.MaxEnvironments)
-	return err
-}
-
 const setHostSetup = `-- name: SetHostSetup :exec
-INSERT INTO host_environment_configs(host_id,resource,user_max_environments) VALUES($1,$2,$3)
-ON CONFLICT(host_id) DO UPDATE SET resource=EXCLUDED.resource,user_max_environments=EXCLUDED.user_max_environments
+INSERT INTO host_environment_configs(host_id) VALUES($1)
+ON CONFLICT(host_id) DO NOTHING
 `
 
-type SetHostSetupParams struct {
-	HostID              string `json:"host_id"`
-	Resource            []byte `json:"resource"`
-	UserMaxEnvironments int32  `json:"user_max_environments"`
-}
-
-func (q *Queries) SetHostSetup(ctx context.Context, arg SetHostSetupParams) error {
-	_, err := q.db.Exec(ctx, setHostSetup, arg.HostID, arg.Resource, arg.UserMaxEnvironments)
+func (q *Queries) SetHostSetup(ctx context.Context, hostID string) error {
+	_, err := q.db.Exec(ctx, setHostSetup, hostID)
 	return err
-}
-
-const setQuota = `-- name: SetQuota :one
-INSERT INTO environment_quotas(user_id,host_id,max_environments) VALUES($1,$2,$3) ON CONFLICT(host_id,user_id) DO UPDATE SET max_environments=EXCLUDED.max_environments RETURNING host_id, user_id, max_environments
-`
-
-type SetQuotaParams struct {
-	UserID          string `json:"user_id"`
-	HostID          string `json:"host_id"`
-	MaxEnvironments int32  `json:"max_environments"`
-}
-
-func (q *Queries) SetQuota(ctx context.Context, arg SetQuotaParams) (EnvironmentQuota, error) {
-	row := q.db.QueryRow(ctx, setQuota, arg.UserID, arg.HostID, arg.MaxEnvironments)
-	var i EnvironmentQuota
-	err := row.Scan(&i.HostID, &i.UserID, &i.MaxEnvironments)
-	return i, err
 }
 
 const setScheduling = `-- name: SetScheduling :one
@@ -1650,6 +1675,28 @@ func (q *Queries) SetScheduling(ctx context.Context, arg SetSchedulingParams) (S
 	var i SetSchedulingRow
 	err := row.Scan(&i.HostID, &i.Enabled)
 	return i, err
+}
+
+const specificationExists = `-- name: SpecificationExists :one
+SELECT EXISTS(SELECT 1 FROM environment_specifications WHERE id=$1)
+`
+
+func (q *Queries) SpecificationExists(ctx context.Context, id string) (bool, error) {
+	row := q.db.QueryRow(ctx, specificationExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const specificationRevision = `-- name: SpecificationRevision :one
+SELECT revision FROM environment_specification_catalog WHERE singleton
+`
+
+func (q *Queries) SpecificationRevision(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, specificationRevision)
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
 }
 
 const supersedeOperations = `-- name: SupersedeOperations :exec
@@ -1729,6 +1776,31 @@ func (q *Queries) TouchHost(ctx context.Context, arg TouchHostParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
+const updateSpecification = `-- name: UpdateSpecification :one
+UPDATE environment_specifications SET
+ version=version+CASE WHEN cpu_millis<>$2 OR memory_bytes<>$3 THEN 1 ELSE 0 END,
+ cpu_millis=$2,memory_bytes=$3,position=$4,deleted_at=NULL WHERE id=$1 RETURNING version
+`
+
+type UpdateSpecificationParams struct {
+	ID          string `json:"id"`
+	CpuMillis   int64  `json:"cpu_millis"`
+	MemoryBytes int64  `json:"memory_bytes"`
+	Position    int32  `json:"position"`
+}
+
+func (q *Queries) UpdateSpecification(ctx context.Context, arg UpdateSpecificationParams) (int64, error) {
+	row := q.db.QueryRow(ctx, updateSpecification,
+		arg.ID,
+		arg.CpuMillis,
+		arg.MemoryBytes,
+		arg.Position,
+	)
+	var version int64
+	err := row.Scan(&version)
+	return version, err
+}
+
 const userBillingPeriods = `-- name: UserBillingPeriods :many
 SELECT id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until FROM environment_billing_periods WHERE user_id=$1 AND closed_at IS NULL AND confirmed_until>=$2 ORDER BY id
 `
@@ -1773,7 +1845,7 @@ func (q *Queries) UserBillingPeriods(ctx context.Context, arg UserBillingPeriods
 }
 
 const userEnvironmentHosts = `-- name: UserEnvironmentHosts :many
-SELECT DISTINCT c.host_id,COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1
+SELECT DISTINCT c.host_id,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1
 `
 
 type UserEnvironmentHostsRow struct {
@@ -1801,29 +1873,12 @@ func (q *Queries) UserEnvironmentHosts(ctx context.Context, userID string) ([]Us
 	return items, nil
 }
 
-const userHostUsage = `-- name: UserHostUsage :one
-SELECT count(*)::bigint AS environments FROM environments WHERE user_id=$1 AND host_id=$2 AND NOT(desired='deleted' AND phase='deleted' AND observed_generation=generation)
-`
-
-type UserHostUsageParams struct {
-	UserID string `json:"user_id"`
-	HostID string `json:"host_id"`
-}
-
-func (q *Queries) UserHostUsage(ctx context.Context, arg UserHostUsageParams) (int64, error) {
-	row := q.db.QueryRow(ctx, userHostUsage, arg.UserID, arg.HostID)
-	var environments int64
-	err := row.Scan(&environments)
-	return environments, err
-}
-
 const userPaidBillingHours = `-- name: UserPaidBillingHours :many
 SELECT DISTINCT ON(p.environment_id) p.id, p.environment_id, p.user_id, p.generation, p.pricing, p.cpu_millis, p.memory_bytes, p.started_at, p.confirmed_until, p.closed_at, p.settled_seconds, p.settled_amount, p.prepaid_until FROM environment_billing_periods p
 JOIN environments e ON e.id=p.environment_id
 JOIN host_environment_configs c ON c.host_id=e.host_id
 WHERE p.user_id=$1 AND p.prepaid_until>$2 AND p.started_at<=$2 AND e.desired='running' AND e.phase<>'failed'
-AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean
-AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
+AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0)
 ORDER BY p.environment_id,p.prepaid_until DESC
 `
 
