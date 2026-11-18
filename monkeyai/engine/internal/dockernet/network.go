@@ -100,7 +100,7 @@ func Inspect(ctx context.Context, c *dockerapi.Client, name, fingerprint, contai
 	}
 	return n, err
 }
-func Ensure(ctx context.Context, c *dockerapi.Client, name, fingerprint, containerName string) (Network, error) {
+func Ensure(ctx context.Context, c *dockerapi.Client, name, fingerprint, containerName string, private ...netip.Prefix) (Network, error) {
 	n, err := Inspect(ctx, c, name, fingerprint, containerName)
 	if dockerapi.NotFound(err) {
 		body := map[string]any{"Name": name, "Driver": "bridge", "CheckDuplicate": true, "EnableIPv6": false, "Labels": map[string]string{dockerapi.Owner: "engine", "io.monkeyai.spec": fingerprint, "io.monkeyai.dns": strings.Join(resolvers(), " ")}, "Options": map[string]string{"com.docker.network.bridge.enable_icc": "false", "com.docker.network.bridge.enable_ip_masquerade": "true"}}
@@ -112,7 +112,7 @@ func Ensure(ctx context.Context, c *dockerapi.Client, name, fingerprint, contain
 	if err != nil {
 		return n, err
 	}
-	return n, Guard(ctx, n, fingerprint)
+	return n, Guard(ctx, n, fingerprint, private...)
 }
 func run(ctx context.Context, args []string, input string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -162,11 +162,15 @@ func exists(ctx context.Context, n Network, fingerprint string) (bool, error) {
 
 const denied = "0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 192.0.0.0/24, 192.0.2.0/24, 192.88.99.0/24, 198.18.0.0/15, 198.51.100.0/24, 203.0.113.0/24, 224.0.0.0/4, 240.0.0.0/4, 100.100.100.200/32, 168.63.129.16/32"
 
-func rules(n Network, fingerprint string) string {
+func rules(n Network, fingerprint string, private ...netip.Prefix) string {
 	t, b := table(n), n.Bridge()
 	dns := ""
 	for _, ip := range n.DNS() {
 		dns += fmt.Sprintf("ip daddr %s udp dport 53 accept\nip daddr %s tcp dport 53 accept\n", ip, ip)
+	}
+	var allow strings.Builder
+	for _, p := range private {
+		fmt.Fprintf(&allow, "ip daddr %s ct status dnat drop\nip daddr %s oifname != %q tcp dport != 53 accept\n", p, p, b)
 	}
 	return fmt.Sprintf(`add table inet %s
 delete table inet %s
@@ -180,19 +184,21 @@ table inet %s {
  ip saddr != %s drop
  ct state invalid drop
  fib daddr type local drop
- %s
- ip daddr { %s } counter drop
+ %s%s ip daddr { %s } counter drop
  tcp dport { 22, 80, 443 } accept
  drop
  }
 }
-`, t, t, t, "monkeyai-docker-"+fingerprint, b, b, b, b, b, n.IPAM.Config[0].Subnet, dns, denied)
+`, t, t, t, "monkeyai-docker-"+fingerprint, b, b, b, b, b, n.IPAM.Config[0].Subnet, dns, allow.String(), denied)
 }
-func Guard(ctx context.Context, n Network, fingerprint string) error {
+func Guard(ctx context.Context, n Network, fingerprint string, private ...netip.Prefix) error {
+	if err := ValidatePrivateCIDRs(private); err != nil {
+		return err
+	}
 	if _, err := exists(ctx, n, fingerprint); err != nil {
 		return err
 	}
-	_, err := run(ctx, []string{"-f", "-"}, rules(n, fingerprint))
+	_, err := run(ctx, []string{"-f", "-"}, rules(n, fingerprint, private...))
 	return err
 }
 func Remove(ctx context.Context, c *dockerapi.Client, name, fingerprint, containerName string) error {
