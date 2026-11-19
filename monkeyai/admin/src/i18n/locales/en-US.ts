@@ -271,6 +271,7 @@ export const enUS = {
     states: {
       pending_running: "Awaiting start",
       pending_stopped: "Awaiting stop",
+      archived: "Removed, cleanup unconfirmed",
       pending_deleted: "Awaiting deletion",
       pending: "Pending",
       preparing: "Preparing",
@@ -826,7 +827,7 @@ export const enUS = {
       memoryCapacityBadge: "{{size}} GB RAM",
       diskCapacityBadge: "{{size}} GB disk",
       environmentCountHint:
-        "Environments not yet confirmed deleted, including stopped, failed, and deleting environments",
+        "Environments not yet removed, including stopped environments and pending or failed deletions",
       viewEnvironments: "View {{count}} environments on host “{{name}}”",
       upgrade: {
         title: "Engine upgrade",
@@ -889,7 +890,7 @@ export const enUS = {
       },
       delete: "Delete host",
       deleteHint:
-        "Removes this host from the list, revokes access and disables scheduling. Delete its cloud environments and wait for cleanup first. This does not uninstall engine or erase host data.",
+        "Removes this host from the list, revokes access and disables scheduling. Delete its environments first. If the engine was uninstalled, you can remove the offline host once those environments are archived. Cleanup commands will no longer be delivered; any remaining local data must be removed manually.",
       deleteFailed: "Failed to delete host",
       deleteSuccess: "Host deleted",
       revokeSuccess: "Host access revoked",

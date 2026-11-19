@@ -80,7 +80,7 @@ SELECT * FROM environments WHERE id=$1 AND (user_id=sqlc.narg(user_id)::uuid OR 
 -- name: ListEnvironments :many
 SELECT e.* FROM environments e
 CROSS JOIN LATERAL (
- SELECT CASE WHEN e.generation<>e.observed_generation THEN 'pending_' || e.desired ELSE e.phase END AS state,
+ SELECT CASE WHEN e.archived_at IS NOT NULL THEN 'deleted' WHEN e.generation<>e.observed_generation THEN 'pending_' || e.desired ELSE e.phase END AS state,
  CASE WHEN e.desired='running' AND e.phase='running' AND e.generation=e.observed_generation
    AND (e.usage->>'at')::timestamptz >= now()-interval '90 seconds'
  THEN (e.usage->>'cpu_cores')::double precision END AS cpu_usage,
@@ -90,7 +90,7 @@ CROSS JOIN LATERAL (
 ) metrics
 WHERE (e.user_id=sqlc.narg(user_id)::uuid OR sqlc.narg(user_id)::uuid IS NULL)
 AND (e.host_id=sqlc.narg(host_id)::uuid OR sqlc.narg(host_id)::uuid IS NULL)
-AND (sqlc.arg(include_deleted)::boolean OR e.deleted_at IS NULL)
+AND (sqlc.arg(include_deleted)::boolean OR (e.deleted_at IS NULL AND e.archived_at IS NULL))
 AND (sqlc.arg(status)::text='all'
  OR (sqlc.arg(status)::text='active' AND metrics.state<>'deleted')
  OR metrics.state=sqlc.arg(status)::text)
@@ -101,8 +101,13 @@ ORDER BY
  CASE WHEN sqlc.arg(sort)::text='memory_asc' THEN metrics.memory_usage END ASC NULLS LAST,
  e.created_at DESC,e.id DESC LIMIT $1 OFFSET $2;
 
+-- name: ArchiveOfflineDeletions :exec
+UPDATE environments e SET archived_at=now() FROM hosts h
+WHERE e.host_id=h.id AND e.desired='deleted' AND e.archived_at IS NULL AND e.generation<>e.observed_generation
+AND (h.status<>'active' OR h.last_seen_at IS NULL OR h.last_seen_at<=now()-interval '90 seconds');
+
 -- name: ChangeTarget :one
-UPDATE environments SET generation=generation+1,instance_id=$2,desired=$3,spec=$4,usage=NULL,deleted_at=NULL,
+UPDATE environments SET generation=generation+1,instance_id=$2,desired=$3,spec=$4,usage=NULL,deleted_at=NULL,archived_at=NULL,
 billing_stop_reason=CASE WHEN $3='running' THEN '' ELSE billing_stop_reason END,updated_at=now() WHERE id=$1 RETURNING *;
 
 -- name: CreateOperation :one
@@ -126,7 +131,7 @@ UPDATE environment_operations SET status='superseded',finished_at=now() WHERE en
 UPDATE environment_operations SET status=$3,reason=$4,finished_at=now() WHERE environment_id=$1 AND generation=$2 AND status='pending';
 
 -- name: ReportState :execrows
-UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=sqlc.arg(observed_at)::timestamptz,updated_at=now(),usage=$7,
+UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=sqlc.arg(observed_at)::timestamptz,updated_at=now(),usage=$7,archived_at=NULL,
 deleted_at=CASE WHEN desired='deleted' AND $5='deleted' THEN COALESCE(deleted_at,now()) ELSE NULL END
 WHERE id=$1 AND host_id=$2 AND instance_id=$3 AND generation=$4;
 

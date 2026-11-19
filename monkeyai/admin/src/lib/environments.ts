@@ -35,6 +35,7 @@ export type EnvironmentBillingConfig = {
   memory_credits_per_gib_hour: string
 }
 export type Environment = {
+  archived_at?: string
   runtime_version?: string
   usage_stale?: boolean
   usage?: { at: string; cpu_cores?: number; memory_bytes?: number }
@@ -77,9 +78,10 @@ export type Operation = {
 export function environmentState(
   env: Pick<
     Environment,
-    "generation" | "observed_generation" | "phase" | "desired"
+    "generation" | "observed_generation" | "phase" | "desired" | "archived_at"
   >
 ) {
+  if (env.archived_at) return "archived"
   if (env.generation !== env.observed_generation)
     return `pending_${env.desired}`
   return env.phase

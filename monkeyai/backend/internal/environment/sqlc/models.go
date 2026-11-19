@@ -28,6 +28,7 @@ type Environment struct {
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 	DeletedAt          *time.Time `json:"deleted_at"`
+	ArchivedAt         *time.Time `json:"archived_at"`
 }
 
 type EnvironmentBillingPeriod struct {

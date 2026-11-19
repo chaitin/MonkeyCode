@@ -2123,3 +2123,6 @@ DROP TABLE environment_quotas;
 ALTER TABLE host_environment_configs DROP COLUMN user_max_environments;
 
 ALTER TABLE hosts DROP COLUMN max_environments;
+
+ALTER TABLE environments ADD COLUMN archived_at timestamptz
+ CHECK (archived_at IS NULL OR (desired='deleted' AND generation<>observed_generation));

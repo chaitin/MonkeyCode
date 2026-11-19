@@ -241,6 +241,9 @@ func (s *Service) settleBilling(ctx context.Context, closedOnly bool) error {
 
 func (s *Service) Run(ctx context.Context) {
 	for {
+		if err := sqlc.New(s.pool).ArchiveOfflineDeletions(ctx); err != nil && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "归档离线宿主待删除环境失败", "error", err)
+		}
 		if err := s.settleBilling(ctx, false); err != nil && ctx.Err() == nil {
 			slog.ErrorContext(ctx, "环境计费结算失败", "error", err)
 		}
