@@ -272,6 +272,9 @@ func (s *Service) Change(ctx context.Context, user *string, id, desired string, 
 				spec.InstanceID = resource.ID()
 			}
 			spec.PersistentContainer = report.EnvironmentProtocol >= 2 && report.EnvironmentProtocol <= 3
+			if spec.RuntimePackage == nil && runtime.RuntimeVersion == "" {
+				spec.RuntimePackage = spec.bootstrapPackage
+			}
 		}
 		if desired == "stopped" && !spec.PersistentContainer {
 			host, err := q.HostStatus(ctx, env.HostID)
@@ -287,7 +290,7 @@ func (s *Service) Change(ctx context.Context, user *string, id, desired string, 
 			spec.PersistentContainer = report.EnvironmentProtocol >= 2 && report.EnvironmentProtocol <= 3
 		}
 		if desired == "stopped" {
-			spec.RuntimePackage = nil
+			spec.stop()
 		}
 		spec.Generation++
 		spec.DesiredState = desired

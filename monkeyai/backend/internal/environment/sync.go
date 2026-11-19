@@ -185,7 +185,7 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 				return err
 			}
 			spec.Generation++
-			spec.DesiredState = "stopped"
+			spec.stop()
 			raw := saveSpec(spec)
 			if err := q.SupersedeOperations(ctx, env.ID); err != nil {
 				return err

@@ -16,6 +16,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/dockerapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/lifecycle"
+	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/standalone"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/storage"
 )
 
@@ -268,8 +269,31 @@ if [ "$1" = -j ]; then echo '{"nftables":[]}'; else cat >/dev/null; fi
 		if _, err := os.Stat(filepath.Join(d.instanceDir(s), "serve.json")); !os.IsNotExist(err) {
 			t.Fatal("停止未清理旧 exec 记录", err)
 		}
-		if err = d.Start(ctx, s, ref); err != nil || creates != 1 {
-			t.Fatal("未复用已停止容器", creates, err)
+		if s.Runtime != nil {
+			s.RuntimePackage = &lifecycle.RuntimePackage{Version: "26.1114.1", Architecture: "amd64", Files: map[string]lifecycle.RuntimeFile{}}
+			for _, name := range []string{"monkeyai-runtime", "ohmyagent", "LICENSES.txt", "bundle.json"} {
+				s.RuntimePackage.Files[name] = lifecycle.RuntimeFile{SHA256: strings.Repeat("a", 64), Size: 1}
+			}
+			installed := standalone.Files{Binary: "/var/lib/monkeyai/_engine/monkeyai-runtime", Version: "26.1114.2"}
+			d.WithRuntimeSource(func(context.Context, lifecycle.Spec) (standalone.Files, error) { return installed, nil })
+			installs := 0
+			d.WithRuntimeUpdater(func(_ context.Context, target lifecycle.Spec) error {
+				installs++
+				installed = standalone.Files{Binary: "/var/lib/monkeyai/_engine/monkeyai-runtime", Version: target.RuntimePackage.Version}
+				return nil
+			})
+			if err = d.Start(ctx, s, ref); err == nil || installs != 0 {
+				t.Fatal("启动不应替换已安装的其他版本", installs, err)
+			}
+			installed = standalone.Files{}
+			if err = d.Start(ctx, s, ref); err != nil || installs != 1 {
+				t.Fatal("未为已停止容器补装原运行时", installs, err)
+			}
+		} else if err = d.Start(ctx, s, ref); err != nil {
+			t.Fatal(err)
+		}
+		if creates != 1 {
+			t.Fatal("未复用已停止容器", creates)
 		}
 		if err = d.Stop(ctx, s, ref); err != nil {
 			t.Fatal(err)

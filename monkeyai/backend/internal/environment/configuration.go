@@ -17,10 +17,11 @@ type executionConfig struct {
 	NetworkPolicy       string          `json:"network_policy"`
 	Runtime             *Runtime        `json:"runtime,omitempty"`
 	RuntimePackage      *RuntimePackage `json:"runtime_package,omitempty"`
+	BootstrapPackage    *RuntimePackage `json:"runtime_bootstrap_package,omitempty"`
 }
 
 func saveSpec(s Spec) []byte {
-	raw, _ := json.Marshal(executionConfig{Driver: s.Driver, Image: s.Image, ImageDigest: s.ImageDigest, PersistentContainer: s.PersistentContainer, HostTasks: s.Resource.HostTasks, TemporaryBytes: s.Resource.TemporaryBytes, Volumes: s.Volumes, NetworkPolicy: s.NetworkPolicy, Runtime: s.Runtime, RuntimePackage: s.RuntimePackage})
+	raw, _ := json.Marshal(executionConfig{Driver: s.Driver, Image: s.Image, ImageDigest: s.ImageDigest, PersistentContainer: s.PersistentContainer, HostTasks: s.Resource.HostTasks, TemporaryBytes: s.Resource.TemporaryBytes, Volumes: s.Volumes, NetworkPolicy: s.NetworkPolicy, Runtime: s.Runtime, RuntimePackage: s.RuntimePackage, BootstrapPackage: s.bootstrapPackage})
 	return raw
 }
 func executionSpec(e sqlc.Environment) (Spec, error) {
@@ -28,8 +29,17 @@ func executionSpec(e sqlc.Environment) (Spec, error) {
 	if err := json.Unmarshal(e.Spec, &c); err != nil {
 		return Spec{}, err
 	}
-	return Spec{EnvironmentID: e.ID, InstanceID: e.InstanceID, Generation: e.Generation, DesiredState: e.Desired, Driver: c.Driver, Image: c.Image, ImageDigest: c.ImageDigest, PersistentContainer: c.PersistentContainer, Resource: Resources{CPUMillis: e.CpuMillis, MemoryBytes: e.MemoryBytes, HostTasks: c.HostTasks, TemporaryBytes: c.TemporaryBytes}, Volumes: c.Volumes, NetworkPolicy: c.NetworkPolicy, Runtime: c.Runtime, RuntimePackage: c.RuntimePackage}, nil
+	return Spec{EnvironmentID: e.ID, InstanceID: e.InstanceID, Generation: e.Generation, DesiredState: e.Desired, Driver: c.Driver, Image: c.Image, ImageDigest: c.ImageDigest, PersistentContainer: c.PersistentContainer, Resource: Resources{CPUMillis: e.CpuMillis, MemoryBytes: e.MemoryBytes, HostTasks: c.HostTasks, TemporaryBytes: c.TemporaryBytes}, Volumes: c.Volumes, NetworkPolicy: c.NetworkPolicy, Runtime: c.Runtime, RuntimePackage: c.RuntimePackage, bootstrapPackage: c.BootstrapPackage}, nil
 }
+func (s *Spec) stop() {
+	// 停止命令携带 runtime_package 会触发升级；保留启动阶段的包以便补装。
+	if s.DesiredState == "running" && s.RuntimePackage != nil {
+		s.bootstrapPackage = s.RuntimePackage
+	}
+	s.RuntimePackage = nil
+	s.DesiredState = "stopped"
+}
+
 func wireSpec(e sqlc.Environment) json.RawMessage {
 	spec, err := executionSpec(e)
 	if err != nil {
