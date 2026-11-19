@@ -395,7 +395,7 @@ export function TaskHistoryPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
+                          className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring account-user-link"
                           title={task.user_email}
                           onClick={() => openAccount(task)}
                         >

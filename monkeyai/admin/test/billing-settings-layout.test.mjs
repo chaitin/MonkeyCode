@@ -238,7 +238,7 @@ test("billing settings separate the group tree and member item list", async () =
   )
   assert.match(
     groupRows,
-    /text-muted-foreground tabular-nums transition-colors group-hover\/quota-row:text-foreground/
+    /text-muted-foreground transition-colors group-hover\/quota-row:text-blue-600/
   )
 
   assert.match(userItem, /<div\s+key=\{user\.id\}\s+role="listitem"/)

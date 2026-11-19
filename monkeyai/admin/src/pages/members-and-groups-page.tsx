@@ -760,9 +760,14 @@ export function MembersAndGroupsPage() {
                         </ItemMedia>
                         <ItemContent className="min-w-0">
                           <ItemTitle className="min-w-0 max-w-full flex-wrap gap-y-1">
-                            <span className="truncate font-medium">
+                            <button
+                              type="button"
+                              aria-haspopup="dialog"
+                              className="max-w-full cursor-pointer truncate text-start font-medium hover:text-blue-600 focus-visible:text-blue-600 dark:hover:text-blue-400 dark:focus-visible:text-blue-400"
+                              onClick={() => setAccountUserID(user.id)}
+                            >
                               {user.name}
-                            </span>
+                            </button>
                             {user.role === "admin" && (
                               <Badge
                                 variant="outline"

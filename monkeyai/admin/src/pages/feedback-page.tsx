@@ -473,7 +473,7 @@ export function FeedbackPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex max-w-52 cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
+                          className="flex max-w-52 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring account-user-link"
                           title={item.user_email || item.user_id}
                           onClick={() => setAccountUserID(item.user_id)}
                         >

@@ -439,7 +439,7 @@ export function BillingSettingsPage() {
             <Button
               type="button"
               variant="ghost"
-              className="h-auto cursor-pointer justify-start whitespace-normal text-start underline-offset-2 hover:bg-muted [&:enabled:hover_[data-slot=item-title]_span]:underline"
+              className="group/member-quota h-auto cursor-pointer justify-start whitespace-normal text-start hover:bg-muted"
               onClick={() => {
                 memberVirtualizer.pin("menu", user.id, true)
                 setAccountUserID(user.id)
@@ -453,7 +453,9 @@ export function BillingSettingsPage() {
           </ItemMedia>
           <ItemContent className="min-w-0">
             <ItemTitle className="min-w-0 max-w-full">
-              <span className="truncate">{user.name}</span>
+              <span className="truncate group-hover/member-quota:text-blue-600 group-focus-visible/member-quota:text-blue-600 dark:group-hover/member-quota:text-blue-400 dark:group-focus-visible/member-quota:text-blue-400">
+                {user.name}
+              </span>
             </ItemTitle>
           </ItemContent>
           <ItemActions>
@@ -500,8 +502,10 @@ export function BillingSettingsPage() {
             }}
             onClick={openGroupQuota}
           >
-            <span className="min-w-0 flex-1 truncate text-start">{g.name}</span>
-            <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground transition-colors group-hover/quota-row:text-foreground">
+            <span className="min-w-0 flex-1 truncate text-start group-hover/quota-row:text-blue-600 dark:group-hover/quota-row:text-blue-400">
+              {g.name}
+            </span>
+            <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground transition-colors group-hover/quota-row:text-blue-600 dark:group-hover/quota-row:text-blue-400">
               {savedLocalBilling
                 ? periodicQuotaLabel(effective)
                 : savedBillingStateLabel}

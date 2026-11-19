@@ -317,7 +317,7 @@ export function ConversationHistoryPage() {
         return (
           <button
             type="button"
-            className="flex w-full min-w-0 items-center gap-2 rounded-sm text-start underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
+            className="flex w-full min-w-0 items-center gap-2 rounded-sm text-start focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer account-user-link"
             title={entry.user_email}
             disabled={!entry.user_id}
             onClick={() => setAccountUserID(entry.user_id)}

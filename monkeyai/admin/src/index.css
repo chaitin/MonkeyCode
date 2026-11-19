@@ -6,6 +6,13 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .account-user-link:enabled:hover,
+  .account-user-link:enabled:focus-visible {
+    @apply text-blue-600 dark:text-blue-400;
+  }
+}
+
 @keyframes marquee {
   to {
     transform: translateX(calc(-100% - var(--gap)));
