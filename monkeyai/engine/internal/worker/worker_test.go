@@ -204,7 +204,7 @@ func TestResultsSurviveNetworkFailureAndRestart(t *testing.T) {
 	if len(reports) != 1 || reports[0].Phase != "running" {
 		t.Fatal("重启后没有重传结果")
 	}
-	wait(t, func() bool { reopened.mu.Lock(); defer reopened.mu.Unlock(); return reopened.active == "" })
+	wait(t, func() bool { reopened.mu.Lock(); defer reopened.mu.Unlock(); return len(reopened.active) == 0 })
 	exec.mu.Lock()
 	calls := len(exec.calls)
 	exec.mu.Unlock()
@@ -242,7 +242,7 @@ func TestNewTargetCancelsOldWorkBeforeCleanup(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("新停止目标未取消创建")
 	}
-	wait(t, func() bool { w.mu.Lock(); defer w.mu.Unlock(); return w.active == "" })
+	wait(t, func() bool { w.mu.Lock(); defer w.mu.Unlock(); return len(w.active) == 0 })
 	if err := w.Tick(t.Context(), client, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +371,7 @@ func TestRuntimeApprovalWaitsForSignedExchange(t *testing.T) {
 			if err := w.Tick(t.Context(), client, cfg); err != nil {
 				t.Fatal(err)
 			}
-			wait(t, func() bool { w.mu.Lock(); defer w.mu.Unlock(); return w.approval != nil })
+			wait(t, func() bool { w.mu.Lock(); defer w.mu.Unlock(); return len(w.approvals) > 0 })
 			w.mu.Lock()
 			result := w.entries[s.EnvironmentID].Result
 			w.mu.Unlock()

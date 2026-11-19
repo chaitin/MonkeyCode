@@ -22,13 +22,16 @@ import (
 
 type Config struct {
 	NetworkConfig
-	Insecure     bool   `json:"insecure,omitempty"`
-	Server       string `json:"server"`
-	ServerURL    string `json:"server_url,omitempty"`
-	HostID       string `json:"host_id"`
-	Architecture string `json:"architecture"`
-	Version      string `json:"version"`
-	DataDir      string `json:"data_dir"`
+	RawLogEnvironments []string `json:"raw_log_environments,omitempty"`
+	OperationWorkers   int      `json:"operation_workers,omitempty"`
+	InspectionWorkers  int      `json:"inspection_workers,omitempty"`
+	Insecure           bool     `json:"insecure,omitempty"`
+	Server             string   `json:"server"`
+	ServerURL          string   `json:"server_url,omitempty"`
+	HostID             string   `json:"host_id"`
+	Architecture       string   `json:"architecture"`
+	Version            string   `json:"version"`
+	DataDir            string   `json:"data_dir"`
 }
 type Client struct {
 	Server  string
@@ -103,13 +106,16 @@ func (c *Client) post(ctx context.Context, path string, in, out any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return ErrUnauthorized
+		return fmt.Errorf("%s: HTTP %d: %w", path, resp.StatusCode, ErrUnauthorized)
 	}
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("后台请求失败，状态码 %d", resp.StatusCode)
+		return fmt.Errorf("%s: 后台请求失败，状态码 %d", path, resp.StatusCode)
 	}
 	d := json.NewDecoder(io.LimitReader(resp.Body, 64<<10))
-	return d.Decode(out)
+	if err := d.Decode(out); err != nil {
+		return fmt.Errorf("%s: 后台响应不是有效 JSON: %w", path, err)
+	}
+	return nil
 }
 func (c *Client) Enroll(ctx context.Context, token, arch, version string) (string, error) {
 	name, err := os.Hostname()

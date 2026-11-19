@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"regexp"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/lifecycle"
@@ -84,11 +85,13 @@ func Ensure(ctx context.Context, s lifecycle.Spec, runner Runner, approve Approv
 		if status.Account != nil && (status.Account.UserID != s.Runtime.UserID || status.Account.ServerID != s.Runtime.ServerID || status.Account.Server != s.Runtime.Server) {
 			return errors.New("持久目录已属于其他账号或后台")
 		}
+		slog.Info("开始 runtime 设备登录", "environment_id", s.EnvironmentID, "generation", s.Generation)
 		if err := runner.Login(ctx, s, func(code string) error {
 			current, err := runner.Status(ctx, s)
 			if err != nil {
 				return err
 			}
+			slog.Info("等待后台批准设备授权", "environment_id", s.EnvironmentID, "generation", s.Generation)
 			return request(current, code)
 		}); err != nil {
 			return err
@@ -103,6 +106,9 @@ func Ensure(ctx context.Context, s lifecycle.Spec, runner Runner, approve Approv
 	}
 	if err := request(status, ""); err != nil {
 		return err
+	}
+	if !observe {
+		slog.Info("启动 runtime 服务", "environment_id", s.EnvironmentID, "generation", s.Generation)
 	}
 	return runner.Serve(ctx, s, observe)
 }

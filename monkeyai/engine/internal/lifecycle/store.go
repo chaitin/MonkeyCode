@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
@@ -26,10 +27,10 @@ type FileStore struct{ Root string }
 
 func (s FileStore) path(id string) string { return filepath.Join(s.Root, id+".json") }
 
-func validID(id string) bool { return identifier.MatchString(id) }
+func ValidEnvironmentID(id string) bool { return identifier.MatchString(id) }
 
 func validateState(id string, state State) error {
-	if !validID(id) || id != state.Spec.EnvironmentID {
+	if !ValidEnvironmentID(id) || id != state.Spec.EnvironmentID {
 		return errors.New("状态与环境标识不一致")
 	}
 	if err := state.Spec.Validate(); err != nil {
@@ -44,7 +45,7 @@ func validateState(id string, state State) error {
 }
 
 func (s FileStore) Load(id string) (State, error) {
-	if !validID(id) {
+	if !ValidEnvironmentID(id) {
 		return State{}, errors.New("环境标识无效")
 	}
 	info, err := os.Lstat(s.path(id))
@@ -72,7 +73,7 @@ func (s FileStore) Load(id string) (State, error) {
 }
 
 func (s FileStore) Save(id string, state State) error {
-	if !validID(id) {
+	if !ValidEnvironmentID(id) {
 		return errors.New("环境标识无效")
 	}
 	if err := validateState(id, state); err != nil {
@@ -124,7 +125,11 @@ func (s FileStore) Save(id string, state State) error {
 		return fmt.Errorf("打开状态目录: %w", err)
 	}
 	defer dir.Close()
-	return dir.Sync()
+	if err := dir.Sync(); err != nil {
+		return err
+	}
+	slog.Info("环境生命周期检查点", "environment_id", id, "generation", state.Spec.Generation, "phase", state.Phase, "reason", state.Reason)
+	return nil
 }
 
 // Images 保护尚未完成清理的环境镜像，包括正在准备和启动失败的实例。
