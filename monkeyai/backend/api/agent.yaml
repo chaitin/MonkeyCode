@@ -7269,7 +7269,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MCPTool'
-          description: 实时启用工具，字段结构兼容旧客户端；无工具时为 []。独立认证专家清单在 credentials 内返回，resolve 提升所选凭证的工具。连接列表中此字段固定为空数组。内置知识库返回本地定义。
+          description: 本地快照中的启用工具，字段结构兼容旧客户端；无工具时为 []。独立认证专家清单在 credentials 内返回，resolve 提升所选凭证的工具。连接列表中此字段固定为空数组。内置知识库返回本地定义。
         tools_version:
           type: string
           description: tools 内容的哈希；专家清单和 resolve 基于服务端过滤后的工具计算。
@@ -7289,7 +7289,7 @@ components:
       - description
       - authorization_mode
       - capabilities
-      description: 连接列表保留空 tools 数组及对应 tools_version（独立认证在内嵌凭证下返回），不发起远端工具查询。专家 manifest 和 resolve 保留 tools 与 tools_version。独立认证目录在 credentials 内返回当前用户每份凭证的状态和专属代理地址，resolve 提升所选凭证的工具及网关；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。专家允许／拒绝规则在服务端应用，拒绝规则优先。工具定义实时获取，远端查询故障记录日志并在对应连接或凭证标记 connection_status=error、返回空 tools，不阻断目录和解析，也不回退旧目录。
+      description: 连接列表保留空 tools 数组及对应 tools_version（独立认证在内嵌凭证下返回），不发起远端工具查询。专家 manifest 和 resolve 保留 tools 与 tools_version。独立认证目录在 credentials 内返回当前用户每份凭证的状态和专属代理地址，resolve 提升所选凭证的工具及网关；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。专家允许／拒绝规则在服务端应用，拒绝规则优先。专家列表只读本地依赖和授权状态，版本随可见的本地工具快照变化；专家清单和解析读取本地快照，尚未同步的连接返回空工具列表。
     AgentExpert:
       type: object
       properties:
@@ -7893,7 +7893,7 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/MCPTool'
-            description: 仅专家清单内嵌凭证返回实时启用工具；未认证时为 []。连接列表中此字段固定为空数组。
+            description: 仅专家清单内嵌凭证返回快照中的启用工具；未认证时为 []。连接列表中此字段固定为空数组。
           tools_version:
             type: string
             description: tools 内容的哈希。

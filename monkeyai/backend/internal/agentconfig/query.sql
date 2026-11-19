@@ -96,7 +96,7 @@ SELECT jsonb_build_object(
     'description', t.description,
     'name_i18n', t.name_i18n,
     'description_i18n', t.description_i18n,
-    'content', t.content
+    'content', CASE WHEN NOT sqlc.arg(summary_only)::boolean THEN t.content END
 )
 FROM rules t
 WHERE t.deleted_at IS NULL
@@ -136,7 +136,7 @@ SELECT jsonb_build_object(
     'description', t.description,
     'name_i18n', t.name_i18n,
     'description_i18n', t.description_i18n,
-    'prompt', t.prompt,
+    'prompt', CASE WHEN NOT sqlc.arg(summary_only)::boolean THEN t.prompt END,
     'avatar_s3_key', t.avatar_s3_key
 )
 FROM experts t

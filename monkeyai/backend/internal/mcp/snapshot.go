@@ -34,6 +34,19 @@ func (s *Service) cachedTools(ctx context.Context, q resource.Queryer, c, cred, 
 	}))
 }
 
+func (s *Service) snapshotVersion(ctx context.Context, q resource.Queryer, c, cred, view resource.Object) ([]resource.Object, error) {
+	if at := syncedAt(c, cred); !at.IsZero() {
+		version, err := sqlc.New(q).SnapshotToolsVersion(ctx, sqlc.SnapshotToolsVersionParams{
+			ConnectorID: c.String("id"), CredentialID: cred.String("id"), ConfigRevision: c.Int("config_revision"), SyncedAt: at, Independent: c.String("authorization_mode") == "independent",
+		})
+		if err != nil {
+			return nil, err
+		}
+		view["snapshot_version"] = version
+	}
+	return nil, nil
+}
+
 func (s *Service) discoverTools(ctx context.Context, c, cred resource.Object) ([]remoteTool, error) {
 	headers, _, err := s.headers(ctx, c, cred)
 	if err != nil {
