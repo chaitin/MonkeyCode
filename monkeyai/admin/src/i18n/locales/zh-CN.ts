@@ -66,6 +66,10 @@ export const zhCN = {
     },
     runtimeVersion: "Runtime 版本",
     runtimeUnknown: "未确认",
+    upgradeRuntime: "升级 Runtime",
+    serverRuntime: "服务端版本",
+    confirmRuntime: "将 Runtime 升级到 {{version}}？环境将保持停止。",
+    noRuntimeUpdate: "没有更新版本",
     resourceUsage: "资源使用",
     usageHint:
       "显示实际占用 / 配置上限；CPU 百分比以分配核数为基准。内存排除可回收文件缓存，未上报时显示 —。",
