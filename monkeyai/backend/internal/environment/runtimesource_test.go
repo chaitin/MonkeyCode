@@ -35,13 +35,13 @@ func TestOfficialRuntimeRequiresNewHostCapability(t *testing.T) {
 	observation.RuntimeVersion = "26.1105.1"
 	syncState(t, service, host, observation)
 	input := RuntimeUpdate{Generation: 2, RequestKey: "official-update"}
-	if _, err := service.UpdateRuntime(ctx, env.UserID, env.ID, input); err == nil {
+	if _, err := service.UpdateRuntime(ctx, &env.UserID, env.ID, input); err == nil {
 		t.Fatal("将单文件下发给仅支持旧资源包的宿主")
 	}
 	if _, err := service.pool.Exec(ctx, `UPDATE hosts SET report=report || '{"runtime_update_protocol":2}'::jsonb WHERE id=$1`, host); err != nil {
 		t.Fatal(err)
 	}
-	updated, err := service.UpdateRuntime(ctx, env.UserID, env.ID, input)
+	updated, err := service.UpdateRuntime(ctx, &env.UserID, env.ID, input)
 	if err != nil {
 		t.Fatal(err)
 	}

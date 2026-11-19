@@ -27,14 +27,18 @@ type RuntimeInfo struct {
 	Operation       *Operation `json:"operation,omitempty"`
 }
 
-func (s *Service) runtimeInfo(w http.ResponseWriter, r *http.Request) {
+func (s *Service) runtimeInfo(admin bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { s.serveRuntimeInfo(w, r, owner(r, admin)) }
+}
+
+func (s *Service) serveRuntimeInfo(w http.ResponseWriter, r *http.Request, user *string) {
 	id := chi.URLParam(r, "id")
 	if !uuid.MatchString(id) {
 		fail(w, r, notFound)
 		return
 	}
 	query := sqlc.New(s.pool)
-	environment, err := query.GetEnvironment(r.Context(), sqlc.GetEnvironmentParams{ID: id, UserID: owner(r, false)})
+	environment, err := query.GetEnvironment(r.Context(), sqlc.GetEnvironmentParams{ID: id, UserID: user})
 	if err != nil {
 		fail(w, r, err)
 		return
@@ -100,26 +104,28 @@ func (s *Service) runtimeInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, r, 200, info)
 }
-func (s *Service) runtimeUpgrade(w http.ResponseWriter, r *http.Request) {
-	var in RuntimeUpdate
-	if !decode(w, r, &in) {
-		return
+func (s *Service) runtimeUpgrade(admin bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in RuntimeUpdate
+		if !decode(w, r, &in) {
+			return
+		}
+		out, err := s.UpdateRuntime(r.Context(), owner(r, admin), chi.URLParam(r, "id"), in)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		respond(w, r, 202, out)
 	}
-	out, err := s.UpdateRuntime(r.Context(), *owner(r, false), chi.URLParam(r, "id"), in)
-	if err != nil {
-		fail(w, r, err)
-		return
-	}
-	respond(w, r, 202, out)
 }
-func (s *Service) UpdateRuntime(ctx context.Context, user, id string, in RuntimeUpdate) (Result, error) {
+func (s *Service) UpdateRuntime(ctx context.Context, user *string, id string, in RuntimeUpdate) (Result, error) {
 	var result Result
-	if !uuid.MatchString(user) || !uuid.MatchString(id) || in.Generation < 1 || !key.MatchString(in.RequestKey) || in.Version != "" && !runtimeVersion.MatchString(in.Version) {
+	if user != nil && !uuid.MatchString(*user) || !uuid.MatchString(id) || in.Generation < 1 || !key.MatchString(in.RequestKey) || in.Version != "" && !runtimeVersion.MatchString(in.Version) {
 		return result, bad("runtime 更新参数无效")
 	}
 	requestHash := hash(in)
 	err := s.transaction(ctx, func(q *sqlc.Queries) error {
-		env, err := q.GetEnvironment(ctx, sqlc.GetEnvironmentParams{ID: id, UserID: &user})
+		env, err := q.GetEnvironment(ctx, sqlc.GetEnvironmentParams{ID: id, UserID: user})
 		if err != nil {
 			return err
 		}
@@ -156,7 +162,7 @@ func (s *Service) UpdateRuntime(ctx context.Context, user, id string, in Runtime
 				return conflict("environment_must_stop", "请先确认容器已停止")
 			}
 		}
-		if _, err := q.ActiveUser(ctx, user); errors.Is(err, pgx.ErrNoRows) {
+		if _, err := q.ActiveUser(ctx, env.UserID); errors.Is(err, pgx.ErrNoRows) {
 			return notFound
 		} else if err != nil {
 			return err

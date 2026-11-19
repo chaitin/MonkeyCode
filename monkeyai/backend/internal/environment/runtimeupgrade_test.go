@@ -38,7 +38,7 @@ func TestRuntimeUpgradeKeepsContainerAndIdentity(t *testing.T) {
 	if _, err := service.pool.Exec(ctx, `UPDATE hosts SET report=report || '{"environment_protocol":2,"runtime_update_protocol":1}'::jsonb WHERE id=$1`, host); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.UpdateRuntime(ctx, env.UserID, env.ID, RuntimeUpdate{Generation: 1, RequestKey: "running-update"}); err == nil {
+	if _, err := service.UpdateRuntime(ctx, &env.UserID, env.ID, RuntimeUpdate{Generation: 1, RequestKey: "running-update"}); err == nil {
 		t.Fatal("允许更新运行中的环境")
 	}
 	running := observe(env, "running")
@@ -52,7 +52,7 @@ func TestRuntimeUpgradeKeepsContainerAndIdentity(t *testing.T) {
 	stopped.RuntimeVersion = "26.1105.1"
 	syncState(t, service, host, stopped)
 	input := RuntimeUpdate{Generation: 2, RequestKey: "runtime-update"}
-	updated, err := service.UpdateRuntime(ctx, env.UserID, env.ID, input)
+	updated, err := service.UpdateRuntime(ctx, &env.UserID, env.ID, input)
 	if err != nil || updated.Environment.InstanceID != env.InstanceID || updated.Operation.Kind != "runtime_upgrade" || updated.Operation.TargetVersion != "26.1105.2" {
 		t.Fatal(updated, err)
 	}
@@ -61,7 +61,7 @@ func TestRuntimeUpgradeKeepsContainerAndIdentity(t *testing.T) {
 		t.Fatal(spec, err)
 	}
 	service.runtimeCatalog = nil
-	retry, err := service.UpdateRuntime(ctx, env.UserID, env.ID, input)
+	retry, err := service.UpdateRuntime(ctx, &env.UserID, env.ID, input)
 	if err != nil || retry.Operation.ID != updated.Operation.ID {
 		t.Fatal("配置变化破坏请求重试", retry, err)
 	}
@@ -84,21 +84,21 @@ func TestRuntimeUpgradeKeepsContainerAndIdentity(t *testing.T) {
 	if lookupErr != nil || identity.MachineID == nil || *identity.MachineID != binding.MachineID || authorizer.revoke != 0 {
 		t.Fatal("更新改变身份或撤销授权", identity, err)
 	}
-	rollback, err := service.UpdateRuntime(ctx, env.UserID, env.ID, RuntimeUpdate{Generation: 3, RequestKey: "rollback", Version: "26.1105.1"})
+	rollback, err := service.UpdateRuntime(ctx, &env.UserID, env.ID, RuntimeUpdate{Generation: 3, RequestKey: "rollback", Version: "26.1105.1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	failed := observe(rollback.Environment, "failed")
 	failed.Reason, failed.RuntimeVersion = "runtime_upgrade_failed", "26.1105.2"
 	syncState(t, service, host, failed)
-	retried, err := service.UpdateRuntime(ctx, env.UserID, env.ID, RuntimeUpdate{Generation: 4, RequestKey: "rollback-retry", Version: "26.1105.1"})
+	retried, err := service.UpdateRuntime(ctx, &env.UserID, env.ID, RuntimeUpdate{Generation: 4, RequestKey: "rollback-retry", Version: "26.1105.1"})
 	if err != nil {
 		t.Fatal("更新失败后不能重试", err)
 	}
 	finished := observe(retried.Environment, "stopped")
 	finished.RuntimeVersion = "26.1105.1"
 	syncState(t, service, host, finished)
-	if _, err := service.UpdateRuntime(ctx, resource.ID(), env.ID, RuntimeUpdate{Generation: 5, RequestKey: "cross-user"}); err == nil {
+	if _, err := service.UpdateRuntime(ctx, new(resource.ID()), env.ID, RuntimeUpdate{Generation: 5, RequestKey: "cross-user"}); err == nil {
 		t.Fatal("跨用户更新未拒绝")
 	}
 }

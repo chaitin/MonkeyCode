@@ -32,6 +32,7 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible"
+import { RuntimeUpgrade } from "@/components/environments/runtime-upgrade"
 import { EnvironmentStatus } from "@/components/environments/status-badge"
 import { OSIcon } from "@/components/environments/os-icon"
 import { UserAvatar } from "@/components/user-avatar"
@@ -389,7 +390,7 @@ export function EnvironmentsPage({
                   <TableCell>
                     <button
                       type="button"
-                      className="flex w-full min-w-0 items-center gap-2 rounded-sm text-start focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer account-user-link"
+                      className="account-user-link flex w-full min-w-0 items-center gap-2 rounded-sm text-start focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer"
                       title={env.user?.email}
                       disabled={!env.user_id}
                       onClick={() => setAccountUserID(env.user_id)}
@@ -742,6 +743,10 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                     )}
                   </div>
                 </section>
+                <RuntimeUpgrade
+                  environment={env}
+                  refreshOperations={operations.refresh}
+                />
                 <DetailSection title={t("environmentAdmin.basicInfo")}>
                   <DetailRows
                     items={[
@@ -750,7 +755,7 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                         t("environmentAdmin.creator"),
                         <button
                           type="button"
-                          className="flex min-w-0 max-w-full items-center gap-2 rounded-sm text-start focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer account-user-link"
+                          className="account-user-link flex min-w-0 max-w-full items-center gap-2 rounded-sm text-start focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer"
                           title={env.user?.email}
                           disabled={!env.user_id}
                           onClick={() => setAccountUserID(env.user_id)}
@@ -802,11 +807,6 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                     items={[
                       [t("environmentAdmin.environmentID"), env.id],
                       [t("environmentAdmin.instanceID"), env.instance_id],
-                      [
-                        t("environmentAdmin.runtimeVersion"),
-                        env.runtime_version ||
-                          t("environmentAdmin.runtimeUnknown"),
-                      ],
                       [t("environmentAdmin.image"), env.spec.image],
                     ]}
                   />
@@ -833,7 +833,9 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                         className="size-4 shrink-0 text-muted-foreground"
                         aria-hidden="true"
                       />
-                      {t("environmentAdmin.targets." + op.desired)}
+                      {op.kind === "runtime_upgrade"
+                        ? `${t("environmentAdmin.upgradeRuntime")} · ${op.target_version}`
+                        : t("environmentAdmin.targets." + op.desired)}
                       <HugeiconsIcon
                         icon={DotIcon}
                         className="size-4 shrink-0 text-muted-foreground"
