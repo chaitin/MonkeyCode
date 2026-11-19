@@ -8,6 +8,7 @@ import {
   MoreHorizontalIcon,
   MoveIcon,
   UserMultiple02Icon,
+  UserRoundCogIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -42,6 +43,7 @@ const allGroupActions: GroupAction[] = [
   "add-subgroup",
   "rename",
   "adjust-members",
+  "set-supervisors",
   "move",
   "delete",
 ]
@@ -52,6 +54,7 @@ const actionIcons = {
   "add-subgroup": Add01Icon,
   rename: Edit02Icon,
   "adjust-members": UserMultiple02Icon,
+  "set-supervisors": UserRoundCogIcon,
   move: MoveIcon,
   delete: Delete02Icon,
 }
@@ -331,7 +334,10 @@ function GroupTreeItem({
                 strokeWidth={2}
               />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent
+              align="end"
+              className="w-max min-w-40 max-w-[calc(100vw-2rem)]"
+            >
               <DropdownMenuGroup>
                 {allGroupActions
                   .filter((action) => action !== "delete")

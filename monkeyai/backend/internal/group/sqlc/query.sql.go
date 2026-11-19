@@ -109,7 +109,12 @@ SELECT
             AND gu.removed_at IS NULL
             AND u.deleted_at IS NULL
         ORDER BY
-            gu.user_id)::text[] AS member_ids
+            gu.user_id)::text[] AS member_ids,
+    ARRAY (
+        SELECT gu.user_id::text FROM group_users gu
+        JOIN users u ON u.id = gu.user_id AND u.deleted_at IS NULL
+        WHERE gu.group_id = g.id AND gu.removed_at IS NULL AND gu.is_supervisor
+        ORDER BY gu.user_id)::text[] AS supervisor_ids
     FROM
         GROUPS g
     WHERE
@@ -118,10 +123,11 @@ SELECT
 `
 
 type GetGroupRow struct {
-	ID        string
-	ParentID  *string
-	Name      string
-	MemberIds []string
+	ID            string
+	ParentID      *string
+	Name          string
+	MemberIds     []string
+	SupervisorIds []string
 }
 
 func (q *Queries) GetGroup(ctx context.Context, id string) (GetGroupRow, error) {
@@ -132,6 +138,7 @@ func (q *Queries) GetGroup(ctx context.Context, id string) (GetGroupRow, error) 
 		&i.ParentID,
 		&i.Name,
 		&i.MemberIds,
+		&i.SupervisorIds,
 	)
 	return i, err
 }
@@ -243,7 +250,12 @@ SELECT
             AND gu.removed_at IS NULL
             AND u.deleted_at IS NULL
         ORDER BY
-            gu.user_id)::text[] AS member_ids
+            gu.user_id)::text[] AS member_ids,
+    ARRAY (
+        SELECT gu.user_id::text FROM group_users gu
+        JOIN users u ON u.id = gu.user_id AND u.deleted_at IS NULL
+        WHERE gu.group_id = g.id AND gu.removed_at IS NULL AND gu.is_supervisor
+        ORDER BY gu.user_id)::text[] AS supervisor_ids
     FROM
         GROUPS g
     WHERE
@@ -254,10 +266,11 @@ SELECT
 `
 
 type ListGroupsRow struct {
-	ID        string
-	ParentID  *string
-	Name      string
-	MemberIds []string
+	ID            string
+	ParentID      *string
+	Name          string
+	MemberIds     []string
+	SupervisorIds []string
 }
 
 func (q *Queries) ListGroups(ctx context.Context) ([]ListGroupsRow, error) {
@@ -274,6 +287,7 @@ func (q *Queries) ListGroups(ctx context.Context) ([]ListGroupsRow, error) {
 			&i.ParentID,
 			&i.Name,
 			&i.MemberIds,
+			&i.SupervisorIds,
 		); err != nil {
 			return nil, err
 		}
@@ -317,6 +331,39 @@ func (q *Queries) LockMembers(ctx context.Context, dollar_1 []string) ([]string,
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockSupervisorCandidates = `-- name: LockSupervisorCandidates :many
+SELECT gu.user_id FROM group_users gu
+JOIN users u ON u.id = gu.user_id AND u.deleted_at IS NULL
+WHERE gu.group_id = $1 AND gu.removed_at IS NULL
+  AND gu.user_id = ANY($2::uuid[])
+ORDER BY gu.user_id FOR UPDATE OF gu FOR SHARE OF u
+`
+
+type LockSupervisorCandidatesParams struct {
+	GroupID string
+	UserIds []string
+}
+
+func (q *Queries) LockSupervisorCandidates(ctx context.Context, arg LockSupervisorCandidatesParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockSupervisorCandidates, arg.GroupID, arg.UserIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -519,6 +566,22 @@ func (q *Queries) SearchGroups(ctx context.Context, arg SearchGroupsParams) ([]S
 		return nil, err
 	}
 	return items, nil
+}
+
+const setSupervisors = `-- name: SetSupervisors :exec
+UPDATE group_users SET is_supervisor = (user_id = ANY($1::uuid[]))
+WHERE group_id = $2 AND removed_at IS NULL
+  AND is_supervisor <> (user_id = ANY($1::uuid[]))
+`
+
+type SetSupervisorsParams struct {
+	UserIds []string
+	GroupID string
+}
+
+func (q *Queries) SetSupervisors(ctx context.Context, arg SetSupervisorsParams) error {
+	_, err := q.db.Exec(ctx, setSupervisors, arg.UserIds, arg.GroupID)
+	return err
 }
 
 const touchGrantedConnectors = `-- name: TouchGrantedConnectors :execresult

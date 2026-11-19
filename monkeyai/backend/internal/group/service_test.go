@@ -109,6 +109,73 @@ func TestGroups(t *testing.T) {
 	if len(groups[0].MemberIDs) != 2 || len(groups[0].Actions) != 1 || groups[0].Actions[0] != "add-subgroup" || groups[0].AllowAddMembers {
 		t.Fatalf("用户应默认直属根分组，根节点操作由后端指定: %+v", groups[0])
 	}
+	t.Run("主管名单的权限、持久化及离组失效", func(t *testing.T) {
+		g := must("POST", "/groups", map[string]string{"name": "主管测试组"}, 201)
+		child := must("POST", "/groups", map[string]string{"name": "主管子组", "parent_id": g.ID}, 201)
+		path := "/groups/" + g.ID
+		set := func(ids []string, code int) Group {
+			return must("PUT", path+"/supervisors", map[string]any{"supervisor_ids": ids}, code)
+		}
+		read := func(id string) Group {
+			t.Helper()
+			res := call("GET", "/groups", nil, "admin-session")
+			var list struct{ Groups []Group }
+			if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &list) != nil {
+				t.Fatalf("读取分组失败: %s", res.Body.String())
+			}
+			for _, group := range list.Groups {
+				if group.ID == id {
+					return group
+				}
+			}
+			t.Fatalf("未找到分组 %s", id)
+			return Group{}
+		}
+		if g.SupervisorIDs == nil || !slices.Contains(g.Actions, "set-supervisors") || read(rootgroup.ID).SupervisorIDs == nil {
+			t.Fatal("分组主管初始状态错误")
+		}
+		for token, status := range map[string]int{"": 401, "member-session": 403} {
+			if w := call("PUT", path+"/supervisors", map[string]any{"supervisor_ids": []string{}}, token); w.Code != status {
+				t.Fatalf("权限检查: %d", w.Code)
+			}
+		}
+		must("PUT", "/groups/"+rootgroup.ID+"/supervisors", map[string]any{"supervisor_ids": []string{}}, 404)
+		must("PUT", path+"/supervisors", map[string]any{}, 400)
+		set(nil, 400)
+		set([]string{"invalid"}, 400)
+		set([]string{member}, 409)
+		must("PUT", "/groups/"+child.ID+"/members", map[string]any{"member_ids": []string{member}}, 200)
+		must("PUT", path+"/members", map[string]any{"member_ids": []string{actor}}, 200)
+		set([]string{actor}, 200)
+		set([]string{member}, 409)
+		if !slices.Equal(read(g.ID).SupervisorIDs, []string{actor}) {
+			t.Fatal("无效名单覆盖了原有主管")
+		}
+		must("PUT", path+"/members", map[string]any{"member_ids": []string{actor, member}}, 200)
+		updated := set([]string{actor, member, member}, 200)
+		if len(updated.SupervisorIDs) != 2 || !slices.Equal(updated.MemberIDs, updated.SupervisorIDs) || !slices.Equal(read(g.ID).SupervisorIDs, updated.SupervisorIDs) || len(read(child.ID).SupervisorIDs) != 0 {
+			t.Fatal("整组替换、回显或分组隔离错误")
+		}
+		if call("GET", "/groups", nil, "member-session").Code != 403 {
+			t.Fatal("主管不应获得管理员权限")
+		}
+		must("PUT", path+"/members", map[string]any{"member_ids": []string{actor}}, 200)
+		must("PUT", path+"/members", map[string]any{"member_ids": []string{actor, member}}, 200)
+		if !slices.Equal(read(g.ID).SupervisorIDs, []string{actor}) {
+			t.Fatal("重新入组不应恢复主管身份")
+		}
+		updated = set([]string{}, 200)
+		if updated.SupervisorIDs == nil || len(updated.SupervisorIDs) != 0 || len(updated.MemberIDs) != 2 {
+			t.Fatal("清空主管不应移除成员")
+		}
+		var audited bool
+		if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM audits WHERE target_id=$1 AND action='supervisors')`, g.ID).Scan(&audited); err != nil || !audited {
+			t.Fatalf("缺少主管配置审计: %v", err)
+		}
+		must("DELETE", "/groups/"+child.ID, nil, 204)
+		must("DELETE", path, nil, 204)
+		set([]string{}, 404)
+	})
 	rootID := resource.ID()
 	create := func(name string, parent any) Group {
 		t.Helper()

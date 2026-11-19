@@ -2526,6 +2526,27 @@ paths:
               required:
               - reason
   /api/admin/v1/users:
+    get:
+      summary: 查询管理端成员列表
+      description: 返回未删除的成员及其直接负责的有效分组，不继承子分组，不改变成员的全局角色。
+      responses:
+        '200':
+          description: 成员列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminListUser'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
     post:
       summary: 创建用户并加入分组
       description: 创建用户、保存密码哈希与写入全部直接分组关系在同一事务内完成，任一失败全部回滚。普通成员自动生成包含数字及大小写字母的 16 位随机初始密码，忽略请求中的 password；管理员使用请求中填写的初始密码。密码明文仅在创建成功的本次响应中通过 initial_password 返回，不写入成员资料、缓存或日志。group_ids 未传、为 null 或为空数组时不建立分组关系，用户自动显示在虚拟根分组下。重复分组 ID 自动去重，不可选择根分组、不存在或已删除的分组。只加入指定分组，不自动加入其父分组或子分组。批量添加可逐个调用此接口，每个用户独立提交。
@@ -2782,6 +2803,46 @@ paths:
       responses:
         "200":
           description: 已更新成员关系
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberGroup"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ResourceError404"
+        "409":
+          $ref: "#/components/responses/ResourceError409"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/groups/{groupID}/supervisors:
+    parameters:
+      - in: path
+        name: groupID
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      summary: 替换分组主管名单
+      description: 仅超级管理员可操作。仅接受该实际分组未删除的直属成员；重复 ID 去重，空数组清空。任一成员归属无效时整次拒绝，不改变成员关系、全局角色或登录权限。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [supervisor_ids]
+              properties:
+                supervisor_ids:
+                  type: array
+                  maxItems: 10000
+                  items: {type: string, format: uuid}
+      responses:
+        "200":
+          description: 更新后的分组及主管名单
           content:
             application/json:
               schema:
@@ -7533,6 +7594,21 @@ components:
       properties:
         user: {$ref: '#/components/schemas/EmailAuthUser'}
         custom_avatar_url: {type: string}
+    AdminListUser:
+      allOf:
+        - $ref: '#/components/schemas/EmailAuthUser'
+        - type: object
+          required: [supervised_groups]
+          properties:
+            supervised_groups:
+              type: array
+              description: 主管负责的直属分组，非主管返回空数组。
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id: {type: string, format: uuid}
+                  name: {type: string}
     EmailAuthUser:
       type: object
       required:
@@ -8241,7 +8317,7 @@ components:
             $ref: "#/components/schemas/MemberGroup"
     MemberGroup:
       type: object
-      required: [id, parent_id, name, member_ids, actions, allow_add_members]
+      required: [id, parent_id, name, member_ids, supervisor_ids, actions, allow_add_members]
       properties:
         id:
           type: string
@@ -8260,12 +8336,16 @@ components:
           items:
             type: string
             format: uuid
+        supervisor_ids:
+          type: array
+          description: 当前直属成员中的主管 ID。没有主管或为虚拟根节点时返回空数组。
+          items: {type: string, format: uuid}
         actions:
           type: array
           description: 后端允许在该分组上执行的管理动作；根节点仅允许新增子组。
           items:
             type: string
-            enum: [add-subgroup, rename, adjust-members, move, delete]
+            enum: [add-subgroup, rename, adjust-members, set-supervisors, move, delete]
         allow_add_members:
           type: boolean
           description: 是否允许从成员列表向本分组拖动并追加成员关系；虚拟根节点为 false。

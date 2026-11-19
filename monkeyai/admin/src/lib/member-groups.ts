@@ -3,6 +3,7 @@ export type MemberGroup = {
   parent_id: string | null
   name: string
   member_ids: string[]
+  supervisor_ids: string[]
   actions: GroupAction[]
   allow_add_members: boolean
 }
@@ -71,13 +72,14 @@ export function directGroupsByMember(
 }
 
 export type GroupAction =
-  "add-subgroup" | "rename" | "adjust-members" | "move" | "delete"
+  "add-subgroup" | "rename" | "adjust-members" | "set-supervisors" | "move" | "delete"
 export type ActiveGroupAction = { action: GroupAction; group: MemberGroup }
 
 export const groupActionKeys: Record<GroupAction, string> = {
   "add-subgroup": "addSubgroup",
   rename: "renameGroup",
   "adjust-members": "adjustMembers",
+  "set-supervisors": "setGroupSupervisors",
   move: "moveGroup",
   delete: "deleteGroup",
 }

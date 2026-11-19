@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=51, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=52, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -27,6 +27,10 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 新增迁移 `000004_credit_account_overdraft` 允许余额为负及冻结额超过余额，仅保留冻结额非负约束。付费调用在可用积分（余额减冻结额）大于零时获准执行，完整预留费用，按实际用量结算；零或负可用积分不再接收新的付费调用，免费调用不受影响。百智云钱包自身的预扣限制不变。回滚前需结清负余额并释放超额冻结，否则回滚会失败，不会截断余额或改写历史流水。
 
 本次单版重置是重新部署的特定安排。后续正式发布后的 schema 变更正常追加六位递增迁移版本，已发布迁移不再改写。字符串统一使用 `text`，候选值使用 `CHECK`。
+
+## 分组主管名单
+
+版本 `52` 在 `group_users` 增加 `is_supervisor`，原有成员默认不是主管。升级后部署新版后端和管理端；回滚此迁移会丢失主管配置，不改变分组成员关系或用户角色。
 
 ## 取消宿主云电脑数量限制
 

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Loading03Icon } from "@hugeicons/core-free-icons"
 
+import { SupervisorListEditor } from "@/components/members/supervisor-list-editor"
 import { GroupSelect } from "@/components/group-select"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,7 @@ const submitKeys = {
   "add-subgroup": "createGroup",
   rename: "saveChanges",
   "adjust-members": "applyChanges",
+  "set-supervisors": "saveSupervisors",
   move: "moveAction",
   delete: "deleteAction",
 }
@@ -45,7 +47,13 @@ export function GroupActionDialog({
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const [name, setName] = useState(action === "rename" ? group.name : "")
-  const [memberIDs, setMemberIDs] = useState(group.member_ids)
+  const selectingSupervisors = action === "set-supervisors"
+  const directIDs = new Set(group.member_ids)
+  const [memberIDs, setMemberIDs] = useState(() =>
+    selectingSupervisors
+      ? group.supervisor_ids.filter((id) => directIDs.has(id))
+      : group.member_ids
+  )
   const [query, setQuery] = useState("")
   const [parentID, setParentID] = useState("")
   const [saving, setSaving] = useState(false)
@@ -55,9 +63,11 @@ export function GroupActionDialog({
       !excluded.has(candidate.id) && candidate.id !== group.parent_id
   )
   const normalized = query.trim().toLocaleLowerCase()
-  const visible = users.filter((user) =>
-    `${user.name} ${user.email}`.toLocaleLowerCase().includes(normalized)
-  )
+  const visible = action === "adjust-members"
+    ? users.filter((user) =>
+        `${user.name} ${user.email}`.toLocaleLowerCase().includes(normalized)
+      )
+    : []
   const titleKey = groupActionKeys[action]
   const hasChildren = groups.some(
     (candidate) => candidate.parent_id === group.id
@@ -79,6 +89,11 @@ export function GroupActionDialog({
             name: name.trim(),
             parent_id: group.id,
           }),
+        })
+      } else if (action === "set-supervisors") {
+        updated = await api<MemberGroup>(`${path}/supervisors`, {
+          method: "PUT",
+          body: JSON.stringify({ supervisor_ids: memberIDs }),
         })
       } else if (action === "adjust-members") {
         updated = await api<MemberGroup>(`${path}/members`, {
@@ -151,6 +166,15 @@ export function GroupActionDialog({
                 placeholder={t("pages.membersAndGroups.groupNamePlaceholder")}
               />
             </Field>
+          )}
+          {selectingSupervisors && (
+            <fieldset disabled={saving} className="min-w-0">
+              <SupervisorListEditor
+                members={users.filter((user) => directIDs.has(user.id))}
+                ids={memberIDs}
+                onChange={setMemberIDs}
+              />
+            </fieldset>
           )}
           {action === "adjust-members" && (
             <div className="flex flex-col gap-3">

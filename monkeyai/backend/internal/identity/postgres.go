@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
@@ -197,16 +198,30 @@ func (s *Service) revokeToken(ctx context.Context, hash, clientID string) error 
 	return s.RevokeGrant(ctx, id, "client_logout")
 }
 
-func (s *Service) listUsers(ctx context.Context) ([]User, error) {
+type supervisedGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type adminListUser struct {
+	User
+	SupervisedGroups []supervisedGroup `json:"supervised_groups"`
+}
+
+func (s *Service) listUsers(ctx context.Context) ([]adminListUser, error) {
 	rows, err := sqlc.New(s.db).ListUsers(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	users := make([]User, 0)
+	users := make([]adminListUser, 0, len(rows))
 	for _, row := range rows {
+		var groups []supervisedGroup
+		if err := json.Unmarshal(row.SupervisedGroups, &groups); err != nil {
+			return nil, fmt.Errorf("读取成员主管分组: %w", err)
+		}
 		user := User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}
-		users = append(users, user)
+		users = append(users, adminListUser{User: user, SupervisedGroups: groups})
 	}
 	return users, nil
 }

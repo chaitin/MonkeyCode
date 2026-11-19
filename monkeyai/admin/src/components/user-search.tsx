@@ -28,6 +28,7 @@ export type UserSearchProps = {
   query: string
   onChange: (value: { userID: string; query: string }) => void
   id?: string
+  className?: string
   placeholder?: string
   selectionOnly?: boolean
   searchInPopup?: boolean
@@ -42,6 +43,7 @@ export function UserSearch({
   query,
   onChange,
   id,
+  className,
   placeholder,
   selectionOnly = false,
   searchInPopup = false,
@@ -197,7 +199,8 @@ export function UserSearch({
       <div
         className={cn(
           "relative",
-          searchInPopup ? "ms-auto w-48 max-w-full shrink-0" : "w-32"
+          searchInPopup ? "ms-auto w-48 max-w-full shrink-0" : "w-32",
+          className
         )}
       >
         {searchInPopup ? (

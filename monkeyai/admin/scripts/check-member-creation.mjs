@@ -305,7 +305,7 @@ try {
       await checkCleared()
 
       await dialog.locator("#new-user-role").click()
-      await page.getByRole("option", { name: "管理员", exact: true }).click()
+      await page.getByRole("option", { name: "超级管理员", exact: true }).click()
       await dialog.locator("#new-user-name").fill("新管理员")
       await dialog.locator("#new-user-email").fill("new-admin@example.com")
       await dialog

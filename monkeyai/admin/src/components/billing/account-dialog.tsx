@@ -167,7 +167,12 @@ export function AccountDialog({
                       ["姓名", member.name],
                       ["邮箱", member.email],
                       ["用户 ID", member.id],
-                      ["角色", member.role === "admin" ? "管理员" : "普通成员"],
+                      [
+                        t("pages.membersAndGroups.bulk.role"),
+                        member.role === "admin"
+                          ? t("pages.membersAndGroups.bulk.administrator")
+                          : t("pages.membersAndGroups.bulk.member"),
+                      ],
                       ["状态", member.status === "active" ? "正常" : "已停用"],
                       ["加入时间", dateTime(member.joined_at)],
                       [

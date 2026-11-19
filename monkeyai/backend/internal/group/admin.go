@@ -67,6 +67,22 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		}
 		resource.JSON(r.Context(), w, http.StatusOK, group)
 	})
+	router.Put("/groups/{groupID}/supervisors", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			SupervisorIDs []string `json:"supervisor_ids"`
+		}
+		if err := resource.Decode(w, r, &in); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		user, _ := identity.UserFromContext(r.Context())
+		group, err := s.SetSupervisors(r.Context(), user.ID, chi.URLParam(r, "groupID"), in.SupervisorIDs)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		resource.JSON(r.Context(), w, http.StatusOK, group)
+	})
 	router.Delete("/groups/{groupID}", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
 		if err := s.Delete(r.Context(), user.ID, chi.URLParam(r, "groupID")); err != nil {

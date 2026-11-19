@@ -255,21 +255,21 @@ WHERE
         OR refresh_token_hash = $1);
 
 -- name: ListUsers :many
-SELECT
-    id,
-    name,
-    email,
-    coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url,
-    ROLE,
-    status,
-    joined_at,
-    last_login_at
-FROM
-    users
-WHERE
-    deleted_at IS NULL
-ORDER BY
-    joined_at DESC;
+SELECT u.id, u.name, u.email,
+    coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''), '')::text AS avatar_url,
+    u.role, u.status, u.joined_at, u.last_login_at,
+    coalesce(s.groups, '[]'::jsonb)::jsonb AS supervised_groups
+FROM users u
+LEFT JOIN (
+    SELECT gu.user_id, jsonb_agg(jsonb_build_object('id', g.id, 'name', g.name)
+        ORDER BY g.name, g.id) AS groups
+    FROM group_users gu
+    JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+    WHERE gu.is_supervisor AND gu.removed_at IS NULL
+    GROUP BY gu.user_id
+) s ON s.user_id = u.id
+WHERE u.deleted_at IS NULL
+ORDER BY u.joined_at DESC;
 
 -- name: LockUserCreationGroups :exec
 -- Same advisory lock as group writes, including membership replacement and deletion.

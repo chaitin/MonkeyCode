@@ -37,6 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -111,8 +112,30 @@ type User = MemberActionUser & {
   last_login_at?: string
 }
 
+type ListedUser = User & {
+  supervised_groups: { id: string; name: string }[]
+}
+
 type MemberAction =
   "enableMember" | "disableMember" | "makeAdministrator" | "removeAdministrator"
+
+function SupervisorBadge({ groups }: { groups: string[] }) {
+  const { t } = useTranslation()
+  return (
+    <Tooltip>
+      <Badge
+        variant="outline"
+        className="cursor-help border-blue-500/40 text-blue-700 dark:border-blue-400/40 dark:text-blue-400"
+        render={<TooltipTrigger render={<span />} tabIndex={0} />}
+      >
+        {t("pages.membersAndGroups.supervisorBadge")}
+      </Badge>
+      <TooltipContent className="break-words">
+        {t("pages.membersAndGroups.supervisorBadgeHint", { groups: groups.join(", ") })}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 export function MembersAndGroupsPage() {
   const { i18n, t } = useTranslation()
@@ -124,7 +147,7 @@ export function MembersAndGroupsPage() {
   const [memberViewport, setMemberViewport] = useState<HTMLDivElement | null>(
     null
   )
-  const [users, setUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<ListedUser[]>([])
   const [groups, setGroups] = useState<MemberGroup[]>([])
   const [multiSelect, setMultiSelect] = useState(false)
   const [selectedMembers, setSelectedMembers] = useState<MoveMember[]>([])
@@ -168,15 +191,18 @@ export function MembersAndGroupsPage() {
   })
 
   useEffect(() => {
+    let active = true
     Promise.all([
-      api<{ users: User[] }>("/api/admin/v1/users"),
+      api<{ users: ListedUser[] }>("/api/admin/v1/users"),
       api<{ groups: MemberGroup[] }>("/api/admin/v1/groups"),
     ])
       .then(([members, result]) => {
+        if (!active) return
         setUsers(members.users)
         setGroups(result.groups)
       })
       .catch((reason: Error) => {
+        if (!active) return
         showToast({
           status: "error",
           title: reason.message,
@@ -189,7 +215,10 @@ export function MembersAndGroupsPage() {
           },
         })
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
   }, [loadRevision, showToast, t])
 
   const updateUser = async (
@@ -208,7 +237,7 @@ export function MembersAndGroupsPage() {
         }),
       })
       setUsers((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item))
+        current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
       )
       showToast({
         status: "success",
@@ -282,12 +311,7 @@ export function MembersAndGroupsPage() {
     scrollMembersTo(0)
   }, [query, scrollMembersTo])
 
-  const reloadGroups = () =>
-    api<{ groups: MemberGroup[] }>("/api/admin/v1/groups")
-      .then((result) => setGroups(result.groups))
-      .catch((reason: Error) =>
-        showToast({ status: "error", title: reason.message })
-      )
+  const reloadMembersAndGroups = () => setLoadRevision((value) => value + 1)
 
   const selectedMemberKeys = useMemo(
     () => new Set(selectedMembers.map(memberMoveKey)),
@@ -306,7 +330,7 @@ export function MembersAndGroupsPage() {
       ...new Set(selectedMembers.map((member) => member.id)),
     ]
       .map((id) => users.find((user) => user.id === id))
-      .filter((user): user is User => user !== undefined)
+      .filter((user): user is ListedUser => user !== undefined)
     if (!selectedUsers.length) return
 
     setBatchUpdatingStatus(true)
@@ -319,7 +343,7 @@ export function MembersAndGroupsPage() {
           body: JSON.stringify({ name: user.name, role: user.role, status }),
         })
         setUsers((current) =>
-          current.map((item) => (item.id === updated.id ? updated : item))
+          current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
         )
         succeeded += 1
       } catch (reason) {
@@ -396,7 +420,7 @@ export function MembersAndGroupsPage() {
       setSelectedMembers([])
       setPendingMove(null)
       setMoveSelection(null)
-      void reloadGroups()
+      reloadMembersAndGroups()
       showToast({
         status: "success",
         title: t("pages.membersAndGroups.actionSucceeded", {
@@ -429,11 +453,11 @@ export function MembersAndGroupsPage() {
         email: member.email,
         initial_password,
       })
-      return member
+      return { ...member, supervised_groups: [] }
     })
     setCreatedMembers((current) => [...current, ...credentials])
     setUsers((current) => [...members, ...current])
-    void reloadGroups()
+    reloadMembersAndGroups()
   }
 
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
@@ -735,7 +759,7 @@ export function MembersAndGroupsPage() {
                           <UserAvatar src={user.avatar_url} size="lg" />
                         </ItemMedia>
                         <ItemContent className="min-w-0">
-                          <ItemTitle className="min-w-0 max-w-full">
+                          <ItemTitle className="min-w-0 max-w-full flex-wrap gap-y-1">
                             <span className="truncate font-medium">
                               {user.name}
                             </span>
@@ -745,9 +769,14 @@ export function MembersAndGroupsPage() {
                                 className="border-green-500/40 text-green-700 dark:border-green-400/40 dark:text-green-400"
                               >
                                 {t(
-                                  "pages.membersAndGroups.groupNames.administrators"
+                                  "pages.membersAndGroups.bulk.administrator"
                                 )}
                               </Badge>
+                            )}
+                            {(user.supervised_groups?.length ?? 0) > 0 && (
+                              <SupervisorBadge
+                                groups={user.supervised_groups.map((group) => group.name)}
+                              />
                             )}
                             {isDisabled && (
                               <Badge
@@ -870,7 +899,7 @@ export function MembersAndGroupsPage() {
                 )
               )
             }
-            void reloadGroups()
+            reloadMembersAndGroups()
             setActiveGroupAction(null)
           }}
         />

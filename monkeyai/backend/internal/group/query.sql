@@ -14,7 +14,12 @@ SELECT
             AND gu.removed_at IS NULL
             AND u.deleted_at IS NULL
         ORDER BY
-            gu.user_id)::text[] AS member_ids
+            gu.user_id)::text[] AS member_ids,
+    ARRAY (
+        SELECT gu.user_id::text FROM group_users gu
+        JOIN users u ON u.id = gu.user_id AND u.deleted_at IS NULL
+        WHERE gu.group_id = g.id AND gu.removed_at IS NULL AND gu.is_supervisor
+        ORDER BY gu.user_id)::text[] AS supervisor_ids
     FROM
         GROUPS g
     WHERE
@@ -68,7 +73,12 @@ SELECT
             AND gu.removed_at IS NULL
             AND u.deleted_at IS NULL
         ORDER BY
-            gu.user_id)::text[] AS member_ids
+            gu.user_id)::text[] AS member_ids,
+    ARRAY (
+        SELECT gu.user_id::text FROM group_users gu
+        JOIN users u ON u.id = gu.user_id AND u.deleted_at IS NULL
+        WHERE gu.group_id = g.id AND gu.removed_at IS NULL AND gu.is_supervisor
+        ORDER BY gu.user_id)::text[] AS supervisor_ids
     FROM
         GROUPS g
     WHERE
@@ -170,6 +180,18 @@ ON CONFLICT (group_id,
 WHERE
     removed_at IS NULL
         DO NOTHING;
+
+-- name: LockSupervisorCandidates :many
+SELECT gu.user_id FROM group_users gu
+JOIN users u ON u.id = gu.user_id AND u.deleted_at IS NULL
+WHERE gu.group_id = sqlc.arg(group_id) AND gu.removed_at IS NULL
+  AND gu.user_id = ANY(sqlc.arg(user_ids)::uuid[])
+ORDER BY gu.user_id FOR UPDATE OF gu FOR SHARE OF u;
+
+-- name: SetSupervisors :exec
+UPDATE group_users SET is_supervisor = (user_id = ANY(sqlc.arg(user_ids)::uuid[]))
+WHERE group_id = sqlc.arg(group_id) AND removed_at IS NULL
+  AND is_supervisor <> (user_id = ANY(sqlc.arg(user_ids)::uuid[]));
 
 -- name: TouchGroup :execresult
 UPDATE

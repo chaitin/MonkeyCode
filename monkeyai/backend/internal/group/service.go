@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,6 +26,7 @@ type Group struct {
 	ParentID        *string  `json:"parent_id"`
 	Name            string   `json:"name"`
 	MemberIDs       []string `json:"member_ids"`
+	SupervisorIDs   []string `json:"supervisor_ids"`
 	Actions         []string `json:"actions"`
 	AllowAddMembers bool     `json:"allow_add_members"`
 }
@@ -63,7 +65,7 @@ func NewService(pool *pgxpool.Pool) *Service {
 
 func present(group Group) Group {
 	group.ParentID = rootgroup.ParentID(group.ParentID)
-	group.Actions = []string{"add-subgroup", "rename", "adjust-members", "move", "delete"}
+	group.Actions = []string{"add-subgroup", "rename", "adjust-members", "set-supervisors", "move", "delete"}
 	group.AllowAddMembers = true
 	return group
 }
@@ -82,10 +84,11 @@ func (s *Service) List(ctx context.Context) ([]Group, error) {
 	if err != nil {
 		return nil, err
 	}
-	groups := []Group{{ID: rootgroup.ID, Name: name, MemberIDs: members, Actions: []string{"add-subgroup"}}}
+	groups := []Group{{ID: rootgroup.ID, Name: name, MemberIDs: members, SupervisorIDs: []string{}, Actions: []string{"add-subgroup"}}}
 	for _, row := range rows {
 		var group Group
 		group.ID, group.ParentID, group.Name, group.MemberIDs = row.ID, rootgroup.ParentID(row.ParentID), row.Name, row.MemberIds
+		group.SupervisorIDs = row.SupervisorIds
 		groups = append(groups, present(group))
 	}
 	return groups, nil
@@ -96,12 +99,13 @@ func get(ctx context.Context, tx pgx.Tx, id string) (Group, error) {
 	record, err := sqlc.New(tx).GetGroup(ctx, id)
 	if err == nil {
 		group.ID, group.ParentID, group.Name, group.MemberIDs = record.ID, record.ParentID, record.Name, record.MemberIds
+		group.SupervisorIDs = record.SupervisorIds
 	}
 
 	return group, err
 }
 
-func (s *Service) begin(ctx context.Context) (pgx.Tx, error) {
+func (s *Service) beginGroupTx(ctx context.Context) (pgx.Tx, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -109,6 +113,14 @@ func (s *Service) begin(ctx context.Context) (pgx.Tx, error) {
 	// 串行化分组写入，避免并发移动绕过祖先校验形成环。
 	if _, err = sqlc.New(tx).LockGroups(ctx); err != nil {
 		rollbackGroup(ctx, tx, "初始化分组事务", "")
+		return nil, err
+	}
+	return tx, nil
+}
+
+func (s *Service) begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := s.beginGroupTx(ctx)
+	if err != nil {
 		return nil, err
 	}
 	if s.accounts != nil {
@@ -251,6 +263,55 @@ func (s *Service) SetMembers(ctx context.Context, actor, id string, ids []string
 		return Group{}, err
 	}
 	return group, tx.Commit(ctx)
+}
+
+func (s *Service) SetSupervisors(ctx context.Context, actor, id string, ids []string) (Group, error) {
+	if !validMoveID(id) {
+		return Group{}, resource.Invalid("分组 ID 无效")
+	}
+	if id == rootgroup.ID {
+		return Group{}, resource.NotFound
+	}
+	if ids == nil || len(ids) > 10000 {
+		return Group{}, resource.Invalid("supervisor_ids 必须是数组，最多包含 10000 个成员")
+	}
+	for i, raw := range ids {
+		var uid pgtype.UUID
+		if err := uid.Scan(raw); err != nil || !uid.Valid {
+			return Group{}, resource.Invalid("主管 ID 无效")
+		}
+		ids[i] = uid.String()
+	}
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	tx, err := s.beginGroupTx(ctx)
+	if err != nil {
+		return Group{}, err
+	}
+	defer rollbackGroup(ctx, tx, "设置分组主管", id)
+	group, err := get(ctx, tx, id)
+	if err != nil {
+		return Group{}, err
+	}
+	q := sqlc.New(tx)
+	members, err := q.LockSupervisorCandidates(ctx, sqlc.LockSupervisorCandidatesParams{GroupID: id, UserIds: ids})
+	if err != nil {
+		return Group{}, err
+	}
+	if len(members) != len(ids) {
+		return Group{}, conflict("所选用户不是当前分组的直属成员，请刷新后重试")
+	}
+	if err := q.SetSupervisors(ctx, sqlc.SetSupervisorsParams{GroupID: id, UserIds: ids}); err != nil {
+		return Group{}, err
+	}
+	if _, err := q.TouchGroup(ctx, id); err != nil {
+		return Group{}, err
+	}
+	if err := resource.Audit(ctx, tx, actor, "group", id, "supervisors"); err != nil {
+		return Group{}, err
+	}
+	group.SupervisorIDs = ids
+	return present(group), tx.Commit(ctx)
 }
 
 func (s *Service) Delete(ctx context.Context, actor, id string) error {
