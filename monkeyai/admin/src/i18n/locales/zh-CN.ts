@@ -901,12 +901,12 @@ export const zhCN = {
       renewHint: "重新生成会撤销原待接入记录并创建新宿主，旧命令立即失效。",
       commandMissing:
         "当前会话没有保存该宿主的安装命令，可以为同一宿主重新生成。",
-      commandHint:
-        "在目标 Linux 宿主机执行命令，自动识别名称和架构，使用默认数据目录。命令有效期 30 分钟，仅绑定一台宿主。",
+      commandHint: "在目标 Linux 宿主机上执行命令完成绑定",
       installHint:
         "支持 Linux amd64 / arm64、systemd 和 cgroup v2。系统工具需要宿主预装。",
       commandExpired: "安装命令已过期，请重新生成。",
       expires: "到期时间",
+      expiresInMinutes: "{{count}} 分钟后到期",
       availableUntil: "{{time}} 前可用",
       command: "安装命令",
       close: "关闭",

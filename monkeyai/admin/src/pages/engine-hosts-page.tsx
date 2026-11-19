@@ -32,7 +32,6 @@ import {
   CardDescription,
 } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import { Textarea } from "@/components/ui/textarea"
 import { HostStatus } from "@/components/environments/status-badge"
 import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
 import type { Grant } from "@/lib/resources"
@@ -77,7 +76,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Field, FieldLabel } from "@/components/ui/field"
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -278,6 +276,7 @@ export function EngineHostsPage({
           body: "{}",
         }
       )
+      setNow(Date.now())
       setEnrollment(result)
       rememberCommand(user?.id ?? "", result)
       refresh()
@@ -339,8 +338,10 @@ export function EngineHostsPage({
       setBusy(false)
     }
   }
-  const expired =
-    enrollment !== null && new Date(enrollment.expires_at).getTime() <= now
+  const minutesRemaining = enrollment
+    ? Math.ceil((Date.parse(enrollment.expires_at) - now) / 60_000)
+    : 0
+  const expired = minutesRemaining <= 0
   const close = (value: boolean) => {
     if (busy) return
     setOpen(value)
@@ -1124,37 +1125,35 @@ export function EngineHostsPage({
           )}
           {enrollment ? (
             <div className="space-y-4">
-              <p
-                role="status"
-                className={
-                  expired
-                    ? "text-sm text-destructive"
-                    : "text-sm text-muted-foreground"
-                }
-              >
-                {expired
-                  ? text("commandExpired")
-                  : `${text("expires")}：${new Date(enrollment.expires_at).toLocaleString()}`}
-              </p>
-              <Field>
-                <FieldLabel htmlFor="engine-command">
+              <figure className="min-w-0 space-y-2">
+                <figcaption className="text-sm font-medium">
                   {text("command")}
-                </FieldLabel>
-                <Textarea
-                  id="engine-command"
-                  readOnly
-                  value={expired ? "" : enrollment.command}
-                  className="min-h-28 w-full min-w-0 max-w-full resize-none break-all font-mono text-xs"
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-              </Field>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => close(false)}>
-                  {text("close")}
-                </Button>
-                <Button disabled={expired} onClick={() => void copy()}>
-                  {text("copy")}
-                </Button>
+                </figcaption>
+                <pre className="whitespace-pre-wrap break-all rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed">
+                  <code className="select-all">{expired ? "" : enrollment.command}</code>
+                </pre>
+              </figure>
+              <DialogFooter className="flex-row flex-wrap items-center">
+                <p
+                  role="status"
+                  className={
+                    expired
+                      ? "text-sm text-destructive"
+                      : "text-sm text-muted-foreground"
+                  }
+                >
+                  {expired
+                    ? text("commandExpired")
+                    : text("expiresInMinutes", { count: minutesRemaining })}
+                </p>
+                <div className="ms-auto flex items-center gap-2">
+                  <Button variant="outline" onClick={() => close(false)}>
+                    {text("close")}
+                  </Button>
+                  <Button disabled={expired} onClick={() => void copy()}>
+                    {text("copy")}
+                  </Button>
+                </div>
               </DialogFooter>
             </div>
           ) : (

@@ -970,13 +970,14 @@ export const enUS = {
         "Regenerating invalidates the previous command immediately. Do not regenerate while installation is running.",
       commandMissing:
         "No installation command is saved in this session. Generate a new one for this host.",
-      commandHint:
-        "Run this command on the target Linux host. The host name and architecture are detected automatically. It binds to one host and expires in 30 minutes. You can reopen the command in the pending host details during this session.",
+      commandHint: "Run the command on the target Linux host to complete enrollment.",
       installHint:
         "Requires Linux amd64 / arm64, systemd, cgroup v2 and preinstalled system dependencies.",
       commandExpired:
         "The installation command has expired. Generate a new one.",
       expires: "Expires",
+      expiresInMinutes_one: "Expires in {{count}} minute",
+      expiresInMinutes_other: "Expires in {{count}} minutes",
       availableUntil: "Available until {{time}}",
       command: "Installation command",
       close: "Close",
