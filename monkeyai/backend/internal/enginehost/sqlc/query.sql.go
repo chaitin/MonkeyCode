@@ -48,6 +48,7 @@ const deleteHost = `-- name: DeleteHost :execrows
 UPDATE hosts h SET status='revoked',deleted_at=now()
 WHERE h.id=$1 AND h.deleted_at IS NULL AND NOT EXISTS (
  SELECT 1 FROM environments e WHERE e.host_id=h.id
+ AND (e.archived_at IS NULL OR (h.status='active' AND h.last_seen_at>now()-interval '90 seconds'))
  AND NOT(e.desired='deleted' AND e.phase='deleted' AND e.observed_generation=e.generation)
 ) AND NOT EXISTS(SELECT 1 FROM host_upgrades u WHERE u.host_id=h.id AND u.status IN ('pending','running'))
 `
@@ -190,7 +191,7 @@ func (q *Queries) InstallationHost(ctx context.Context, id string) (Installation
 
 const listHosts = `-- name: ListHosts :many
 SELECT id,user_id,name,architecture,version,status,activated_at,last_seen_at,report,created_at,enabled,
-(SELECT count(*) FROM environments e WHERE e.host_id=hosts.id
+(SELECT count(*) FROM environments e WHERE e.host_id=hosts.id AND e.archived_at IS NULL
  AND NOT(e.desired='deleted' AND e.phase='deleted' AND e.observed_generation=e.generation)) AS environment_count
 FROM hosts WHERE deleted_at IS NULL AND status <> 'pending' ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2
 `

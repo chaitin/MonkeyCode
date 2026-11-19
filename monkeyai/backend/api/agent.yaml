@@ -49,7 +49,7 @@ paths:
   /api/v1/environments:
     get:
       summary: 查询环境列表
-      description: '默认不返回 deleted_at 非空的已确认删除环境；删除中和删除失败仍显示，过滤先于分页。所有响应使用 Cache-Control: no-store。需要 environment:read，只访问当前用户环境；旧 token 不会自动获得该权限。'
+      description: '默认不返回已确认删除和已离线归档的环境；在线等待删除和清理失败仍显示，过滤先于分页。所有响应使用 Cache-Control: no-store。需要 environment:read，只访问当前用户环境；旧 token 不会自动获得该权限。'
       responses:
         '200':
           description: 成功。
@@ -5384,6 +5384,10 @@ components:
         created_at:
           type: string
           format: date-time
+        archived_at:
+          type: string
+          format: date-time
+          description: 已从使用列表移除但仍待宿主清理的归档时间；仅在此状态存在，不代表宿主已删除。
         deleted_at:
           type: [string, 'null']
           format: date-time

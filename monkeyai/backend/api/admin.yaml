@@ -6049,7 +6049,7 @@ paths:
   /api/admin/v1/environments:
     get:
       summary: 查询环境列表
-      description: '默认隐藏已确认删除的环境，等待删除和删除失败仍显示。可按host_id精确筛选宿主；筛选先于排序和分页。状态与页面目标代次一致。列表不返回 usage 和 usage_stale，资源使用数据仅在详情返回。按实际 CPU 核数或内存字节排序，未上报、过期超过 90 秒及非运行实例排最后；相同占用按创建时间、ID 降序。所有响应使用 Cache-Control: no-store。'
+      description: '默认隐藏已确认删除和已离线归档的环境，二者均可按 deleted 查看；在线等待删除和清理失败仍显示。可按host_id精确筛选宿主；筛选先于排序和分页。状态与页面目标代次一致。列表不返回 usage 和 usage_stale，资源使用数据仅在详情返回。按实际 CPU 核数或内存字节排序，未上报、过期超过 90 秒及非运行实例排最后；相同占用按创建时间、ID 降序。所有响应使用 Cache-Control: no-store。'
       responses:
         '200':
           description: 成功。
@@ -6949,7 +6949,7 @@ paths:
   /api/admin/v1/engine-hosts/{id}/record:
     delete:
       summary: 删除宿主记录
-      description: 移除管理列表中的宿主并撤销接入、停用调度；所有关联环境必须已确认删除（目标和实际状态均为 deleted，观察代次为当前代次），否则返回 409。保留内部墓碑及历史关联，不卸载 engine 或清理宿主数据。重复删除幂等。
+      description: 移除管理列表中的宿主并撤销接入、停用调度；所有关联环境必须已确认删除，或已离线归档且宿主仍离线，否则返回 409。保留内部墓碑及历史关联，不卸载 engine 或清理宿主数据。重复删除幂等。
       parameters:
       - name: id
         in: path
@@ -10617,6 +10617,10 @@ components:
         created_at:
           type: string
           format: date-time
+        archived_at:
+          type: string
+          format: date-time
+          description: 已从使用列表移除但仍待宿主清理的归档时间；仅在此状态存在，不代表宿主已删除。
         deleted_at:
           type: [string, 'null']
           format: date-time
@@ -10949,7 +10953,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: 该宿主尚未确认删除的环境数，包含停止、失败和删除中环境；与按host_id筛选的默认环境列表一致，不受宿主在线或调度状态影响。
+          description: 该宿主尚未移除的环境数，包含停止、失败和在线等待删除的环境，与默认环境列表一致；不含离线归档记录。
         user_id: {type: string, format: uuid, description: 创建宿主记录的用户}
         enabled:
           type: boolean
