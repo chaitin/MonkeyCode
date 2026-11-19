@@ -1,3 +1,7 @@
+// [INPUT]: 设备登记、身份授权、yamux 会话与结构化日志。
+// [OUTPUT]: 组装 relay 服务，按代次回收设备访问并记录首次关闭原因。
+// [POS]: relay 服务入口，按控制或数据通道分配复用器的超时预算。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
@@ -28,6 +32,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/hashicorp/yamux"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+const (
+	controlProbeInterval = 15 * time.Second
+	controlSilenceLimit  = 45 * time.Second
 )
 
 type Config struct {
@@ -265,13 +274,13 @@ func (s *Service) current(key target) *route {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r := s.routes[key]
-	if r == nil || !r.ready || time.Since(r.seen) >= 45*time.Second || r.control == nil || r.control.IsClosed() {
+	if r == nil || !r.ready || time.Since(r.seen) >= controlSilenceLimit || r.control == nil || r.control.IsClosed() {
 		return nil
 	}
 	return r
 }
 
-func (s *Service) closeRoute(r *route) {
+func (s *Service) closeRoute(r *route, reason string) {
 	if r == nil {
 		return
 	}
@@ -285,14 +294,26 @@ func (s *Service) closeRoute(r *route) {
 		delete(s.routes, r.target)
 	}
 	r.ready = false
+	lastSeenAge := time.Since(r.seen)
 	data, control := r.data, r.control
 	accesses := make([]*access, 0, len(r.streams))
 	for a := range r.streams {
 		accesses = append(accesses, a)
 	}
 	s.mu.Unlock()
+	logging.Event(context.Background(), s.logger, slog.LevelInfo, "relay.route.closed", "设备路由已关闭",
+		"server_id", s.config.ServerID, "user_id", r.target.user, "machine_id", r.target.machine,
+		"boot_id", r.hello.BootID, "lease_epoch", r.state.LeaseEpoch, "channel_kind", "control",
+		"reason", reason, "last_seen_age_ms", lastSeenAge.Milliseconds())
+	// 先记录本端撤销决定，再通知设备，避免对端随后的 EOF 掩盖关闭原因。
+	streamReason := "stream_closed"
+	if reason == "device_revoked" || reason == "grant_revoked" {
+		s.pushControl(r, map[string]string{"type": "revocation", "signed": s.revocation(r, "", 0)})
+		s.metrics.revoked.Add(int64(len(accesses)))
+		streamReason = "authorization_revoked"
+	}
 	for _, a := range accesses {
-		a.close()
+		a.closeReason(streamReason)
 	}
 	if data != nil {
 		if err := data.Close(); err != nil && !closedConnection(err) {
@@ -319,8 +340,7 @@ func (s *Service) InvalidateDevice(user, machine string, version int64) {
 		r = nil
 	}
 	s.mu.Unlock()
-	s.pushDeviceRevoked(r)
-	s.closeRoute(r)
+	s.closeRoute(r, "device_revoked")
 }
 
 func (s *Service) InvalidateGrant(id string) {
@@ -344,8 +364,7 @@ func (s *Service) InvalidateGrant(id string) {
 		a.closeReason("authorization_revoked")
 	}
 	for _, r := range routes {
-		s.pushDeviceRevoked(r)
-		s.closeRoute(r)
+		s.closeRoute(r, "grant_revoked")
 	}
 }
 
@@ -362,7 +381,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	}
 	s.mu.Unlock()
 	for _, r := range routes {
-		s.closeRoute(r)
+		s.closeRoute(r, "service_shutdown")
 	}
 	for _, ws := range connections {
 		if err := ws.CloseNow(); err != nil && !closedConnection(err) {
@@ -379,13 +398,18 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	}
 }
 
-func muxConfig() *yamux.Config {
+func muxConfig(channel string) *yamux.Config {
 	cfg := yamux.DefaultConfig()
 	cfg.EnableKeepAlive = false
 	cfg.AcceptBacklog = 4
 	cfg.StreamOpenTimeout = 10 * time.Second
 	cfg.StreamCloseTimeout = 10 * time.Second
 	cfg.ConnectionWriteTimeout = 10 * time.Second
+	if channel == "control" {
+		// Ping 也用写超时等待 Pong。开流 ACK 超时会关闭整条 yamux 会话。
+		cfg.ConnectionWriteTimeout = controlSilenceLimit - controlProbeInterval
+		cfg.StreamOpenTimeout = controlSilenceLimit
+	}
 	cfg.LogOutput = io.Discard
 	return cfg
 }
@@ -421,8 +445,7 @@ func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 		fail(r.Context(), w, err)
 		return
 	}
-	s.pushDeviceRevoked(old)
-	s.closeRoute(old)
+	s.closeRoute(old, "device_revoked")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -435,5 +458,5 @@ func (s *Service) DisconnectRuntime(user, machine string) {
 	if err := sqlc.New(s.pool).RevokeTargetConnections(ctx, sqlc.RevokeTargetConnectionsParams{UserID: user, MachineID: machine}); err != nil {
 		s.logger.ErrorContext(ctx, "撤销云环境连接票据失败", "error", err)
 	}
-	s.closeRoute(r)
+	s.closeRoute(r, "runtime_disconnected")
 }

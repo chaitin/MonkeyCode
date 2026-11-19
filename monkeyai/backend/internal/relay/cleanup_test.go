@@ -1,7 +1,12 @@
+// [INPUT]: 并发关闭请求、WebSocket 与结构化日志。
+// [OUTPUT]: 验证路由只清理一次，关闭事件保留代次和原因。
+// [POS]: 路由释放的并发与诊断回归。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/coder/websocket"
@@ -40,11 +46,13 @@ func TestRouteCloseIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.CloseNow()
-	r := &route{target: target{"user", "machine"}, ready: true, ws: <-accepted}
+	r := &route{target: target{"user", "machine"}, ready: true, ws: <-accepted, seen: time.Now()}
+	r.hello.BootID = "boot"
+	r.state.LeaseEpoch = 3
 	s := &Service{logger: logger, routes: map[target]*route{r.target: r}}
 	var workers sync.WaitGroup
 	for range 10 {
-		workers.Go(func() { s.closeRoute(r) })
+		workers.Go(func() { s.closeRoute(r, "service_shutdown") })
 	}
 	workers.Wait()
 	if r.ready || !r.closed || len(s.routes) != 0 {
@@ -52,6 +60,21 @@ func TestRouteCloseIsIdempotent(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "关闭资源失败") {
 		t.Fatal(logs.String())
+	}
+	var event struct {
+		Event   string `json:"event"`
+		Machine string `json:"machine_id"`
+		Boot    string `json:"boot_id"`
+		Epoch   int64  `json:"lease_epoch"`
+		Channel string `json:"channel_kind"`
+		Reason  string `json:"reason"`
+		Age     *int64 `json:"last_seen_age_ms"`
+	}
+	if err := json.Unmarshal(logs.Bytes(), &event); err != nil {
+		t.Fatal("同一代次应只有一条关闭记录", err)
+	}
+	if event.Event != "relay.route.closed" || event.Machine != "machine" || event.Boot != "boot" || event.Epoch != 3 || event.Channel != "control" || event.Reason != "service_shutdown" || event.Age == nil || *event.Age < 0 {
+		t.Fatalf("关闭记录缺少归因字段: %+v", event)
 	}
 }
 

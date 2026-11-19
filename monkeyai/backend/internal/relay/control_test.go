@@ -1,3 +1,7 @@
+// [INPUT]: 双通道测试夹具、真实 yamux 和不回应 Pong 的连接。
+// [OUTPUT]: 验证失联期限、事件写出边界、反向流预算及数据重连。
+// [POS]: 控制事件协议和传输生命周期回归。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
@@ -33,7 +37,7 @@ func TestHTTPDataReattachStatus(t *testing.T) {
 	hello.Intent = "attach"
 	hello.LeaseEpoch = r.ready.LeaseEpoch
 	ws, ready := f.handshake(t, hello, r.private, "data", f.token)
-	data, err := yamux.Client(websocket.NetConn(t.Context(), ws, websocket.MessageBinary), muxConfig())
+	data, err := yamux.Client(websocket.NetConn(t.Context(), ws, websocket.MessageBinary), muxConfig("data"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,8 +65,9 @@ func TestHTTPDataReattachStatus(t *testing.T) {
 }
 
 func TestControlBlackholeClosesRoute(t *testing.T) {
+	t.Parallel()
 	left, right := net.Pipe()
-	cfg := muxConfig()
+	cfg := muxConfig("control")
 	cfg.ConnectionWriteTimeout = 100 * time.Millisecond
 	mux, err := yamux.Server(left, cfg)
 	if err != nil {
@@ -71,14 +76,26 @@ func TestControlBlackholeClosesRoute(t *testing.T) {
 	t.Cleanup(func() { mux.Close(); right.Close() })
 	// 接收 Ping，但不回应 Pong，模拟中转仍可写入的黑洞。
 	go io.Copy(io.Discard, right)
-	r := &route{control: mux, ready: true, seen: time.Now(), target: target{"owner", "machine"}}
+	start := time.Now()
+	r := &route{control: mux, ready: true, seen: start, target: target{"owner", "machine"}}
 	s := &Service{routes: map[target]*route{r.target: r}, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	stop := make(chan struct{})
 	defer close(stop)
 	go s.probe(r, stop)
 	select {
+	case <-time.After(17 * time.Second):
+		if s.current(r.target) != r {
+			t.Fatal("首个探测超时提前回收了路由")
+		}
 	case <-mux.CloseChan():
-	case <-time.After(20 * time.Second):
+		t.Fatal("首次探测失败不应结束控制通道")
+	}
+	select {
+	case <-mux.CloseChan():
+		if time.Since(start) < controlSilenceLimit {
+			t.Fatal("未满失联窗口即关闭")
+		}
+	case <-time.After(time.Until(start.Add(controlSilenceLimit + 5*time.Second))):
 		t.Fatal("没有 Pong 的黑洞未按期限回收")
 	}
 	if s.current(r.target) != nil {
@@ -141,7 +158,7 @@ func TestSlowEventConsumerClosesOnlyEpoch(t *testing.T) {
 	}
 	// 新 epoch 用不读取消息体的独立 HTTP stream 消费事件，触发写入期限。
 	ws, ready := f.handshake(t, runtime.hello, runtime.private, "control", f.token)
-	mux, err := yamux.Client(websocket.NetConn(t.Context(), ws, websocket.MessageBinary), muxConfig())
+	mux, err := yamux.Client(websocket.NetConn(t.Context(), ws, websocket.MessageBinary), muxConfig("control"))
 	if err != nil {
 		t.Fatal(err)
 	}

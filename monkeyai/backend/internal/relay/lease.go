@@ -1,3 +1,7 @@
+// [INPUT]: 签名租约、授权存储、控制事件流与 yamux Ping。
+// [OUTPUT]: 核验访问租约，以最近一次有效 Pong 判定设备失联，传递撤销。
+// [POS]: 设备控制路由的存活与授权检查，网络读写在服务锁外执行。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
@@ -160,21 +164,6 @@ func (s *Service) pushControlForAccess(a *access) {
 	s.mu.Unlock()
 	if found != nil {
 		s.pushControl(found, map[string]string{"type": "revocation", "signed": s.revocation(found, a.id, a.accessVersion)})
-	}
-}
-func (s *Service) pushDeviceRevoked(r *route) {
-	if r != nil {
-		s.pushControl(r, map[string]string{"type": "revocation", "signed": s.revocation(r, "", 0)})
-		s.mu.Lock()
-		all := make([]*access, 0, len(r.streams))
-		for a := range r.streams {
-			all = append(all, a)
-		}
-		s.mu.Unlock()
-		for _, a := range all {
-			s.metrics.revoked.Add(1)
-			a.closeReason("authorization_revoked")
-		}
 	}
 }
 
@@ -348,28 +337,49 @@ func (s *Service) control(ctx context.Context, r *route) {
 	}
 }
 func (s *Service) probe(r *route, stop <-chan struct{}) {
-	ticker := time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(controlProbeInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-stop:
 			return
 		case <-ticker.C:
-			if _, err := r.control.Ping(); err != nil {
+			_, err := r.control.Ping()
+			if err != nil {
 				if !closedConnection(err) {
-					logging.Event(context.Background(), s.logger, slog.LevelWarn, "relay.probe.failed", "设备控制通道探测失败", "module", "relay", "operation", "probe", "machine_id", r.target.machine, "user_id", r.target.user, "boot_id", r.hello.BootID, "error", err)
+					logging.Event(context.Background(), s.logger, slog.LevelWarn, "relay.probe.failed", "设备控制通道探测失败", "module", "relay", "operation", "probe", "lease_epoch", r.state.LeaseEpoch, "machine_id", r.target.machine, "user_id", r.target.user, "boot_id", r.hello.BootID, "error", err)
 				}
-				s.closeRoute(r)
+				if r.control.IsClosed() || !(errors.Is(err, yamux.ErrTimeout) || errors.Is(err, yamux.ErrConnectionWriteTimeout)) {
+					s.closeRoute(r, "control_transport_closed")
+					return
+				}
+			}
+			if !s.checkHeartbeat(r, err == nil) {
 				return
 			}
-			s.mu.Lock()
-			if s.routes[r.target] == r {
-				r.seen = time.Now()
-			}
-			s.mu.Unlock()
 		}
 	}
 }
+
+// Pong 和失联检查在同一把锁下判断当前代次。已过期的 seen 不再推进，关流可在锁外执行。
+func (s *Service) checkHeartbeat(r *route, receivedPong bool) bool {
+	s.mu.Lock()
+	if r.closed || s.routes[r.target] != r {
+		s.mu.Unlock()
+		return false
+	}
+	now := time.Now()
+	alive := now.Sub(r.seen) < controlSilenceLimit
+	if alive && receivedPong {
+		r.seen = now
+	}
+	s.mu.Unlock()
+	if !alive {
+		s.closeRoute(r, "heartbeat_timeout")
+	}
+	return alive
+}
+
 func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route) {
 	if req.Host != "relay.internal" {
 		http.Error(w, web.Message(req.Context(), "invalid_host", "invalid host"), 400)
@@ -418,7 +428,13 @@ func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route
 			w.WriteHeader(409)
 			return
 		}
-		defer func() { s.closeRoute(r) }()
+		closeReason := "event_stream_write_failed"
+		defer func() {
+			if r.control.IsClosed() {
+				closeReason = "control_transport_closed"
+			}
+			s.closeRoute(r, closeReason)
+		}()
 		if err := rc.SetReadDeadline(time.Time{}); err != nil {
 			slog.Error("设置连接截止时间失败", "module", "relay", "operation", "controlHTTP", "error", err)
 		}
@@ -443,7 +459,7 @@ func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route
 		if !send(map[string]string{"type": "ready"}) {
 			return
 		}
-		ticker := time.NewTicker(15 * time.Second)
+		ticker := time.NewTicker(controlProbeInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -456,6 +472,7 @@ func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route
 					return
 				}
 			case <-req.Context().Done():
+				closeReason = "event_stream_closed"
 				return
 			}
 		}
@@ -476,6 +493,9 @@ func (s *Service) monitor(r *route, stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-ticker.C:
+			if !s.checkHeartbeat(r, false) {
+				return
+			}
 			s.mu.Lock()
 			for id, v := range r.connectionVersions {
 				if !time.Now().Before(v.expires) {
@@ -483,33 +503,27 @@ func (s *Service) monitor(r *route, stop <-chan struct{}) {
 					delete(r.leaseSequences, id)
 				}
 			}
-			active, seen := s.routes[r.target] == r, r.seen
 			all := make([]*access, 0, len(r.streams))
 			for a := range r.streams {
 				all = append(all, a)
 			}
 			s.mu.Unlock()
-			if !active || time.Since(seen) >= 45*time.Second {
-				s.closeRoute(r)
-				return
-			}
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			valid, err := s.identity.VerifyGrant(ctx, r.principal)
 			state, stateErr := s.devices.State(ctx, r.target.user, r.target.machine)
 			cancel()
 			if errors.Is(err, identity.ErrRuntimeUnavailable) {
-				s.closeRoute(r)
+				s.closeRoute(r, "runtime_unavailable")
 				return
 			}
 			if err == nil && stateErr == nil {
 				if !valid || state.GrantVersion != r.state.GrantVersion || state.RemoteAccessState != "enabled" {
-					s.pushDeviceRevoked(r)
-					s.closeRoute(r)
+					s.closeRoute(r, "device_revoked")
 					return
 				}
 				lastHostVerification = time.Now()
 			} else if time.Since(lastHostVerification) >= 180*time.Second {
-				s.closeRoute(r)
+				s.closeRoute(r, "authorization_stale")
 				return
 			}
 			ids := make([]string, 0, 8)
