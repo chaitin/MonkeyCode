@@ -2601,14 +2601,14 @@ paths:
           format: uuid
     get:
       summary: 根据 ID 查询成员资料
-      description: 返回当前成员的姓名、邮箱、角色、状态、加入时间和最近登录时间。已删除或不存在的成员返回 404。
+      description: 返回成员资料及其直接负责的有效分组。没有负责的分组时 supervised_groups 为空数组；已删除或不存在的成员返回 404。
       responses:
         '200':
-          description: 成员资料。
+          description: 成员资料及主管分组，与管理端成员列表中的单项一致。
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EmailAuthUser'
+                $ref: '#/components/schemas/AdminListUser'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

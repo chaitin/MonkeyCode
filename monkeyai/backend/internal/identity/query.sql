@@ -271,6 +271,13 @@ LEFT JOIN (
 WHERE u.deleted_at IS NULL
 ORDER BY u.joined_at DESC;
 
+-- name: GetUserSupervisedGroups :many
+SELECT g.id, g.name
+FROM group_users gu
+JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+WHERE gu.user_id = $1 AND gu.is_supervisor AND gu.removed_at IS NULL
+ORDER BY g.name, g.id;
+
 -- name: LockUserCreationGroups :exec
 -- Same advisory lock as group writes, including membership replacement and deletion.
 SELECT pg_advisory_xact_lock(741209);

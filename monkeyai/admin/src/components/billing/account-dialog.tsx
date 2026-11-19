@@ -16,6 +16,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { UserAvatar } from "@/components/user-avatar"
 import { ApiError, api } from "@/lib/api"
 import {
   credits,
@@ -28,8 +29,10 @@ import { CONSOLE_ROUTES } from "@/lib/routes"
 type AccountMember = {
   id: string
   name: string
+  avatar_url?: string | null
   email: string
   role: "admin" | "user"
+  supervised_groups: { id: string; name: string }[]
   status: "active" | "disabled"
   joined_at: string
   last_login_at?: string
@@ -163,15 +166,25 @@ export function AccountDialog({
               ) : data && member ? (
                 <div className="space-y-6">
                   <dl className="divide-y rounded-lg border">
+                    <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                      <dt className="shrink-0 text-muted-foreground">姓名</dt>
+                      <dd className="flex min-w-0 items-center gap-2 text-right">
+                        <UserAvatar src={member.avatar_url} />
+                        <span className="min-w-0 break-all">{member.name}</span>
+                      </dd>
+                    </div>
                     {[
-                      ["姓名", member.name],
                       ["邮箱", member.email],
                       ["用户 ID", member.id],
                       [
                         t("pages.membersAndGroups.bulk.role"),
                         member.role === "admin"
                           ? t("pages.membersAndGroups.bulk.administrator")
-                          : t("pages.membersAndGroups.bulk.member"),
+                          : member.supervised_groups?.length
+                            ? t("pages.membersAndGroups.supervisorBadgeHint", {
+                                groups: member.supervised_groups.map((group) => group.name).join(", "),
+                              })
+                            : t("pages.membersAndGroups.bulk.member"),
                       ],
                       ["状态", member.status === "active" ? "正常" : "已停用"],
                       ["加入时间", dateTime(member.joined_at)],

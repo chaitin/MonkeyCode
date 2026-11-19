@@ -57,6 +57,13 @@ func TestAdminListUserSupervisedGroups(t *testing.T) {
 		t.Fatalf("成员数量不符: %v", body.Users)
 	}
 	for _, u := range body.Users {
+		detail := httptest.NewRecorder()
+		router.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, "/users/"+u.ID, nil))
+		var got adminListUser
+		if detail.Code != http.StatusOK || json.Unmarshal(detail.Body.Bytes(), &got) != nil ||
+			got.ID != u.ID || got.Role != u.Role || got.SupervisedGroups == nil || !slices.Equal(got.SupervisedGroups, u.SupervisedGroups) {
+			t.Fatalf("成员详情与列表不一致: %d %s，列表成员: %+v", detail.Code, detail.Body.String(), u)
+		}
 		if u.ID == manager.ID {
 			if u.Role != "user" || !slices.Equal(u.SupervisedGroups, want) {
 				t.Fatalf("主管组范围有误: %+v", u)

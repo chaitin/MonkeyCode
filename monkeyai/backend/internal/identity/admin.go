@@ -46,7 +46,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 
 func (s *Service) getUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
-	user, err := s.userByID(r.Context(), userID)
+	user, err := s.adminUserByID(r.Context(), userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(r.Context(), w, http.StatusNotFound, "user_not_found", "用户不存在")
 		return

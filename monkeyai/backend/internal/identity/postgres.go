@@ -226,6 +226,22 @@ func (s *Service) listUsers(ctx context.Context) ([]adminListUser, error) {
 	return users, nil
 }
 
+func (s *Service) adminUserByID(ctx context.Context, id string) (adminListUser, error) {
+	user, err := s.userByID(ctx, id)
+	if err != nil {
+		return adminListUser{}, err
+	}
+	rows, err := sqlc.New(s.db).GetUserSupervisedGroups(ctx, id)
+	if err != nil {
+		return adminListUser{}, err
+	}
+	groups := make([]supervisedGroup, 0, len(rows))
+	for _, row := range rows {
+		groups = append(groups, supervisedGroup{ID: row.ID, Name: row.Name})
+	}
+	return adminListUser{User: user, SupervisedGroups: groups}, nil
+}
+
 func (s *Service) userByID(ctx context.Context, id string) (User, error) {
 	return readProfileUser(ctx, sqlc.New(s.db), id)
 }

@@ -1101,6 +1101,39 @@ func (q *Queries) GetUserCreationGroups(ctx context.Context, dollar_1 []string) 
 	return items, nil
 }
 
+const getUserSupervisedGroups = `-- name: GetUserSupervisedGroups :many
+SELECT g.id, g.name
+FROM group_users gu
+JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+WHERE gu.user_id = $1 AND gu.is_supervisor AND gu.removed_at IS NULL
+ORDER BY g.name, g.id
+`
+
+type GetUserSupervisedGroupsRow struct {
+	ID   string
+	Name string
+}
+
+func (q *Queries) GetUserSupervisedGroups(ctx context.Context, userID string) ([]GetUserSupervisedGroupsRow, error) {
+	rows, err := q.db.Query(ctx, getUserSupervisedGroups, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUserSupervisedGroupsRow{}
+	for rows.Next() {
+		var i GetUserSupervisedGroupsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT u.id, u.name, u.email,
     coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''), '')::text AS avatar_url,
