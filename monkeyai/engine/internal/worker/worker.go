@@ -70,9 +70,13 @@ type commands struct {
 }
 
 const (
-	operationSlots  = 10
-	inspectionSlots = 2
+	operationSlots    = 10
+	inspectionSlots   = 2
+	operationTimeout  = 35 * time.Minute
+	inspectionTimeout = 2 * time.Minute
 )
+
+var errJobTimeout = errors.New("环境任务达到总超时")
 
 type job struct {
 	generation int64
@@ -86,6 +90,8 @@ type Worker struct {
 	executor                      Executor
 	mu                            sync.Mutex
 	entries                       map[string]entry
+	writing                       map[string]chan struct{}
+	persist                       func(entry) error
 	checked                       map[string]time.Time
 	cursor                        string
 	active                        map[string]job
@@ -113,6 +119,8 @@ func New(root string, executor Executor) (*Worker, error) {
 		return nil, errors.New("命令目录权限无效")
 	}
 	w := &Worker{operations: operationSlots, inspections: inspectionSlots, root: root, executor: executor, entries: map[string]entry{}, checked: map[string]time.Time{}, active: make(map[string]job)}
+	w.writing = make(map[string]chan struct{})
+	w.persist = w.writeEntry
 	files, err := os.ReadDir(root)
 	if err != nil {
 		return nil, err
@@ -164,16 +172,28 @@ func validResult(e entry) bool {
 	}
 	return false
 }
-func (w *Worker) save(e entry) error {
+func (w *Worker) writeEntry(e entry) error {
 	raw, err := json.Marshal(e)
 	if err != nil {
 		return err
 	}
-	if err := control.Write(filepath.Join(w.root, e.Target.EnvironmentID+".json"), raw, 0600); err != nil {
-		return err
+	return control.Write(filepath.Join(w.root, e.Target.EnvironmentID+".json"), raw, 0600)
+}
+
+// 调用方持有 mu 并已确认该环境没有写入。读者只能看到上一次成功落盘的版本。
+func (w *Worker) saveLocked(e entry) error {
+	id := e.Target.EnvironmentID
+	done := make(chan struct{})
+	w.writing[id] = done
+	w.mu.Unlock()
+	err := w.persist(e)
+	w.mu.Lock()
+	if err == nil {
+		w.entries[id] = e
 	}
-	w.entries[e.Target.EnvironmentID] = e
-	return nil
+	delete(w.writing, id)
+	close(done)
+	return err
 }
 func (w *Worker) Close() {
 	w.mu.Lock()
@@ -279,7 +299,7 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 			return errors.New("后台确认了未提交的结果")
 		}
 		e := w.entries[ack.EnvironmentID]
-		if e.Result == nil {
+		if e.Result == nil || w.writing[ack.EnvironmentID] != nil {
 			continue
 		}
 		result := *e.Result
@@ -294,11 +314,12 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 				slog.Info("后台确认环境结果", "environment_id", ack.EnvironmentID, "generation", ack.Generation, "phase", ack.Phase)
 			}
 			e.Acknowledged = true
-			if err := w.save(e); err != nil {
+			if err := w.saveLocked(e); err != nil {
 				return err
 			}
 		}
 	}
+	advance := true
 	for _, s := range targets {
 		old, ok := w.entries[s.EnvironmentID]
 		if ok && old.Target.Generation > s.Generation {
@@ -312,10 +333,15 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 			}
 			continue
 		}
+		// 该环境的旧结果仍在刷盘时，先处理其余目标，下轮用原游标重新获取。
+		if w.writing[s.EnvironmentID] != nil {
+			advance = false
+			continue
+		}
 		if !ok && len(w.entries) >= 10000 {
 			return errors.New("本地环境记录超过限制")
 		}
-		if err := w.save(entry{Target: s}); err != nil {
+		if err := w.saveLocked(entry{Target: s}); err != nil {
 			return err
 		}
 		slog.Info("已接收环境目标", "environment_id", s.EnvironmentID, "generation", s.Generation, "desired", s.DesiredState)
@@ -324,7 +350,9 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 			j.cancel()
 		}
 	}
-	w.cursor = out.Cursor
+	if advance {
+		w.cursor = out.Cursor
+	}
 	w.usage = out.UsageProtocol == 1
 	w.runtimeUpdates = out.RuntimeUpdateProtocol >= 1 && out.RuntimeUpdateProtocol <= 2
 	w.start(ctx)
@@ -384,13 +412,17 @@ func (w *Worker) dispatch(ctx context.Context, ids []string, inspect bool, slots
 		}
 		id := ids[(start+i)%len(ids)]
 		e := w.entries[id]
-		if _, busy := w.active[id]; busy || (e.Result != nil) != inspect {
+		if _, busy := w.active[id]; busy || w.writing[id] != nil || (e.Result != nil) != inspect {
 			continue
 		}
 		if inspect && (e.Result.Phase != "running" || time.Since(w.checked[id]) < 30*time.Second) {
 			continue
 		}
-		run, cancel := context.WithCancel(ctx)
+		limit := operationTimeout
+		if inspect {
+			limit = inspectionTimeout
+		}
+		run, cancel := context.WithTimeoutCause(ctx, limit, errJobTimeout)
 		w.active[id] = job{e.Target.Generation, inspect, time.Now().UTC(), cancel}
 		*last = id
 		slots--
@@ -458,7 +490,7 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 			result.Phase, result.Reason = "failed", "runtime_upgrade_failed"
 		}
 	}
-	if s.Runtime != nil && s.DesiredState != lifecycle.DesiredDeleted {
+	if ctx.Err() == nil && s.Runtime != nil && s.DesiredState != lifecycle.DesiredDeleted {
 		if executor, ok := w.executor.(RuntimeUpdater); ok {
 			version, err := executor.RuntimeVersion(ctx, s)
 			result.RuntimeVersion = version
@@ -470,7 +502,7 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 	if result.Phase == "stopped" && s.RuntimePackage != nil && result.RuntimeVersion != s.RuntimePackage.Version {
 		result.Phase, result.Reason = "failed", "runtime_upgrade_failed"
 	}
-	if result.Phase == "running" && usage {
+	if ctx.Err() == nil && result.Phase == "running" && usage {
 		if executor, ok := w.executor.(UsageExecutor); ok {
 			// 监控失败不能改变环境生命周期状态。
 			usage, err := executor.Usage(ctx, s)
@@ -482,11 +514,29 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	delete(w.active, s.EnvironmentID)
+	defer delete(w.active, s.EnvironmentID)
+	// 接单或确认可能正在发布新版本；等待时不阻塞其他环境。
+	for w.writing[s.EnvironmentID] != nil {
+		done := w.writing[s.EnvironmentID]
+		w.mu.Unlock()
+		<-done
+		w.mu.Lock()
+	}
 	latest := w.entries[s.EnvironmentID]
-	if ctx.Err() != nil || latest.Target.Generation != s.Generation {
+	timedOut := errors.Is(context.Cause(ctx), errJobTimeout)
+	if w.closed || (ctx.Err() != nil && !timedOut) || latest.Target.Generation != s.Generation {
 		log.Info("环境处理已取消", "elapsed", time.Since(started))
 		return
+	}
+	if timedOut {
+		cause = errJobTimeout
+		if result.Phase != "failed" {
+			result.Phase = "failed"
+			result.Reason = "apply_failed"
+			if e.Result != nil {
+				result.Reason = "inspect_failed"
+			}
+		}
 	}
 	w.checked[s.EnvironmentID] = time.Now()
 	if result.Phase == "failed" {
@@ -497,7 +547,7 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 	latest.Result = &result
 	latest.Acknowledged = false
 	// 持久化失败时不提交结果，后续按本地生命周期检查点核对。
-	if err := w.save(latest); err != nil {
+	if err := w.saveLocked(latest); err != nil {
 		log.Error("保存环境执行结果失败", "error", err)
 	}
 }

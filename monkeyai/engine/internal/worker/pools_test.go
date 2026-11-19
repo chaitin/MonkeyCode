@@ -155,7 +155,10 @@ func TestDiagnosticsShowsQueuedEnvironmentBeforeStateExists(t *testing.T) {
 	}
 	defer w.Close()
 	s := target(t)
-	if err = w.save(entry{Target: s}); err != nil {
+	w.mu.Lock()
+	err = w.saveLocked(entry{Target: s})
+	w.mu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
 	stop, err := w.Diagnostics()
