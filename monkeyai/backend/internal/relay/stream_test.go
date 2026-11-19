@@ -1,3 +1,7 @@
+// [INPUT]: 真实 yamux 流与数据通道预算。
+// [OUTPUT]: 验证取消开流后回收迟到流与并发名额。
+// [POS]: 代理开流的取消与资源回收回归。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
@@ -11,7 +15,7 @@ import (
 
 func TestCanceledOpenReclaimsLateStreamAndKeepsBudget(t *testing.T) {
 	left, right := net.Pipe()
-	cfg := muxConfig()
+	cfg := muxConfig("data")
 	cfg.AcceptBacklog = 1
 	client, err := yamux.Client(left, cfg)
 	if err != nil {
