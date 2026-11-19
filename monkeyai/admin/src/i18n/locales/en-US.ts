@@ -31,6 +31,86 @@ export const enUS = {
     save: "Save changes",
   },
   environmentAdmin: {
+    systemImages: {
+      title: "System images",
+      description:
+        "Browse and manage Docker images in the built-in server Registry.",
+      registry: "Built-in Registry",
+      preview: "Preview",
+      localHint: "Demo data · resets on page reload",
+      search: "Search images, sources or archive names",
+      refresh: "Refresh",
+      add: "Add image",
+      reference: "Image name",
+      source: "Import source",
+      size: "Image size",
+      updatedAt: "Update time",
+      loading: "Loading images…",
+      noResults: "No matching images",
+      searchHint: "Try another image name or clear the search.",
+      empty: "No images in the Registry",
+      emptyHint:
+        "Upload an image archive or pull an image from another registry.",
+      stored: "Available",
+      pullSource: "Remote pull",
+      uploadSource: "Archive import",
+      count: "{{count}} images",
+      update: "Update",
+      delete: "Delete",
+      deleteTitle: "Delete image",
+      deleteHint:
+        "Delete this image from the built-in Registry? This preview only removes demo data.",
+      confirmDelete: "Delete image",
+      deleting: "Deleting",
+      updateTitle: "Update image",
+      updateHint:
+        "Pull the source again and replace the Registry image, keeping the target name and tag.",
+      confirmUpdate: "Pull again",
+      updating: "Pulling",
+      upstream: "Source image",
+      upstreamHint:
+        "Pull the latest contents from this reference into the built-in Registry.",
+      uploadUpdateHint:
+        "This image was imported from an archive. Enter a remote source to update it by pulling.",
+      added: "Image import simulated. No real upload or pull took place.",
+      updated: "Image update simulated. No real pull took place.",
+      deleted: "Removed from the demo list. The real Registry is unchanged.",
+      loadFailed: "Could not load images. Please refresh.",
+      operationFailed: "The operation failed. Please try again.",
+      addDescription:
+        "Choose how to import a Docker image into the built-in Registry.",
+      pullTab: "Pull online",
+      pullDescription: "Pull a source image and import it into the built-in Registry.",
+      uploadDescription: "Upload a Docker image archive into the built-in Registry.",
+      uploadTab: "Upload archive",
+      pullHint:
+        "Enter an image reference, such as ubuntu:24.04 or registry.example.com/team/image:tag.",
+      archive: "Image archive",
+      chooseFile: "Choose image archive",
+      dropFile: "Click to choose or drop an image archive here",
+      removeFile: "Remove archive",
+      archiveHint:
+        "Supports Docker .tar, .tgz and .tar.gz archives, one file at a time.",
+      invalidArchive: "Choose one .tar, .tgz or .tar.gz image archive.",
+      emptyArchive: "The archive is empty. Choose another file.",
+      fileRequired: "Choose an image archive first.",
+      target: "Registry target image",
+      optional: "(optional)",
+      targetPullHint:
+        "Enter a target repository and tag. Leave blank to reuse the source reference, without the built-in Registry host.",
+      targetUploadHint:
+        "Enter the destination repository and tag, such as team/workspace:v1, without the built-in Registry host.",
+      importPreviewHint:
+        "Frontend preview only: no real upload, pull, import or deletion takes place. Sizes, dates and operation states are illustrative.",
+      pulling: "Pulling",
+      pulled: "Image pull complete (preview).",
+      importing: "Importing",
+      startPull: "Pull",
+      startImport: "Import",
+      invalidReference:
+        "Enter an image reference without spaces, non-ASCII characters or a protocol prefix.",
+      duplicate: "The target image exists. Choose another name or use Update.",
+    },
     specifications: {
       title: "Manage specifications",
       description:

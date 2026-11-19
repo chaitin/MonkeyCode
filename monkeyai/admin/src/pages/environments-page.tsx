@@ -426,7 +426,7 @@ export function EnvironmentsPage({
                   <TableCell>
                     <Button
                       variant="link"
-                      className="h-auto max-w-60 justify-start whitespace-normal break-all p-0 text-start font-medium"
+                      className="h-auto max-w-60 justify-start whitespace-normal break-all p-0 text-start font-medium hover:text-blue-600 hover:no-underline dark:hover:text-blue-400"
                       onClick={() => select(env.id)}
                     >
                       {env.name}
@@ -745,7 +745,6 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                 <DetailSection title={t("environmentAdmin.basicInfo")}>
                   <DetailRows
                     items={[
-                      [t("environmentAdmin.createdAt"), date(env.created_at)],
                       [
                         t("environmentAdmin.creator"),
                         <button
@@ -761,6 +760,7 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                           </span>
                         </button>,
                       ],
+                      [t("environmentAdmin.createdAt"), date(env.created_at)],
                       [
                         t("environmentAdmin.host"),
                         <div className="flex items-center justify-end gap-2.5">
@@ -861,7 +861,7 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
             </DetailSection>
           </div>
         </ScrollArea>
-        <DialogFooter className="shrink-0 items-center pt-4 sm:justify-between">
+        <DialogFooter className="shrink-0 items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
             {t("environmentAdmin.observed")}：
             {env?.observed_at ? date(env.observed_at) : "—"}

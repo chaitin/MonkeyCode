@@ -42,8 +42,9 @@ import {
 } from "@/components/environments/host-upgrade"
 import { HostSetupDialog } from "@/components/environments/host-setup-dialog"
 import { SpecificationsDialog } from "@/components/environments/specifications-dialog"
+import { SystemImagesDialog } from "@/components/environments/system-images-dialog"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Info } from "lucide-react"
+import { Box, Cpu, Info } from "lucide-react"
 import {
   Add01Icon,
   MoreHorizontalIcon,
@@ -239,6 +240,7 @@ export function EngineHostsPage({
   const [deleteError, setDeleteError] = useState("")
   const [scheduling, setScheduling] = useState<string | null>(null)
 
+  const [managingImages, setManagingImages] = useState(false)
   const [managingSpecifications, setManagingSpecifications] = useState(false)
   const [configuring, setConfiguring] = useState<Host | null>(null)
   const [checking, setChecking] = useState<Host | null>(null)
@@ -351,287 +353,317 @@ export function EngineHostsPage({
     }
   }
   return (
-    <CloudSection
-      title={text("title")}
-      headerAction={
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setManagingSpecifications(true)}
-          >
-            {t("environmentAdmin.specifications.title")}
-          </Button>
-          <Button
-            variant={result.data?.total === 0 ? "default" : "outline"}
-            disabled={busy}
-            onClick={() => void create()}
-          >
-            <HugeiconsIcon icon={Add01Icon} aria-hidden="true" />
-            {text("add")}
-          </Button>
-        </div>
-      }
-    >
-      <CloudGrid
-        singleColumn
+    <>
+      <CloudSection
         title={text("title")}
-        {...result}
-        empty={!hosts.length}
-      >
-        {hosts.map((host) => {
-          const label =
-            host.name.trim() ||
-            host.report.system?.hostname?.trim() ||
-            t("environmentAdmin.unnamedHost")
-          const status =
-            host.status === "revoked"
-              ? "revoked"
-              : host.status === "pending"
-                ? "pending"
-                : host.online
-                  ? "online"
-                  : "offline"
-          const system = host.report.system
-          const addresses = [
-            ...new Set([
-              ...(system?.public_ips ?? []),
-              ...(system?.private_ips ?? []),
-            ]),
-          ].join(", ")
-          return (
-            <Card
-              key={host.id}
-              size="sm"
-              className={cn(
-                "min-w-0",
-                !host.enabled &&
-                  "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700"
-              )}
+        headerAction={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setManagingImages(true)}
             >
-              <CardHeader>
-                <div className="flex min-w-0 items-start gap-3">
-                  <OSIcon name={system?.os_name} avatar />
-                  <div className="min-w-0 flex-1">
-                    <CardTitle className="flex min-w-0 items-center gap-2">
-                      <button
-                        type="button"
-                        className="min-w-0 truncate text-start transition-colors hover:text-blue-600 dark:hover:text-blue-400"
-                        title={label}
-                        onClick={() => setChecking(host)}
-                      >
-                        {label}
-                      </button>
-                      {!host.enabled && (
-                        <Badge variant="outline">{text("disabled")}</Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription className="flex min-w-0 items-center gap-1">
-                      <span className="shrink-0">
-                        {system?.os_name || missingValue}
-                      </span>
-                      <HugeiconsIcon
-                        icon={DotIcon}
-                        className="size-4 shrink-0"
-                        aria-hidden="true"
-                      />
-                      <span
-                        className="truncate"
-                        title={addresses || text("ipPending")}
-                      >
-                        {addresses || text("ipPending")}
-                      </span>
-                    </CardDescription>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          aria-label={t("common.more")}
-                          size="icon-sm"
-                          type="button"
-                          variant="ghost"
-                        />
-                      }
-                    >
-                      <HugeiconsIcon
-                        icon={MoreHorizontalIcon}
-                        strokeWidth={2}
-                        aria-hidden="true"
-                      />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          disabled={
-                            host.enabled ||
-                            host.status !== "active" ||
-                            scheduling !== null ||
-                            busy
-                          }
-                          onClick={() => void changeScheduling(host, true)}
-                        >
-                          <HugeiconsIcon
-                            icon={PlayIcon}
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                          {text("enable")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={
-                            !host.enabled ||
-                            host.status !== "active" ||
-                            scheduling !== null ||
-                            busy
-                          }
-                          onClick={() => void changeScheduling(host, false)}
-                        >
-                          <HugeiconsIcon
-                            icon={PauseIcon}
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                          {text("disable")}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          disabled={host.status !== "active" || busy}
-                          onClick={() => setConfiguring(host)}
-                        >
-                          <HugeiconsIcon
-                            icon={Edit02Icon}
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                          {t("environmentAdmin.configure")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setChecking(host)}>
-                          <Info aria-hidden="true" />
-                          {t("environmentAdmin.details")}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          disabled={busy}
-                          onClick={() => {
-                            setDeleting(host)
-                            setDeleteError("")
-                          }}
-                        >
-                          <HugeiconsIcon
-                            icon={Delete02Icon}
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                          {t("environmentAdmin.targets.deleted")}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              <CardFooter
+              <Box className="size-4" aria-hidden="true" />
+              {t("environmentAdmin.systemImages.title")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setManagingSpecifications(true)}
+            >
+              <Cpu className="size-4" aria-hidden="true" />
+              {t("environmentAdmin.specifications.title")}
+            </Button>
+            <Button
+              variant={result.data?.total === 0 ? "default" : "outline"}
+              disabled={busy}
+              onClick={() => void create()}
+            >
+              <HugeiconsIcon icon={Add01Icon} aria-hidden="true" />
+              {text("add")}
+            </Button>
+          </div>
+        }
+      >
+        <CloudGrid
+          singleColumn
+          title={text("title")}
+          {...result}
+          empty={!hosts.length}
+        >
+          {hosts.map((host) => {
+            const label =
+              host.name.trim() ||
+              host.report.system?.hostname?.trim() ||
+              t("environmentAdmin.unnamedHost")
+            const status =
+              host.status === "revoked"
+                ? "revoked"
+                : host.status === "pending"
+                  ? "pending"
+                  : host.online
+                    ? "online"
+                    : "offline"
+            const system = host.report.system
+            const addresses = [
+              ...new Set([
+                ...(system?.public_ips ?? []),
+                ...(system?.private_ips ?? []),
+              ]),
+            ].join(", ")
+            return (
+              <Card
+                key={host.id}
+                size="sm"
                 className={cn(
-                  "min-w-0 flex-wrap gap-2 border-t",
-                  !host.enabled && "border-gray-300 dark:border-gray-700"
+                  "min-w-0",
+                  !host.enabled &&
+                    "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700"
                 )}
               >
-                <ResourceAuthorizationBadge
-                  grants={host.grants}
-                  groupNames={authorizationNames}
-                  memberNames={authorizationNames}
-                />
-                <HostStatus status={status} />
-                {typeof host.environment_count === "number" && (
-                  <Badge
-                    variant="outline"
-                    className="border-blue-200 bg-blue-50 tabular-nums text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200 [&:is(a)]:hover:bg-blue-100 [&:is(a)]:hover:text-blue-900 dark:[&:is(a)]:hover:bg-blue-900 dark:[&:is(a)]:hover:text-blue-100"
-                    render={
-                      <Link
-                        to={`${CONSOLE_ROUTES.cloudHosts}?${new URLSearchParams({ host_id: host.id, host_name: label })}`}
-                      />
-                    }
-                    aria-label={text("viewEnvironments", {
-                      name: label,
-                      count: host.environment_count,
-                    })}
-                    title={text("environmentCountHint")}
-                  >
-                    {text("environmentCountBadge", {
-                      count: host.environment_count,
-                    })}
-                  </Badge>
-                )}
-                {host.status !== "pending" && host.architecture && (
-                  <Badge
-                    variant="outline"
-                    className="border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200"
-                    title={text("architecture")}
-                  >
-                    {host.architecture}
-                  </Badge>
-                )}
-                {system?.cpu && system.cpu.logical_cores > 0 && (
-                  <Tooltip>
+                <CardHeader>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <OSIcon name={system?.os_name} avatar />
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="flex min-w-0 items-center gap-2">
+                        <button
+                          type="button"
+                          className="min-w-0 truncate text-start transition-colors hover:text-blue-600 dark:hover:text-blue-400"
+                          title={label}
+                          onClick={() => setChecking(host)}
+                        >
+                          {label}
+                        </button>
+                        <HostStatus status={status} />
+                        {host.status === "active" && (
+                          <HostUpgrade
+                            host={host}
+                            refresh={refresh}
+                            dialog
+                            badge
+                          />
+                        )}
+                        {!host.enabled && (
+                          <Badge variant="outline">{text("disabled")}</Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="flex min-w-0 items-center gap-1">
+                        <span className="shrink-0">
+                          {system?.os_name || missingValue}
+                        </span>
+                        <HugeiconsIcon
+                          icon={DotIcon}
+                          className="size-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span
+                          className="truncate"
+                          title={addresses || text("ipPending")}
+                        >
+                          {addresses || text("ipPending")}
+                        </span>
+                      </CardDescription>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            aria-label={t("common.more")}
+                            size="icon-sm"
+                            type="button"
+                            variant="ghost"
+                          />
+                        }
+                      >
+                        <HugeiconsIcon
+                          icon={MoreHorizontalIcon}
+                          strokeWidth={2}
+                          aria-hidden="true"
+                        />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            disabled={
+                              host.enabled ||
+                              host.status !== "active" ||
+                              scheduling !== null ||
+                              busy
+                            }
+                            onClick={() => void changeScheduling(host, true)}
+                          >
+                            <HugeiconsIcon
+                              icon={PlayIcon}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            {text("enable")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={
+                              !host.enabled ||
+                              host.status !== "active" ||
+                              scheduling !== null ||
+                              busy
+                            }
+                            onClick={() => void changeScheduling(host, false)}
+                          >
+                            <HugeiconsIcon
+                              icon={PauseIcon}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            {text("disable")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            disabled={host.status !== "active" || busy}
+                            onClick={() => setConfiguring(host)}
+                          >
+                            <HugeiconsIcon
+                              icon={Edit02Icon}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            {t("environmentAdmin.configure")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setChecking(host)}>
+                            <Info aria-hidden="true" />
+                            {t("environmentAdmin.details")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={busy}
+                            onClick={() => {
+                              setDeleting(host)
+                              setDeleteError("")
+                            }}
+                          >
+                            <HugeiconsIcon
+                              icon={Delete02Icon}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            {t("environmentAdmin.targets.deleted")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardHeader>
+                <CardFooter
+                  className={cn(
+                    "min-w-0 flex-wrap gap-2 border-t",
+                    !host.enabled && "border-gray-300 dark:border-gray-700"
+                  )}
+                >
+                  <ResourceAuthorizationBadge
+                    grants={host.grants}
+                    groupNames={authorizationNames}
+                    memberNames={authorizationNames}
+                  />
+                  {typeof host.environment_count === "number" && (
                     <Badge
                       variant="outline"
-                      className="cursor-default"
-                      render={<TooltipTrigger render={<span />} tabIndex={0} />}
+                      className="border-blue-200 bg-blue-50 tabular-nums text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200 [&:is(a)]:hover:bg-blue-100 [&:is(a)]:hover:text-blue-900 dark:[&:is(a)]:hover:bg-blue-900 dark:[&:is(a)]:hover:text-blue-100"
+                      render={
+                        <Link
+                          to={`${CONSOLE_ROUTES.cloudHosts}?${new URLSearchParams({ host_id: host.id, host_name: label })}`}
+                        />
+                      }
+                      aria-label={text("viewEnvironments", {
+                        name: label,
+                        count: host.environment_count,
+                      })}
+                      title={text("environmentCountHint")}
                     >
-                      <CircularProgress value={system.cpu.usage_percent} />
-                      {text("cpuCapacityBadge", {
-                        count: system.cpu.logical_cores,
+                      {text("environmentCountBadge", {
+                        count: host.environment_count,
                       })}
                     </Badge>
-                    <TooltipContent>
-                      {text("cpuUsage")}: {percent(system.cpu.usage_percent)}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {system?.memory && system.memory.total_bytes > 0 && (
-                  <Tooltip>
+                  )}
+                  {host.status !== "pending" && host.architecture && (
                     <Badge
                       variant="outline"
-                      className="cursor-default"
-                      render={<TooltipTrigger render={<span />} tabIndex={0} />}
+                      className="border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200"
+                      title={text("architecture")}
                     >
-                      <CircularProgress value={usage(system.memory)} />
-                      {text("memoryCapacityBadge", {
-                        size: Math.ceil(system.memory.total_bytes / 1024 ** 3),
-                      })}
+                      {host.architecture}
                     </Badge>
-                    <TooltipContent>
-                      {text("memoryUsage")}: {percent(usage(system.memory))}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {system?.disk && system.disk.total_bytes > 0 && (
-                  <Tooltip>
-                    <Badge
-                      variant="outline"
-                      className="cursor-default"
-                      render={<TooltipTrigger render={<span />} tabIndex={0} />}
-                    >
-                      <CircularProgress value={usage(system.disk)} />
-                      {text("diskCapacityBadge", {
-                        size: Math.ceil(system.disk.total_bytes / 1024 ** 3),
-                      })}
-                    </Badge>
-                    <TooltipContent>
-                      {text("diskUsage")}: {percent(usage(system.disk))}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </CardFooter>
-            </Card>
-          )
-        })}
-      </CloudGrid>
+                  )}
+                  {system?.cpu && system.cpu.logical_cores > 0 && (
+                    <Tooltip>
+                      <Badge
+                        variant="outline"
+                        className="cursor-default"
+                        render={
+                          <TooltipTrigger render={<span />} tabIndex={0} />
+                        }
+                      >
+                        <CircularProgress value={system.cpu.usage_percent} />
+                        {text("cpuCapacityBadge", {
+                          count: system.cpu.logical_cores,
+                        })}
+                      </Badge>
+                      <TooltipContent>
+                        {text("cpuUsage")}: {percent(system.cpu.usage_percent)}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {system?.memory && system.memory.total_bytes > 0 && (
+                    <Tooltip>
+                      <Badge
+                        variant="outline"
+                        className="cursor-default"
+                        render={
+                          <TooltipTrigger render={<span />} tabIndex={0} />
+                        }
+                      >
+                        <CircularProgress value={usage(system.memory)} />
+                        {text("memoryCapacityBadge", {
+                          size: Math.ceil(
+                            system.memory.total_bytes / 1024 ** 3
+                          ),
+                        })}
+                      </Badge>
+                      <TooltipContent>
+                        {text("memoryUsage")}: {percent(usage(system.memory))}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {system?.disk && system.disk.total_bytes > 0 && (
+                    <Tooltip>
+                      <Badge
+                        variant="outline"
+                        className="cursor-default"
+                        render={
+                          <TooltipTrigger render={<span />} tabIndex={0} />
+                        }
+                      >
+                        <CircularProgress value={usage(system.disk)} />
+                        {text("diskCapacityBadge", {
+                          size: Math.ceil(system.disk.total_bytes / 1024 ** 3),
+                        })}
+                      </Badge>
+                      <TooltipContent>
+                        {text("diskUsage")}: {percent(usage(system.disk))}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </CardFooter>
+              </Card>
+            )
+          })}
+        </CloudGrid>
+      </CloudSection>
+      {managingImages && (
+        <SystemImagesDialog onClose={() => setManagingImages(false)} />
+      )}
       {managingSpecifications && (
         <SpecificationsDialog
           onClose={() => setManagingSpecifications(false)}
@@ -1064,7 +1096,7 @@ export function EngineHostsPage({
             )}
           </ScrollArea>
           {detail && (
-            <DialogFooter className="shrink-0 items-center pt-4 sm:justify-between">
+            <DialogFooter className="shrink-0 items-center sm:justify-between">
               <p className="text-xs text-muted-foreground">
                 {text("reportTime")}
                 {"："}
@@ -1218,6 +1250,6 @@ export function EngineHostsPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </CloudSection>
+    </>
   )
 }

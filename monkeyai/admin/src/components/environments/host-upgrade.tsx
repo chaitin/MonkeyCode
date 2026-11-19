@@ -57,6 +57,7 @@ export function HostUpgrade({
   host,
   refresh,
   dialog = false,
+  badge = false,
 }: {
   host: {
     id: string
@@ -68,6 +69,7 @@ export function HostUpgrade({
   }
   refresh: () => void
   dialog?: boolean
+  badge?: boolean
 }) {
   const { t } = useTranslation()
   const { showToast } = useAppToast()
@@ -326,11 +328,25 @@ export function HostUpgrade({
   if (!dialog) return content
   return (
     <>
-      {value.update_available && (
-        <Button size="xs" variant="default" onClick={() => setDialogOpen(true)}>
-          {text("needsUpgrade")}
-        </Button>
-      )}
+      {value.update_available &&
+        (badge ? (
+          <Badge
+            variant="outline"
+            className="cursor-pointer border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300 dark:hover:bg-orange-900"
+            render={<button type="button" />}
+            onClick={() => setDialogOpen(true)}
+          >
+            {text("needsUpgrade")}
+          </Badge>
+        ) : (
+          <Button
+            size="xs"
+            variant="default"
+            onClick={() => setDialogOpen(true)}
+          >
+            {text("needsUpgrade")}
+          </Button>
+        ))}
       <Dialog
         open={dialogOpen}
         onOpenChange={(open) => {
