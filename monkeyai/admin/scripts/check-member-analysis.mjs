@@ -486,7 +486,7 @@ try {
       `近一年共 ${new Intl.NumberFormat("zh-CN").format(days.reduce((sum, day) => sum + day.conversations, 0))} 条消息`
     )
     for (const day of activity)
-      assert.equal(day.opacity, Math.min(1, day.count / 20))
+      assert.equal(day.opacity, Math.min(1, day.count / 50))
     const lastDay = cells.last()
     assert.match(
       await lastDay.getAttribute("aria-label"),

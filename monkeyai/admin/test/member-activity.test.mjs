@@ -43,9 +43,9 @@ test("热力图跳转使用北京时间的完整自然日，跨年与闰日的�
   })
 })
 
-test("每天对话次数按每次 5% 线性映射 emerald 透明度，并在 20 次封顶", () => {
-  for (const count of [0, 1, 2, 5, 10, 19, 20, 21, 100]) {
-    assert.equal(memberActivityOpacity(count), Math.min(1, count / 20))
+test("每日对话每次增加 2 个百分点的绿色不透明度，50 次封顶", () => {
+  for (const [count, opacity] of [[0, 0], [1, 0.02], [20, 0.4], [49, 0.98], [50, 1], [51, 1]]) {
+    assert.equal(memberActivityOpacity(count), opacity)
   }
   for (const invalid of [-1, NaN, Infinity])
     assert.equal(memberActivityOpacity(invalid), 0)

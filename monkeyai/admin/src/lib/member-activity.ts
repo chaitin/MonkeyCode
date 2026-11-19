@@ -31,6 +31,6 @@ export function memberActivityBounds(date: string) {
 
 export function memberActivityOpacity(conversations: number) {
   return Number.isFinite(conversations)
-    ? Math.min(1, Math.max(0, conversations) / 20)
+    ? Math.min(1, Math.max(0, conversations) / 50)
     : 0
 }
