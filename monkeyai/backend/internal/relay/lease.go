@@ -1,5 +1,5 @@
 // [INPUT]: 签名租约、授权存储、控制事件流与 yamux Ping。
-// [OUTPUT]: 核验访问租约，以最近一次有效 Pong 判定设备失联，传递撤销。
+// [OUTPUT]: 核验访问租约，定期探测并按最近有效 Pong 判定失联，传递撤销。
 // [POS]: 设备控制路由的存活与授权检查，网络读写在服务锁外执行。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -339,12 +339,26 @@ func (s *Service) control(ctx context.Context, r *route) {
 func (s *Service) probe(r *route, stop <-chan struct{}) {
 	ticker := time.NewTicker(controlProbeInterval)
 	defer ticker.Stop()
+	// 容许上一次 Ping 仍在等应答。每个在途探测都留有结果槽，退出时也能收尾。
+	results := make(chan error, 2)
+	pending := 0
 	for {
 		select {
 		case <-stop:
 			return
 		case <-ticker.C:
-			_, err := r.control.Ping()
+			if !s.checkHeartbeat(r, false) {
+				return
+			}
+			if pending < cap(results) {
+				pending++
+				go func() {
+					_, err := r.control.Ping()
+					results <- err
+				}()
+			}
+		case err := <-results:
+			pending--
 			if err != nil {
 				if !closedConnection(err) {
 					logging.Event(context.Background(), s.logger, slog.LevelWarn, "relay.probe.failed", "设备控制通道探测失败", "module", "relay", "operation", "probe", "lease_epoch", r.state.LeaseEpoch, "machine_id", r.target.machine, "user_id", r.target.user, "boot_id", r.hello.BootID, "error", err)

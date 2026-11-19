@@ -350,6 +350,7 @@ func (s *Service) InvalidateGrant(id string) {
 	for _, r := range s.routes {
 		if r.principal.GrantID == id {
 			routes = append(routes, r)
+			continue // 整条路由的撤销已覆盖其中所有访问。
 		}
 		for a := range r.streams {
 			if a.clientGrant == id {

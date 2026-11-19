@@ -1,11 +1,12 @@
 // [INPUT]: 并发关闭请求、WebSocket 与结构化日志。
-// [OUTPUT]: 验证路由只清理一次，关闭事件保留代次和原因。
+// [OUTPUT]: 验证路由只清理一次，撤销按流计数，关闭事件保留代次和原因。
 // [POS]: 路由释放的并发与诊断回归。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -86,5 +87,23 @@ func TestClosedConnectionDoesNotHideTimeout(t *testing.T) {
 	}
 	if closedConnection(&net.DNSError{IsTimeout: true}) {
 		t.Fatal("探测超时不能被忽略")
+	}
+}
+
+func TestGrantRevocationClosesSharedGrantAccessOnce(t *testing.T) {
+	a := &access{id: "desktop", clientGrant: "shared"}
+	r := &route{
+		target: target{"owner", "machine"}, seen: time.Now(),
+		controlQueue: make(chan any, 2), streams: map[*access]struct{}{a: {}},
+	}
+	r.principal.GrantID = a.clientGrant
+	_, key, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Service{routes: map[target]*route{r.target: r}, key: key, logger: slog.Default()}
+	s.InvalidateGrant(a.clientGrant)
+	if !r.closed || a.reason != "authorization_revoked" || s.metrics.revoked.Load() != 1 || len(r.controlQueue) != 1 {
+		t.Fatalf("路由关闭=%t，流关闭原因=%q，撤销计数=%d，通知数=%d", r.closed, a.reason, s.metrics.revoked.Load(), len(r.controlQueue))
 	}
 }

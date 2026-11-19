@@ -1,10 +1,12 @@
 // [INPUT]: 依赖真实 yamux 会话、内存连接和生产控制通道配置。
-// [OUTPUT]: 验证迟到的 Pong 与开流 ACK 可以在同一控制路由恢复。
+// [OUTPUT]: 验证漏回一次 Pong、迟到的 Pong 与开流 ACK 可以在原路由恢复。
 // [POS]: relay 传输时序回归，与真实 WebSocket 和数据库集成测试互补。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -31,13 +33,41 @@ func (c *delayedFirstRead) Read(p []byte) (int, error) {
 
 func TestDelayedControlPongKeepsSameRoute(t *testing.T) {
 	t.Parallel()
+	assertControlProbeRecovers(t, func(peer net.Conn) net.Conn {
+		return &delayedFirstRead{Conn: peer, delay: 15 * time.Second}
+	})
+}
+
+// 对端在测试中只发送 Pong。模拟一次应答丢失，后续写入照常送达。
+type missingFirstPong struct {
+	net.Conn
+	missed bool
+}
+
+func (c *missingFirstPong) Write(p []byte) (int, error) {
+	if !c.missed {
+		c.missed = true
+		return len(p), nil
+	}
+	return c.Conn.Write(p)
+}
+
+func TestMissingControlPongKeepsSameRoute(t *testing.T) {
+	t.Parallel()
+	assertControlProbeRecovers(t, func(peer net.Conn) net.Conn {
+		return &missingFirstPong{Conn: peer}
+	})
+}
+
+func assertControlProbeRecovers(t *testing.T, peer func(net.Conn) net.Conn) {
+	t.Helper()
 	left, right := net.Pipe()
 	server, err := yamux.Server(left, muxConfig("control"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	client, err := yamux.Client(&delayedFirstRead{Conn: right, delay: 15 * time.Second}, muxConfig("control"))
+	client, err := yamux.Client(peer(right), muxConfig("control"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,20 +78,21 @@ func TestDelayedControlPongKeepsSameRoute(t *testing.T) {
 	stop := make(chan struct{})
 	defer close(stop)
 	go s.probe(r, stop)
-	// 原连接须跨过第 25 秒的旧时限，并在第 30 秒左右收到首个 Pong。
-	deadline := time.NewTimer(35 * time.Second)
+	// 跨过首个 Ping 的超时点，再确认同一路由仍能续期。
+	firstWindowEnd := start.Add(controlSilenceLimit)
+	deadline := time.NewTimer(controlSilenceLimit + controlProbeInterval + 5*time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
 	for {
 		select {
 		case <-server.CloseChan():
-			t.Fatal("Pong 返回前 relay 关闭了控制连接")
+			t.Fatal("可恢复的心跳中断导致控制连接关闭")
 		case <-deadline.C:
-			t.Fatal("原路由未收到迟到的 Pong")
+			t.Fatal("原路由未收到有效 Pong")
 		case <-tick.C:
 			s.mu.Lock()
-			confirmed := r.seen.After(start)
+			confirmed := !r.seen.Before(firstWindowEnd)
 			s.mu.Unlock()
 			if confirmed {
 				if s.current(r.target) != r {
@@ -117,9 +148,17 @@ func TestLatePongCannotReviveExpiredOrReplacedRoute(t *testing.T) {
 	key := target{"owner", "machine"}
 	stale := time.Now().Add(-controlSilenceLimit)
 	old := &route{target: key, ready: true, seen: stale}
-	s := &Service{routes: map[target]*route{key: old}, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	var logs bytes.Buffer
+	s := &Service{routes: map[target]*route{key: old}, logger: slog.New(slog.NewJSONHandler(&logs, nil))}
 	if s.checkHeartbeat(old, true) || !old.closed || !old.seen.Equal(stale) || s.routes[key] != nil {
 		t.Fatal("过期 Pong 不能续期")
+	}
+	var event struct {
+		Reason string `json:"reason"`
+		AgeMS  int64  `json:"last_seen_age_ms"`
+	}
+	if err := json.Unmarshal(logs.Bytes(), &event); err != nil || event.Reason != "heartbeat_timeout" || event.AgeMS < controlSilenceLimit.Milliseconds() {
+		t.Fatalf("失联记录缺少原因或持续时间: %s", logs.String())
 	}
 	// 新代次已切换，旧代次的清理和 Pong 仍可能在路上。
 	old = &route{target: key, ready: true, seen: time.Now()}
