@@ -36,6 +36,15 @@ WHERE connector_id = sqlc.arg(connector_id)
     AND deleted_at IS NULL AND enabled
 ORDER BY name;
 
+-- name: SnapshotToolsVersion :one
+SELECT encode(sha256(convert_to(COALESCE(jsonb_agg(jsonb_build_array(id, name, description, input_schema,
+    CASE WHEN sqlc.arg(independent)::boolean THEN 0 ELSE credits_per_call END) ORDER BY name)::text, '[]'), 'UTF8')), 'hex')::text
+FROM mcp_tools
+WHERE connector_id = sqlc.arg(connector_id)
+    AND credential_id IS NOT DISTINCT FROM NULLIF(sqlc.arg(credential_id)::text, '')::uuid
+    AND config_revision = sqlc.arg(config_revision) AND discovered_at = sqlc.arg(synced_at)
+    AND deleted_at IS NULL AND enabled;
+
 -- name: SaveSnapshotTools :exec
 INSERT INTO mcp_tools (id, connector_id, credential_id, name, description, input_schema, enabled, config_revision, discovered_at)
 SELECT (t->>'id')::uuid, sqlc.arg(connector_id)::uuid, NULLIF(sqlc.arg(credential_id)::text, '')::uuid,

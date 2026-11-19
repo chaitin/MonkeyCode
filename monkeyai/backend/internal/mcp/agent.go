@@ -18,27 +18,34 @@ func (s *Service) gateway(c resource.Object, credential string) resource.Object 
 	return resource.Object{"url": url, "transport": "streamable_http", "authentication": "api_key", "required_scope": "mcp:invoke"}
 }
 func (s *Service) ListEntry(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
-	return s.catalog(ctx, q, c, user, false, nil)
+	return s.catalog(ctx, q, c, user, nil, nil)
 }
 
 func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
-	return s.catalog(ctx, q, c, user, true, nil)
+	return s.catalog(ctx, q, c, user, s.catalogTools, nil)
 }
 
 // ResolveEntry 仅为显式绑定或唯一可自动选中的凭证读取工具快照。
 func (s *Service) ResolveEntry(ctx context.Context, q resource.Queryer, c resource.Object, user, binding string) (resource.Object, error) {
-	return s.catalog(ctx, q, c, user, true, &binding)
+	return s.catalog(ctx, q, c, user, s.cachedTools, &binding)
 }
 
-func (s *Service) catalog(ctx context.Context, q resource.Queryer, c resource.Object, user string, includeTools bool, binding *string) (resource.Object, error) {
+type toolReader func(context.Context, resource.Queryer, resource.Object, resource.Object, resource.Object) ([]resource.Object, error)
+
+func (s *Service) ExpertSummary(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
+	return s.catalog(ctx, q, c, user, s.snapshotVersion, nil)
+}
+
+func (s *Service) ExpertSnapshot(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
+	return s.catalog(ctx, q, c, user, s.cachedTools, nil)
+}
+
+func (s *Service) catalog(ctx context.Context, q resource.Queryer, c resource.Object, user string, readTools toolReader, binding *string) (resource.Object, error) {
 	c, err := resource.DecodeObject(sqlc.New(q).GetConnector(ctx, c.String("id")))
 	if err != nil {
 		return nil, err
 	}
-	readTools := s.catalogTools
-	if binding != nil {
-		readTools = s.cachedTools
-	}
+	includeTools := readTools != nil
 	out := resource.Object{"id": c["id"], "name": c["name"], "description": c["description"], "name_i18n": c["name_i18n"], "description_i18n": c["description_i18n"], "authorization_mode": c["authorization_mode"], "authorization_method": c["authorization_method"], "auth_header_name": c["auth_header_name"], "icon_path": "", "capabilities": []string{"catalog", "invoke"}}
 	if key := c.String("icon_s3_key"); key != "" {
 		out["icon_path"] = "/api/v1/connectors/" + c.String("id") + "/icon?v=" + resource.Hash(key)

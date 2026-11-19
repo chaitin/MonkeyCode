@@ -42,6 +42,8 @@ type catalog struct {
 	links                              map[string][]resource.Object
 	connectorDTOs                      map[string]resource.Object
 	bindings                           map[string]string
+	snapshot                           bool
+	summaries                          map[string]connectorSummary
 }
 
 func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind string) (catalog, error) {
@@ -49,7 +51,11 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 }
 
 func (r *Resources) loadSelected(ctx context.Context, q resource.Queryer, user, kind string, ids []string) (catalog, error) {
-	c := catalog{grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}, connectorDTOs: map[string]resource.Object{}}
+	return r.loadCatalog(ctx, q, user, kind, ids, false)
+}
+
+func (r *Resources) loadCatalog(ctx context.Context, q resource.Queryer, user, kind string, ids []string, summary bool) (catalog, error) {
+	c := catalog{summaries: map[string]connectorSummary{}, grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}, connectorDTOs: map[string]resource.Object{}}
 	systemAccess, err := resource.CanUseSystem(ctx, q, user)
 	if err != nil {
 		return c, err
@@ -102,13 +108,13 @@ func (r *Resources) loadSelected(ctx context.Context, q resource.Queryer, user, 
 		read  func(context.Context) ([][]byte, error)
 	}{
 		{"rules", &c.rules, func(ctx context.Context) ([][]byte, error) {
-			return queries.CatalogRules(ctx, sqlc.CatalogRulesParams{AllResources: all, ResourceIds: selected("rules")})
+			return queries.CatalogRules(ctx, sqlc.CatalogRulesParams{SummaryOnly: summary, AllResources: all, ResourceIds: selected("rules")})
 		}},
 		{"skills", &c.skills, func(ctx context.Context) ([][]byte, error) {
 			return queries.CatalogSkills(ctx, sqlc.CatalogSkillsParams{AllResources: all, ResourceIds: selected("skills")})
 		}},
 		{"experts", &c.experts, func(ctx context.Context) ([][]byte, error) {
-			return queries.CatalogExperts(ctx, sqlc.CatalogExpertsParams{AllResources: all, ResourceIds: experts})
+			return queries.CatalogExperts(ctx, sqlc.CatalogExpertsParams{SummaryOnly: summary, AllResources: all, ResourceIds: experts})
 		}},
 		{"connectors", &c.connectors, func(ctx context.Context) ([][]byte, error) {
 			return queries.CatalogConnectors(ctx, sqlc.CatalogConnectorsParams{AllResources: all, ResourceIds: selected("connectors")})
@@ -217,6 +223,8 @@ func (r *Resources) connectorDTO(ctx context.Context, q resource.Queryer, c cata
 		var err error
 		if c.bindings != nil {
 			dto, err = r.mcp.ResolveEntry(ctx, q, o, user, c.bindings[id])
+		} else if c.snapshot {
+			dto, err = r.mcp.ExpertSnapshot(ctx, q, o, user)
 		} else {
 			dto, err = r.mcp.Catalog(ctx, q, o, user)
 		}
@@ -408,7 +416,7 @@ func searchable(o resource.Object) (string, string) {
 }
 
 func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind string, filter resource.CatalogFilter, ids []string) ([]resource.Object, error) {
-	c, err := r.loadSelected(ctx, q, user, kind, ids)
+	c, err := r.loadCatalog(ctx, q, user, kind, ids, kind == "experts")
 	if err != nil {
 		return nil, err
 	}
@@ -454,10 +462,21 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 			dto = skillDTO(o, "")
 			dto["tags"] = tags[id]
 		case "experts":
-			var manifest resource.Object
-			manifest, err = r.manifest(ctx, q, c, id, user)
+			var summary resource.Object
+			summary, err = r.expertSummary(ctx, q, c, id, user)
 			if err == nil {
-				dto = resource.Object{"id": id, "name": o["name"], "description": o["description"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "avatar_path": manifest["avatar_path"], "version": manifest["version"], "manifest_path": "/api/v1/experts/" + id + "/manifest", "available": manifest["available"], "issues": manifest["issues"]}
+				dto = resource.Object{"id": id, "name": o["name"], "version": summary["version"], "manifest_path": "/api/v1/experts/" + id + "/manifest", "available": summary["available"], "issues": summary["issues"]}
+				if description := o.String("description"); description != "" {
+					dto["description"] = description
+				}
+				for _, key := range []string{"name_i18n", "description_i18n"} {
+					if translations, _ := o[key].(map[string]any); len(translations) > 0 {
+						dto[key] = translations
+					}
+				}
+				if path := summary.String("avatar_path"); path != "" {
+					dto["avatar_path"] = path
+				}
 			}
 		case "connectors":
 			if id == knowledgeBaseConnectorID {
@@ -594,23 +613,31 @@ func (r *Resources) getManifest(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
-	c, err := r.load(req.Context(), tx, u.ID, "")
+	id := chi.URLParam(req, "id")
+	c, err := r.loadSelected(req.Context(), tx, u.ID, "experts", []string{id})
 	if err != nil {
 		resource.Fail(req.Context(), w, err)
 		return
 	}
-	out, err := r.manifest(req.Context(), tx, c, chi.URLParam(req, "id"), u.ID)
+	summary, err := r.expertSummary(req.Context(), tx, c, id, u.ID)
 	if err != nil {
 		resource.Fail(req.Context(), w, err)
 		return
 	}
-	etag := fmt.Sprintf(`"%s"`, out.String("version"))
+	etag := fmt.Sprintf(`"%s"`, summary.String("version"))
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, no-cache")
 	if req.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(304)
 		return
 	}
+	c.snapshot = true
+	out, err := r.manifest(req.Context(), tx, c, id, u.ID)
+	if err != nil {
+		resource.Fail(req.Context(), w, err)
+		return
+	}
+	out["version"] = summary["version"]
 	resource.JSON(req.Context(), w, 200, out)
 }
 func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated bool) {
