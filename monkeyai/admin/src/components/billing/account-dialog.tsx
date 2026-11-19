@@ -174,6 +174,7 @@ export function AccountDialog({
                       </dd>
                     </div>
                     {[
+                      ["状态", member.status === "active" ? "正常" : "已停用"],
                       ["邮箱", member.email],
                       ["用户 ID", member.id],
                       [
@@ -186,7 +187,6 @@ export function AccountDialog({
                               })
                             : t("pages.membersAndGroups.bulk.member"),
                       ],
-                      ["状态", member.status === "active" ? "正常" : "已停用"],
                       ["加入时间", dateTime(member.joined_at)],
                       [
                         "最近登录",
@@ -208,22 +208,12 @@ export function AccountDialog({
                       </div>
                     ))}
 
-                    {[
-                      ["剩余积分", data.account.balance],
-                      ["积分满额上限", data.account.quota],
-                    ].map(([label, value]) => (
-                      <div
-                        key={label}
-                        className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
-                      >
-                        <dt className="shrink-0 text-muted-foreground">
-                          {label}
-                        </dt>
-                        <dd className="min-w-0 break-all text-right tabular-nums">
-                          {displayCredits(value)}
-                        </dd>
-                      </div>
-                    ))}
+                    <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                      <dt className="shrink-0 text-muted-foreground">剩余积分</dt>
+                      <dd className="min-w-0 break-all text-right tabular-nums">
+                        {displayCredits(data.account.balance)}
+                      </dd>
+                    </div>
                   </dl>
                   {data.wallet.configured && (
                     <div className="space-y-3 border-t pt-4">

@@ -108,7 +108,7 @@ test("member account uses integer key-value balances and dedicated actions", asy
   assert.match(accountDialog, /api<AccountDetails>\(accountPath\)/)
   assert.match(
     accountDialog,
-    /\["姓名", member\.name\][\s\S]*?member\.email[\s\S]*?member\.role[\s\S]*?member\.status/
+    /姓名<\/dt>[\s\S]*?\{member\.name\}[\s\S]*?member\.status[\s\S]*?member\.email[\s\S]*?member\.role/
   )
   assert.match(accountDialog, /setExternal\(value\.external_user_id\)/)
   assert.match(
@@ -116,10 +116,9 @@ test("member account uses integer key-value balances and dedicated actions", asy
     /view=entries&user_id=\$\{encodeURIComponent\(userId\)\}/
   )
   assert.match(accountDialog, /credits\(value, i18n\.language, 0, "floor"\)/)
-  assert.equal((accountDialog.match(/displayCredits\(/g) ?? []).length, 2)
   assert.match(
     accountDialog,
-    /<dl className="divide-y rounded-lg border">[\s\S]*?\["剩余积分", data\.account\.balance\][\s\S]*?\["积分满额上限", data\.account\.quota\]/
+    /剩余积分<\/dt>\s*<dd[^>]*>\s*\{displayCredits\(data\.account\.balance\)\}\s*<\/dd>/
   )
   assert.match(
     accountDialog,
