@@ -28,6 +28,7 @@ export function AnimatedToastProvider({ children }: { children: ReactNode }) {
         toasts={toasts}
         onDismiss={dismissToast}
         placement="fixed"
+        position="top-center"
         maxVisible={4}
       />
     </AnimatedToastContext.Provider>
