@@ -4,6 +4,7 @@ REGISTRY ?= chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode
 
 ADMIN_IMAGE ?= $(REGISTRY)/monkeyai-admin:$(TAG)
 BACKEND_IMAGE ?= $(REGISTRY)/monkeyai-backend:$(TAG)
+PROXY_IMAGE ?= $(REGISTRY)/monkeyai-proxy:$(TAG)
 NGINX_IMAGE ?= $(REGISTRY)/monkeyai-nginx:$(TAG)
 MIGRATE_IMAGE ?= $(REGISTRY)/monkeyai-migrate:$(TAG)
 NGINX_ACME_IMAGE ?= $(REGISTRY)/nginx-acme:1.31.9-acme0.4.1-r1
@@ -16,7 +17,8 @@ MONKEYAI_AES_KEY_FILE ?=
 
 .PHONY: image image-admin image-backend image-migrate image-nginx-acme push push-admin push-backend push-migrate push-nginx-acme images
 
-image: image-admin image-backend image-migrate image-nginx
+LOCKED_COMPONENTS ?= true
+image: image-admin image-backend $(if $(filter true,$(LOCKED_COMPONENTS)),image-migrate image-nginx image-proxy)
 
 image-admin:
 	docker buildx build \
@@ -60,7 +62,11 @@ image-nginx-acme:
 	  ./admin
 	@echo "Nginx ACME image: $(NGINX_ACME_IMAGE)"
 
-push: push-admin push-backend push-migrate push-nginx
+push: push-admin push-backend $(if $(filter true,$(LOCKED_COMPONENTS)),push-migrate push-nginx push-proxy)
+
+.PHONY: image-proxy push-proxy
+image-proxy push-proxy:
+	docker buildx build --platform $(PLATFORM) --tag $(PROXY_IMAGE) --file $(PRIVATE_ROOT)/monkeyai/Dockerfile.proxy $(if $(filter push-proxy,$@),--push,--load) $(PRIVATE_ROOT)
 
 .PHONY: image-nginx push-nginx
 image-nginx push-nginx:

@@ -261,12 +261,13 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 			key = ""
 		}
 	}
-	if key == "" || s.access.InstanceID == "" {
+	instanceID := s.access.instance(r.Context())
+	if key == "" || instanceID == "" {
 		controlError(w, r, fault(503, "unavailable", "对应签发配置缺失"))
 		return
 	}
 	now := time.Now().UTC()
-	claims := Claims{Issuer: "monkeyai", Audience: audience, InstanceID: s.access.InstanceID, ClientID: machine, Subject: subject, IssuedAt: now.Unix(), ExpiresAt: now.Add(10 * time.Minute).Unix()}
+	claims := Claims{Issuer: "monkeyai", Audience: audience, InstanceID: instanceID, ClientID: machine, Subject: subject, IssuedAt: now.Unix(), ExpiresAt: now.Add(10 * time.Minute).Unix()}
 	w.Header().Set("Cache-Control", "no-store")
 	resource.JSON(r.Context(), w, 200, map[string]any{"token": signClaims(claims, key), "expires_at": time.Unix(claims.ExpiresAt, 0).UTC()})
 }

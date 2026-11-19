@@ -23,7 +23,15 @@ type Database struct {
 	URL string
 }
 
+type Role string
+
+const (
+	RoleControl Role = "control"
+	RoleProxy   Role = "proxy"
+)
+
 type Config struct {
+	Role              Role
 	ImageStateDir     string
 	ImageImportDir    string
 	RuntimeReleaseDir string
@@ -81,7 +89,12 @@ func Load(args []string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("解析远程执行开关: %w", err)
 	}
+	role := Role(os.Getenv("MONKEYAI_SERVICE_ROLE"))
+	if role != "" && role != RoleControl && role != RoleProxy {
+		return Config{}, errors.New("未知的百智办公服务角色")
+	}
 	cfg := Config{
+		Role:                         role,
 		ImageStateDir:                os.Getenv("MONKEYAI_ENVIRONMENT_IMAGE_STATE_DIR"),
 		ImageImportDir:               os.Getenv("MONKEYAI_ENVIRONMENT_IMAGE_IMPORT_DIR"),
 		RuntimeReleaseDir:            os.Getenv("MONKEYAI_ENVIRONMENT_RUNTIME_DIR"),
