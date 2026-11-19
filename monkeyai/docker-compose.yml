@@ -67,7 +67,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
-    environment:
+    environment: &backend_environment
+      MONKEYAI_SERVICE_ROLE: control
       MONKEYAI_S3_ENDPOINT: ${MONKEYAI_S3_ENDPOINT:-http://rustfs:9000}
       MONKEYAI_S3_REGION: ${MONKEYAI_S3_REGION:-us-east-1}
       MONKEYAI_S3_BUCKET: ${MONKEYAI_S3_BUCKET:-monkeyai-resources}
@@ -123,6 +124,36 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+
+  monkeyai-proxy:
+    container_name: monkeyai-proxy
+    logging: *monkeyai_logging
+    image: ${PROXY_IMAGE:-monkeyai-proxy:local}
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      <<: *backend_environment
+      TMPDIR: /tmp
+      MONKEYAI_SERVICE_ROLE: proxy
+      MONKEYAI_INITIAL_ADMIN_EMAIL: ""
+      MONKEYAI_INITIAL_ADMIN_PASSWORD: ""
+    volumes:
+      - ./data/runtime:/app/runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-Y", "off", "-q", "--spider", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   admin:
     logging: *monkeyai_logging

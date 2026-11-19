@@ -61,7 +61,7 @@ func TestNginxPreviewTLS(t *testing.T) {
 	}
 	preview := strings.NewReplacer("${MONKEYAI_PREVIEW_DOMAIN}", "preview.example.net", "${MONKEYAI_RUNTIME_PREVIEW_CERT_FILE}", "/etc/nginx/tls.crt", "${MONKEYAI_RUNTIME_PREVIEW_KEY_FILE}", "/etc/nginx/tls.key").Replace(string(previewData))
 	upstream, _ := url.Parse(f.server.URL)
-	config := "events {}\nhttp { upstream monkeyai_backend { server host.docker.internal:" + upstream.Port() + "; } server { listen 8080; location / { proxy_pass http://monkeyai_backend; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection upgrade; } } include /etc/nginx/preview.conf; }"
+	config := "pid /tmp/nginx.pid; events {}\nhttp { client_body_temp_path /tmp/body; proxy_temp_path /tmp/proxy; fastcgi_temp_path /tmp/fast; uwsgi_temp_path /tmp/uwsgi; scgi_temp_path /tmp/scgi; upstream monkeyai_proxy { server host.docker.internal:" + upstream.Port() + "; } server { listen 8080; location / { proxy_pass http://monkeyai_proxy; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection upgrade; } } include /etc/nginx/preview.conf; }"
 	configPath, previewPath := filepath.Join(dir, "nginx.conf"), filepath.Join(dir, "preview.conf")
 	os.WriteFile(configPath, []byte(config), 0600)
 	os.WriteFile(previewPath, []byte(preview), 0600)
@@ -78,7 +78,7 @@ func TestNginxPreviewTLS(t *testing.T) {
 	id := command("create", "--label", "monkeyai.task=preview-tls-test", "--add-host", "host.docker.internal:host-gateway", "-p", "127.0.0.1::8443", image)
 	t.Cleanup(func() { exec.CommandContext(context.Background(), "docker", "rm", "-f", id).Run() })
 	for _, pair := range [][2]string{{configPath, "/etc/nginx/nginx.conf"}, {previewPath, "/etc/nginx/preview.conf"}, {certPath, "/etc/nginx/tls.crt"}, {keyPath, "/etc/nginx/tls.key"}} {
-		command("cp", pair[0], id+":"+pair[1])
+		copyNginxFixture(t, ctx, id, pair[0], pair[1])
 	}
 	command("start", id)
 	command("exec", id, "nginx", "-t")

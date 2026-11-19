@@ -10,6 +10,7 @@ import (
 	_ "net/http/pprof"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig"
@@ -59,6 +60,7 @@ import (
 )
 
 type App struct {
+	role              config.Role
 	servers           []*http.Server
 	database          *pgxpool.Pool
 	shutdownTimeout   time.Duration
@@ -131,10 +133,11 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 	}
 
 	return &App{
+		role: cfg.Role,
 		servers: []*http.Server{
 			{
 				Addr:              cfg.Addr,
-				Handler:           handler,
+				Handler:           planeHandler(cfg.Role, handler),
 				ReadHeaderTimeout: 5 * time.Second,
 				IdleTimeout:       2 * time.Minute,
 				MaxHeaderBytes:    1 << 20,
@@ -214,8 +217,10 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	sessions.WithHostAuthorizer(executions)
 	identities.WithUserWriter(users)
 	configurePublicLicense(identities, registrars)
-	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
-		return nil, fmt.Errorf("初始化管理员: %w", err)
+	if cfg.Role != config.RoleProxy {
+		if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
+			return nil, fmt.Errorf("初始化管理员: %w", err)
+		}
 	}
 	charges := billing.NewService(pool)
 	if err := charges.Initialize(ctx); err != nil {
@@ -277,7 +282,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
 	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion)
-	if cfg.EngineReleaseDir != "" {
+	if cfg.EngineReleaseDir != "" && cfg.Role != config.RoleControl {
 		stateDir := cfg.RuntimeStateDir
 		if stateDir == "" {
 			stateDir = "data/runtime"
@@ -322,8 +327,10 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	environments.RegisterAgent(agent)
 	endpointStore := endpoint.NewPostgres(pool).WithDeviceAuthorizer(identities)
 	var instanceID string
+	var lookupInstance func(context.Context) (string, error)
 	for _, registrar := range registrars {
 		if source, ok := registrar.(InstanceIdentity); ok {
+			lookupInstance = source.InstanceID
 			instanceID, err = source.InstanceID(ctx)
 			if err != nil {
 				logger.WarnContext(ctx, "读取部署实例身份失败，设计资源签发不可用", "error", err)
@@ -332,7 +339,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 			break
 		}
 	}
-	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
+	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, LookupInstance: lookupInstance, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
 	resourceImports.WithDesignCatalog(designs).WithKnowledgeCatalog(knowledgeBases)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
@@ -383,7 +390,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
 	knowledgeBases.RegisterMCP(router, keys)
 	var runtimeRelay *relay.Service
-	if cfg.RuntimeRelay {
+	if cfg.RuntimeRelay && cfg.Role != config.RoleControl {
 		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
 		if err != nil {
 			return nil, fmt.Errorf("初始化远程执行中转: %w", err)
@@ -430,7 +437,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		runtimes.RegisterHost(router)
 	}
 	var environmentImages *envimage.Service
-	if cfg.ImageStateDir != "" {
+	if cfg.ImageStateDir != "" && cfg.Role != config.RoleControl {
 		environmentImages, err = envimage.New(ctx, cfg.ImageStateDir, cfg.PublicURL)
 		if err != nil {
 			return nil, fmt.Errorf("初始化环境镜像仓库: %w", err)
@@ -483,99 +490,32 @@ func (a *App) Run(ctx context.Context) error {
 		defer a.environmentImages.Close()
 	}
 	workerCtx, stopWorker := context.WithCancel(context.Background())
-	sessionsDone := make(chan struct{})
-	go func() {
-		defer close(sessionsDone)
-		if a.sessions != nil {
-			a.sessions.Run(workerCtx)
-		}
-	}()
-	workerDone := make(chan struct{})
-	go func() { defer close(workerDone); a.billing.Run(workerCtx) }()
-	environmentDone := make(chan struct{})
-	go func() {
-		defer close(environmentDone)
-		if a.environments != nil {
-			a.environments.Run(workerCtx)
-		}
-	}()
-	relayDone := make(chan struct{})
-	go func() {
-		defer close(relayDone)
+	var workers sync.WaitGroup
+	start := func(run func(context.Context)) { workers.Go(func() { run(workerCtx) }) }
+	if a.role != config.RoleControl {
+		start(a.billing.Run)
+		start(a.sessions.Run)
+		start(a.environments.Run)
+		start(a.endpoints.Observe)
+		start(a.images.Run)
+		start(a.videos.Run)
+		start(a.connectors.Run)
+		start(func(ctx context.Context) { runImageCleanup(ctx, a.inputs) })
 		if a.relay != nil {
-			cleanupKeys := time.NewTicker(time.Minute)
-			defer cleanupKeys.Stop()
-			cleanupRelayDone := make(chan struct{})
-			go func() { defer close(cleanupRelayDone); a.relay.Run(workerCtx) }()
-			defer func() { <-cleanupRelayDone }()
-			for {
-				select {
-				case <-workerCtx.Done():
-					return
-				case <-cleanupKeys.C:
-					ctx, cancel := context.WithTimeout(workerCtx, 5*time.Second)
-					if err := a.runtimeKeys.CleanupRuntimeKeys(ctx); err != nil && workerCtx.Err() == nil {
-						if err != nil {
-							slog.WarnContext(ctx, "操作失败", "module", "app", "operation", "Run", "error", err)
-						}
-						logging.Event(ctx, slog.Default(), slog.LevelWarn, "worker.scan.failed", "回收独立执行密钥失败", "module", "app", "operation", "Run", "dependency", "storage", "reason", "storage_unavailable")
-					}
-					cancel()
-				}
+			start(a.relay.Run)
+			start(a.cleanupRuntimeKeys)
+		}
+	}
+	if a.role != config.RoleProxy {
+		start(a.knowledgeBases.Run)
+		start(a.resourceImports.Run)
+		start(func(ctx context.Context) {
+			if err := a.feedback.Run(ctx, time.Hour); err != nil {
+				slog.Error("清理反馈失败", "error", err)
 			}
-		}
-	}()
-	connectorsDone := make(chan struct{})
-	go func() {
-		defer close(connectorsDone)
-		if a.connectors != nil {
-			a.connectors.Run(workerCtx)
-		}
-	}()
-	knowledgeDone := make(chan struct{})
-	go func() {
-		defer close(knowledgeDone)
-		if a.knowledgeBases != nil {
-			a.knowledgeBases.Run(workerCtx)
-		}
-	}()
-	observeDone := make(chan struct{})
-	go func() { defer close(observeDone); a.endpoints.Observe(workerCtx) }()
-	imageDone := make(chan struct{})
-	go func() { defer close(imageDone); a.images.Run(workerCtx) }()
-	videoDone := make(chan struct{})
-	go func() { defer close(videoDone); a.videos.Run(workerCtx) }()
-	cleanupDone := make(chan struct{})
-	go func() { defer close(cleanupDone); runImageCleanup(workerCtx, a.inputs) }()
-	feedbackCleanupDone := make(chan struct{})
-	go func() {
-		defer close(feedbackCleanupDone)
-		if err := a.feedback.Run(workerCtx, time.Hour); err != nil {
-			slog.Error("操作失败", "module", "app", "operation", "Run", "error", err)
-		}
-	}()
-	uploadCleanupDone := make(chan struct{})
-	go func() {
-		defer close(uploadCleanupDone)
-		if a.resourceImports != nil {
-			a.resourceImports.Run(workerCtx)
-		}
-	}()
-	defer func() {
-		stopWorker()
-		<-workerDone
-		<-environmentDone
-		<-sessionsDone
-		<-relayDone
-		<-connectorsDone
-		<-knowledgeDone
-		<-observeDone
-		<-imageDone
-		<-videoDone
-		<-cleanupDone
-		<-feedbackCleanupDone
-		<-uploadCleanupDone
-	}()
+		})
+	}
+	defer func() { stopWorker(); workers.Wait() }()
 
 	result := make(chan error, len(a.servers))
 	for _, server := range a.servers {
@@ -631,6 +571,24 @@ func (a *App) Run(ctx context.Context) error {
 		completed++
 	}
 	return errors.Join(runErrors...)
+}
+
+func (a *App) cleanupRuntimeKeys(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			scan, cancel := context.WithTimeout(ctx, 5*time.Second)
+			err := a.runtimeKeys.CleanupRuntimeKeys(scan)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logging.Event(ctx, slog.Default(), slog.LevelWarn, "worker.scan.failed", "回收独立执行密钥标记失败", "module", "app", "error", err)
+			}
+		}
+	}
 }
 
 type readiness struct {
