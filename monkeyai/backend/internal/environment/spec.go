@@ -72,6 +72,7 @@ type Runtime struct {
 	UserID   string `json:"user_id"`
 }
 type Spec struct {
+	bootstrapPackage    *RuntimePackage
 	RuntimePackage      *RuntimePackage `json:"runtime_package,omitempty"`
 	PersistentContainer bool            `json:"persistent_container,omitempty"`
 	Runtime             *Runtime        `json:"runtime,omitempty"`

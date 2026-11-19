@@ -71,7 +71,7 @@ python3 admin/test/accesslog.py --image <admin-image>
 
 Admin 镜像包含 Nginx 官方 ACME 模块，自动申请、续期并动态加载证书。功能默认关闭；Go 后端不参与证书管理。启用前，将域名解析到部署服务器，确保公网 TCP 80、443 可达，容器能够解析并访问 CA 的 HTTPS 接口。如果域名配置了 AAAA 记录，其 IPv6 入口也必须能完成验证。
 
-Admin 复用独立的 Nginx ACME 基础镜像，固定 Nginx 1.31.6（Debian）和 ACME 0.4.1，不再在每次业务构建时编译模块。`admin/Dockerfile.nginx-acme` 固定官方镜像摘要并校验源码的 SHA-256，构建时应用 `admin/patches/acme-renewal-retry.patch`，修复订单失败后可能延迟 24 小时才重试的问题；升级模块时应检查上游是否已合入该修复。Rust 和 C 编译工具仅存在于基础镜像的构建阶段。
+Admin 复用独立的 Nginx ACME 基础镜像，固定 Nginx 1.31.9（Debian）和 ACME 0.4.1，不再在每次业务构建时编译模块。`admin/Dockerfile.nginx-acme` 固定官方镜像摘要并校验源码的 SHA-256，构建时应用 `admin/patches/acme-renewal-retry.patch`，修复订单失败后可能延迟 24 小时才重试的问题；升级模块时应检查上游是否已合入该修复。Rust 和 C 编译工具仅存在于基础镜像的构建阶段。
 
 在 `.env` 中配置：
 
@@ -128,7 +128,7 @@ python3 admin/test/acme.py --image monkeyai-admin:acme-test
 
 ### Nginx ACME 基础镜像
 
-首次使用前需单独构建并发布基础镜像，之后仅在升级 Nginx、ACME、系统依赖或补丁时重建；常规 `make image`、`make push` 和 Compose 构建不会触发模块编译。默认镜像为 `chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/nginx-acme:1.31.6-acme0.4.1-r1`，标签包含 Nginx、ACME 版本及基础镜像修订号。
+首次使用前需单独构建并发布基础镜像，之后仅在升级 Nginx、ACME、系统依赖或补丁时重建；常规 `make image`、`make push` 和 Compose 构建不会触发模块编译。默认镜像为 `chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/nginx-acme:1.31.9-acme0.4.1-r1`，标签包含 Nginx、ACME 版本及基础镜像修订号。
 
 ```bash
 # 发布基础镜像（需先登录仓库，并使用支持对应架构的 builder）
