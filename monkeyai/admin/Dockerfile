@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 COPY . .
 RUN pnpm build
 
-FROM ${NGINX_ACME_IMAGE} AS runtime
+FROM ${NGINX_ACME_IMAGE} AS ingress
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY nginx/ /etc/nginx/monkeyai/
 COPY --chmod=755 entrypoint.sh /usr/local/bin/monkeyai-entrypoint
@@ -31,5 +31,10 @@ EXPOSE 8080 8443
 ENTRYPOINT ["/usr/local/bin/monkeyai-entrypoint"]
 CMD ["nginx", "-g", "daemon off;"]
 
-FROM runtime
+FROM ${NGINX_ACME_IMAGE}
+COPY static.conf /etc/nginx/nginx.conf
+USER nginx
+EXPOSE 8080
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]
 COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html

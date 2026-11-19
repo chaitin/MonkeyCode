@@ -24,7 +24,7 @@ func TestNginxRelay(t *testing.T) {
 	}
 	f := newFixture(t)
 	upstream, _ := url.Parse(f.server.URL)
-	config := fmt.Sprintf("events {}\nhttp { upstream monkeyai_backend { server host.docker.internal:%s; } server { listen 8080; include /etc/nginx/relay-app.conf; } }\n", upstream.Port())
+	config := fmt.Sprintf("events {}\nhttp { upstream monkeyai_admin { server 127.0.0.1:1; } upstream monkeyai_backend { server host.docker.internal:%s; } server { listen 8080; include /etc/nginx/relay-app.conf; } }\n", upstream.Port())
 	configPath := filepath.Join(t.TempDir(), "nginx.conf")
 	if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ REGISTRY ?= chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode
 
 ADMIN_IMAGE ?= $(REGISTRY)/monkeyai-admin:$(TAG)
 BACKEND_IMAGE ?= $(REGISTRY)/monkeyai-backend:$(TAG)
+NGINX_IMAGE ?= $(REGISTRY)/monkeyai-nginx:$(TAG)
 MIGRATE_IMAGE ?= $(REGISTRY)/monkeyai-migrate:$(TAG)
 NGINX_ACME_IMAGE ?= $(REGISTRY)/nginx-acme:1.31.6-acme0.4.1-r1
 PRIVATE_ROOT ?= ../..
@@ -15,7 +16,7 @@ MONKEYAI_AES_KEY_FILE ?=
 
 .PHONY: image image-admin image-backend image-migrate image-nginx-acme push push-admin push-backend push-migrate push-nginx-acme images
 
-image: image-admin image-backend image-migrate
+image: image-admin image-backend image-migrate image-nginx
 
 image-admin:
 	docker buildx build \
@@ -59,7 +60,12 @@ image-nginx-acme:
 	  ./admin
 	@echo "Nginx ACME image: $(NGINX_ACME_IMAGE)"
 
-push: push-admin push-backend push-migrate
+push: push-admin push-backend push-migrate push-nginx
+
+.PHONY: image-nginx push-nginx
+image-nginx push-nginx:
+	docker buildx build --platform $(PLATFORM) --tag $(NGINX_IMAGE) --target ingress \
+	  --build-arg NGINX_ACME_IMAGE=$(NGINX_ACME_IMAGE) $(if $(filter push-nginx,$@),--push,--load) ./admin
 
 push-admin:
 	docker buildx build \
