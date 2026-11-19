@@ -1899,7 +1899,7 @@ export function ModelsPage() {
                                         defaultValue={
                                           formModel?.maxOutputTokensK ?? 16
                                         }
-                                        placeholder="16384"
+                                        placeholder="16"
                                         step="1"
                                         type="number"
                                         required
