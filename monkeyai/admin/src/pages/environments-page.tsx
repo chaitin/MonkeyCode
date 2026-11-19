@@ -13,6 +13,7 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible"
+import { RuntimeUpgrade } from "@/components/environments/runtime-upgrade"
 import { EnvironmentUsage } from "@/components/environments/environment-usage"
 import { EnvironmentBillingInfo } from "@/components/environments/environment-billing"
 import { EnvironmentStatus } from "@/components/environments/status-badge"
@@ -463,14 +464,10 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                   })}
                 </p>
               )}
-              <dl>
-                <Identity
-                  label={t("environmentAdmin.runtimeVersion")}
-                  value={
-                    env.runtime_version || t("environmentAdmin.runtimeUnknown")
-                  }
-                />
-              </dl>
+              <RuntimeUpgrade
+                environment={env}
+                refreshOperations={operations.refresh}
+              />
               <div className="grid gap-5 border-t pt-4 sm:grid-cols-2">
                 <div className="min-w-0">
                   <p className="mb-2 text-xs text-muted-foreground">
@@ -616,7 +613,9 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                   <div className="flex flex-wrap gap-2">
                     <span>
                       #{op.generation} ·{" "}
-                      {t(`environmentAdmin.targets.${op.desired}`)}
+                      {op.kind === "runtime_upgrade"
+                        ? `${t("environmentAdmin.upgradeRuntime")} · ${op.target_version}`
+                        : t(`environmentAdmin.targets.${op.desired}`)}
                     </span>
                     <Badge variant="outline">
                       {t(`environmentAdmin.operationStates.${op.status}`)}

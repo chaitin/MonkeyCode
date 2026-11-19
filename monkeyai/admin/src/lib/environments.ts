@@ -79,6 +79,8 @@ export type Environment = {
   }
 }
 export type Operation = {
+  kind: "create" | "lifecycle" | "runtime_upgrade"
+  target_version?: string
   id: string
   generation: number
   desired: string

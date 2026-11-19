@@ -6263,6 +6263,44 @@ paths:
         schema:
           type: string
           format: uuid
+  /api/admin/v1/environments/{id}/runtime:
+    get:
+      summary: 查询环境的 runtime 版本与更新能力
+      description: 仅管理员可用；返回当前版本、server 最新版本、更新操作与停止要求，响应不缓存。
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentRuntimeInfo'}
+        '401': {description: 未登录或凭据过期。}
+        '403': {description: 需要管理员权限。}
+        '404': {description: 环境不存在。}
+  /api/admin/v1/environments/{id}/runtime/upgrade:
+    post:
+      summary: 不重建容器更新环境的 runtime
+      description: 仅管理员可用。环境必须已确认停止，宿主支持独立更新；保留容器、目录与设备身份。version 省略时选择 server 当前最新版本，显式版本可回退到 server 已有版本。请求使用 generation 与 request_key 保证并发安全和幂等，响应不缓存。
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentRuntimeUpgrade'}
+      responses:
+        '202':
+          description: 已受理，查询 runtime 或操作记录等待 succeeded/failed。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentResult'}
+        '400': {description: 参数、额外字段或版本格式无效，不允许传下载地址。}
+        '401': {description: 未登录或凭据过期。}
+        '403': {description: 需要管理员权限。}
+        '404': {description: 环境不存在。}
+        '409': {description: 未停止、代次或幂等冲突、宿主不可用、版本已相同或不支持更新。}
+        '503': {description: server 尚未配置 runtime 发行资源。}
   /api/admin/v1/environments/{id}/operations:
     get:
       summary: 查询环境操作记录
@@ -10680,6 +10718,25 @@ components:
         architectures: {type: array, items: {type: string, enum: [amd64, arm64]}}
         error: {type: string}
         updated_at: {type: string, format: date-time}
+    EnvironmentRuntimeUpgrade:
+      type: object
+      required: [generation, request_key]
+      properties:
+        generation: {type: integer, format: int64, minimum: 1}
+        request_key: {type: string, minLength: 1, maxLength: 128}
+        version: {type: string, pattern: '^[0-9]{1,8}\.[0-9]{1,8}\.[0-9]{1,8}$'}
+      additionalProperties: false
+    EnvironmentRuntimeInfo:
+      type: object
+      required: [current_version, latest_version, update_available, can_update]
+      properties:
+        current_version: {type: string, description: 最近一次宿主上报的实际选择版本，未知为空。}
+        latest_version: {type: string, description: server 配置的发行版本，资源未配置或缺失时为空。}
+        target_version: {type: string}
+        update_available: {type: boolean}
+        can_update: {type: boolean}
+        reason: {type: string}
+        operation: {$ref: '#/components/schemas/EnvironmentOperation'}
     EnvironmentOperation:
       type: object
       required:

@@ -47,6 +47,10 @@ export const enUS = {
     },
     runtimeVersion: "Runtime version",
     runtimeUnknown: "Unconfirmed",
+    upgradeRuntime: "Upgrade Runtime",
+    serverRuntime: "Server version",
+    confirmRuntime: "Upgrade the Runtime to {{version}}? The environment will stay stopped.",
+    noRuntimeUpdate: "No newer version available",
     resourceUsage: "Resource usage",
     usageHint:
       "Actual usage / allocated limit. CPU percentage is relative to allocated cores. Memory excludes reclaimable file cache. Unavailable samples show —.",
