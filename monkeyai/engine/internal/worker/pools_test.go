@@ -26,12 +26,28 @@ func (b blockedExecutor) Inspect(ctx context.Context, id string) (lifecycle.Stat
 	return lifecycle.State{}, lifecycle.Instance{}, ctx.Err()
 }
 func TestBusyInspectionsLeaveOperationCapacity(t *testing.T) {
+	for _, tc := range []struct {
+		name                                         string
+		operations, inspections, wantOps, wantChecks int
+	}{{"默认", 0, 0, 10, 2}, {"分别配置", 3, 1, 3, 1}, {"仅调整巡检", 0, 4, 10, 4}} {
+		t.Run(tc.name, func(t *testing.T) { testPoolCapacity(t, tc.operations, tc.inspections, tc.wantOps, tc.wantChecks) })
+	}
+}
+func testPoolCapacity(t *testing.T, operations, inspections, operationSlots, inspectionSlots int) {
 	b := blockedExecutor{make(chan string, 16), make(chan string, 16)}
 	w, err := New(directory(t), b)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer w.Close()
+	if err := w.SetConcurrency(operations, inspections); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range [][2]int{{-1, 1}, {1, 65}} {
+		if w.SetConcurrency(v[0], v[1]) == nil {
+			t.Fatalf("接受了非法配置 %v", v)
+		}
+	}
 	s := target(t)
 	add := func(prefix string, n int, running bool) {
 		w.mu.Lock()

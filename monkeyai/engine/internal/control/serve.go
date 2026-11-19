@@ -25,6 +25,7 @@ type Health struct {
 }
 
 type CommandLoop interface {
+	SetConcurrency(operations, inspections int) error
 	Tick(context.Context, *Client, Config) error
 	Close()
 	NetworkPolicies(context.Context) []string
@@ -59,6 +60,11 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 	var cfg Config
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return err
+	}
+	if commands != nil {
+		if err := commands.SetConcurrency(cfg.OperationWorkers, cfg.InspectionWorkers); err != nil {
+			return err
+		}
 	}
 	if version != "" && version != cfg.Version {
 		return errors.New("engine 二进制版本与宿主配置不一致")

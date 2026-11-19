@@ -70,7 +70,7 @@ type commands struct {
 }
 
 const (
-	operationSlots  = 4
+	operationSlots  = 10
 	inspectionSlots = 2
 )
 
@@ -81,6 +81,7 @@ type job struct {
 	cancel     context.CancelFunc
 }
 type Worker struct {
+	operations, inspections       int
 	root                          string
 	executor                      Executor
 	mu                            sync.Mutex
@@ -111,7 +112,7 @@ func New(root string, executor Executor) (*Worker, error) {
 	if err != nil || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("命令目录权限无效")
 	}
-	w := &Worker{root: root, executor: executor, entries: map[string]entry{}, checked: map[string]time.Time{}, active: make(map[string]job)}
+	w := &Worker{operations: operationSlots, inspections: inspectionSlots, root: root, executor: executor, entries: map[string]entry{}, checked: map[string]time.Time{}, active: make(map[string]job)}
 	files, err := os.ReadDir(root)
 	if err != nil {
 		return nil, err
@@ -337,12 +338,31 @@ func (w *Worker) ids() []string {
 	slices.Sort(ids)
 	return ids
 }
+func (w *Worker) SetConcurrency(operations, inspections int) error {
+	if operations < 0 || operations > 64 {
+		return errors.New("operation_workers 必须在 0 到 64 之间")
+	}
+	if inspections < 0 || inspections > 64 {
+		return errors.New("inspection_workers 必须在 0 到 64 之间")
+	}
+	if operations == 0 {
+		operations = operationSlots
+	}
+	if inspections == 0 {
+		inspections = inspectionSlots
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.operations, w.inspections = operations, inspections
+	slog.Info("环境并发配置已加载", "operation_workers", operations, "inspection_workers", inspections)
+	return nil
+}
 func (w *Worker) start(ctx context.Context) {
 	if w.closed || ctx.Err() != nil {
 		return
 	}
 	ids := w.ids()
-	ops, checks := operationSlots, inspectionSlots
+	ops, checks := w.operations, w.inspections
 	for _, j := range w.active {
 		if j.inspect {
 			checks--
@@ -359,7 +379,7 @@ func (w *Worker) dispatch(ctx context.Context, ids []string, inspect bool, slots
 		start++
 	}
 	for i := range ids {
-		if slots == 0 {
+		if slots <= 0 {
 			break
 		}
 		id := ids[(start+i)%len(ids)]
