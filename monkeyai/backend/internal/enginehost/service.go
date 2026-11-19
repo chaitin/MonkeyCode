@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/enginehost/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/hostname"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
@@ -147,7 +148,7 @@ func (s *Service) enrollment(w http.ResponseWriter, r *http.Request, renew bool)
 		}
 		status = http.StatusOK
 	}
-	id, err := q.CreateEnrollment(r.Context(), sqlc.CreateEnrollmentParams{UserID: actor.ID, Name: "待接入宿主", Architecture: "amd64", Version: s.version})
+	id, err := q.CreateEnrollment(r.Context(), sqlc.CreateEnrollmentParams{UserID: actor.ID, Name: "", Architecture: "amd64", Version: s.version})
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return
@@ -297,7 +298,7 @@ func (s *Service) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 行锁保证令牌只能绑定一个公钥；同一公钥可在有效期内重试丢失的响应。
-	id, err := sqlc.New(s.pool).EnrollHost(r.Context(), sqlc.EnrollHostParams{Name: in.Name, HostID: claims.HostID, PublicKey: in.PublicKey, Architecture: in.Architecture, Version: in.Version})
+	id, err := sqlc.New(s.pool).EnrollHost(r.Context(), sqlc.EnrollHostParams{Name: hostname.Candidate(in.Name), HostID: claims.HostID, PublicKey: in.PublicKey, Architecture: in.Architecture, Version: in.Version})
 	if errors.Is(err, pgx.ErrNoRows) {
 		fail(w, r, 401, "接入命令已过期、撤销或被其他宿主使用")
 		return
@@ -361,7 +362,11 @@ func (s *Service) heartbeat(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, 401, "宿主签名无效")
 		return
 	}
-	result, err := sqlc.New(s.pool).RecordHeartbeat(r.Context(), sqlc.RecordHeartbeatParams{ID: in.HostID, At: in.At, Report: networkReport(in.Report, r)})
+	var candidate string
+	if report.System != nil {
+		candidate = hostname.Candidate(report.System.Hostname)
+	}
+	result, err := sqlc.New(s.pool).RecordHeartbeat(r.Context(), sqlc.RecordHeartbeatParams{Candidate: candidate, ID: in.HostID, At: in.At, Report: networkReport(in.Report, r)})
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

@@ -10486,6 +10486,7 @@ components:
       type: object
       additionalProperties: false
       properties:
+        name: {type: string, maxLength: 128, description: 去除首尾空白后最多 128 个 UTF-8 字节。省略时保留原名，清空后由下一次有效宿主名称上报补全。}
         grants:
           type: array
           items: {$ref: '#/components/schemas/HostGrantInput'}

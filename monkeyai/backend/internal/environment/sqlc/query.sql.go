@@ -1657,6 +1657,20 @@ func (q *Queries) SetBillingStopReason(ctx context.Context, arg SetBillingStopRe
 	return err
 }
 
+const setHostName = `-- name: SetHostName :exec
+UPDATE hosts SET name=$2 WHERE id=$1
+`
+
+type SetHostNameParams struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) SetHostName(ctx context.Context, arg SetHostNameParams) error {
+	_, err := q.db.Exec(ctx, setHostName, arg.ID, arg.Name)
+	return err
+}
+
 const setHostSetup = `-- name: SetHostSetup :exec
 INSERT INTO host_environment_configs(host_id) VALUES($1)
 ON CONFLICT(host_id) DO NOTHING

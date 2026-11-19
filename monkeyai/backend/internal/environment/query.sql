@@ -237,6 +237,9 @@ SELECT h.id,h.name,h.architecture,h.status,c.resource,
 ('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing
 FROM hosts h LEFT JOIN host_environment_configs c ON c.host_id=h.id WHERE h.id=$1 AND h.deleted_at IS NULL;
 
+-- name: SetHostName :exec
+UPDATE hosts SET name=$2 WHERE id=$1;
+
 -- name: SetHostSetup :exec
 INSERT INTO host_environment_configs(host_id) VALUES($1)
 ON CONFLICT(host_id) DO NOTHING;

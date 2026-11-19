@@ -61,6 +61,7 @@ export function HostUpgrade({
   host: {
     id: string
     name: string
+    report?: { system?: { hostname?: string } }
     version: string
     online: boolean
     upgrade?: HostUpgradeState
@@ -234,7 +235,10 @@ export function HostUpgrade({
             <AlertDialogTitle>{text("confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {text("confirm", {
-                name: host.name,
+                name:
+                  host.name.trim() ||
+                  host.report?.system?.hostname?.trim() ||
+                  t("environmentAdmin.unnamedHost"),
                 current: host.version,
                 target,
               })}

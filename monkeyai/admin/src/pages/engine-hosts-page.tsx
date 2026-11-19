@@ -219,7 +219,9 @@ type Enrollment = {
   expires_at: string
 }
 
-export function EngineHostsPage() {
+export function EngineHostsPage({
+  onHostSaved,
+}: { onHostSaved?: () => void } = {}) {
   const { showToast } = useAppToast()
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -377,6 +379,10 @@ export function EngineHostsPage() {
         empty={!hosts.length}
       >
         {hosts.map((host) => {
+          const label =
+            host.name.trim() ||
+            host.report.system?.hostname?.trim() ||
+            t("environmentAdmin.unnamedHost")
           const status =
             host.status === "revoked"
               ? "revoked"
@@ -410,10 +416,10 @@ export function EngineHostsPage() {
                       <button
                         type="button"
                         className="min-w-0 truncate text-start transition-colors hover:text-blue-600 dark:hover:text-blue-400"
-                        title={host.name}
+                        title={label}
                         onClick={() => setChecking(host)}
                       >
-                        {host.name}
+                        {label}
                       </button>
                       {!host.enabled && (
                         <Badge variant="outline">{text("disabled")}</Badge>
@@ -546,11 +552,11 @@ export function EngineHostsPage() {
                     className="border-blue-200 bg-blue-50 tabular-nums text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200 [&:is(a)]:hover:bg-blue-100 [&:is(a)]:hover:text-blue-900 dark:[&:is(a)]:hover:bg-blue-900 dark:[&:is(a)]:hover:text-blue-100"
                     render={
                       <Link
-                        to={`${CONSOLE_ROUTES.cloudHosts}?${new URLSearchParams({ host_id: host.id, host_name: host.name })}`}
+                        to={`${CONSOLE_ROUTES.cloudHosts}?${new URLSearchParams({ host_id: host.id, host_name: label })}`}
                       />
                     }
                     aria-label={text("viewEnvironments", {
-                      name: host.name,
+                      name: label,
                       count: host.environment_count,
                     })}
                     title={text("environmentCountHint")}
@@ -648,6 +654,7 @@ export function EngineHostsPage() {
               title: t("environmentAdmin.setupSaved"),
             })
             refresh()
+            onHostSaved?.()
           }}
         />
       )}
@@ -673,7 +680,9 @@ export function EngineHostsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="break-words text-base font-semibold">
                         {displayValue(
-                          detail.report.system?.hostname || detail.name || ""
+                          detail.name.trim() ||
+                            detail.report.system?.hostname?.trim() ||
+                            t("environmentAdmin.unnamedHost")
                         )}
                       </p>
                       <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -1180,7 +1189,10 @@ export function EngineHostsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {text("delete")}：{deleting?.name}
+              {text("delete")}：
+              {deleting?.name.trim() ||
+                deleting?.report.system?.hostname?.trim() ||
+                t("environmentAdmin.unnamedHost")}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>{text("deleteHint")}</AlertDialogDescription>

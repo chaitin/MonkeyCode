@@ -34,7 +34,7 @@ UPDATE hosts SET enabled=false WHERE id=$1;
 
 -- name: EnrollHost :one
 UPDATE hosts SET public_key=sqlc.arg(public_key),status='active',activated_at=COALESCE(activated_at,now()),
-architecture=sqlc.arg(architecture),name=CASE WHEN public_key IS NULL AND sqlc.arg(name)::text<>'' THEN sqlc.arg(name) ELSE name END
+architecture=sqlc.arg(architecture),name=COALESCE(NULLIF(name,''),sqlc.arg(name)::text)
 WHERE id=sqlc.arg(host_id) AND deleted_at IS NULL AND status IN ('pending','active')
 AND (public_key IS NULL OR public_key=sqlc.arg(public_key)) AND (public_key IS NULL OR architecture=sqlc.arg(architecture)) AND version=sqlc.arg(version)
 RETURNING id;
@@ -44,6 +44,7 @@ SELECT public_key FROM hosts WHERE id=$1 AND status='active' AND deleted_at IS N
 
 -- name: RecordHeartbeat :execrows
 UPDATE hosts SET last_seen_at=sqlc.arg(at)::timestamptz,report=sqlc.arg(report),
+name=COALESCE(NULLIF(name,''),sqlc.arg(candidate)::text),
 version=COALESCE(NULLIF(sqlc.arg(report)::jsonb->>'engine_version',''),version)
 WHERE id=sqlc.arg(id) AND status='active' AND deleted_at IS NULL AND (last_seen_at IS NULL OR last_seen_at<sqlc.arg(at)::timestamptz);
 

@@ -2125,3 +2125,7 @@ ALTER TABLE host_environment_configs DROP COLUMN user_max_environments;
 ALTER TABLE hosts DROP COLUMN max_environments;
 
 ALTER TABLE group_users ADD COLUMN is_supervisor boolean NOT NULL DEFAULT false;
+
+ALTER TABLE hosts DROP CONSTRAINT hosts_name_check;
+
+ALTER TABLE hosts ADD CONSTRAINT hosts_name_check CHECK (octet_length(name) <= 128);

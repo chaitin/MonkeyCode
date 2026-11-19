@@ -399,6 +399,10 @@ const server = createServer(async (req, res) => {
           if (mode === "setup-save-error") return fail(503, "配置暂时无法保存")
           setup.resource = body.resource
           if (body.billing) setup.billing = body.billing
+          if (typeof body.name === "string") {
+            const host = hosts.find(h => h.id === id)
+            if (host) host.name = body.name.trim()
+          }
           if (body.grants) setup.grants = body.grants
         }
         return send({...setup,host_id:id,host_name:hosts.find(h=>h.id===id)?.name ?? id,image_ready:true,capacity})

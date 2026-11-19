@@ -71,7 +71,7 @@ func (q *Queries) DisableHost(ctx context.Context, id string) error {
 
 const enrollHost = `-- name: EnrollHost :one
 UPDATE hosts SET public_key=$1,status='active',activated_at=COALESCE(activated_at,now()),
-architecture=$2,name=CASE WHEN public_key IS NULL AND $3::text<>'' THEN $3 ELSE name END
+architecture=$2,name=COALESCE(NULLIF(name,''),$3::text)
 WHERE id=$4 AND deleted_at IS NULL AND status IN ('pending','active')
 AND (public_key IS NULL OR public_key=$1) AND (public_key IS NULL OR architecture=$2) AND version=$5
 RETURNING id
@@ -259,18 +259,25 @@ func (q *Queries) LockControl(ctx context.Context) error {
 
 const recordHeartbeat = `-- name: RecordHeartbeat :execrows
 UPDATE hosts SET last_seen_at=$1::timestamptz,report=$2,
+name=COALESCE(NULLIF(name,''),$3::text),
 version=COALESCE(NULLIF($2::jsonb->>'engine_version',''),version)
-WHERE id=$3 AND status='active' AND deleted_at IS NULL AND (last_seen_at IS NULL OR last_seen_at<$1::timestamptz)
+WHERE id=$4 AND status='active' AND deleted_at IS NULL AND (last_seen_at IS NULL OR last_seen_at<$1::timestamptz)
 `
 
 type RecordHeartbeatParams struct {
-	At     time.Time
-	Report []byte
-	ID     string
+	At        time.Time
+	Report    []byte
+	Candidate string
+	ID        string
 }
 
 func (q *Queries) RecordHeartbeat(ctx context.Context, arg RecordHeartbeatParams) (int64, error) {
-	result, err := q.db.Exec(ctx, recordHeartbeat, arg.At, arg.Report, arg.ID)
+	result, err := q.db.Exec(ctx, recordHeartbeat,
+		arg.At,
+		arg.Report,
+		arg.Candidate,
+		arg.ID,
+	)
 	if err != nil {
 		return 0, err
 	}

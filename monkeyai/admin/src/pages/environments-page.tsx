@@ -44,7 +44,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
 } from "@/components/ui/alert-dialog"
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, ApiError } from "@/lib/api"
@@ -108,7 +108,9 @@ const columns = [
 ] as const
 type EnvironmentColumn = (typeof columns)[number]
 const pageSizeOptions = ["20", "50", "100"] as const
-export function EnvironmentsPage() {
+export function EnvironmentsPage({
+  hostRevision = 0,
+}: { hostRevision?: number } = {}) {
   const { t, i18n } = useTranslation()
   const [params, setParams] = useSearchParams()
   const [visibleColumns, setVisibleColumns] = useState<Set<EnvironmentColumn>>(
@@ -127,24 +129,39 @@ export function EnvironmentsPage() {
   const selected = params.get("environment")
   const hostID = params.get("host_id") || ""
   const hosts = useEnvironmentData<{
-    items: { id: string; name: string }[]
+    items: {
+      id: string
+      name: string
+      report?: { system?: { hostname?: string } }
+    }[]
     total: number
   }>(
     "/api/admin/v1/engine-hosts",
     false,
-    loadEngineHosts<{ id: string; name: string }>
+    loadEngineHosts<{
+      id: string
+      name: string
+      report?: { system?: { hostname?: string } }
+    }>
   )
+  const refreshHosts = hosts.refresh
+  useEffect(() => {
+    if (hostRevision) refreshHosts()
+  }, [hostRevision, refreshHosts])
   const hostOptions = [
     { value: "all", label: t("environmentAdmin.allHosts") },
     ...(hosts.data?.items ?? []).map((host) => ({
       value: host.id,
-      label: host.name,
+      label:
+        host.name.trim() ||
+        host.report?.system?.hostname?.trim() ||
+        t("environmentAdmin.unnamedHost"),
     })),
   ]
   if (hostID && !hostOptions.some((option) => option.value === hostID)) {
     hostOptions.push({
       value: hostID,
-      label: params.get("host_name") || hostID,
+      label: params.get("host_name") || t("environmentAdmin.unnamedHost"),
     })
   }
   const status = statuses.includes(params.get("status") || "")
@@ -427,10 +444,14 @@ export function EnvironmentsPage() {
                     <span
                       className="block max-w-48 truncate"
                       title={
-                        env.host?.hostname || env.host?.name || env.host_id
+                        env.host?.name?.trim() ||
+                        env.host?.hostname?.trim() ||
+                        t("environmentAdmin.unnamedHost")
                       }
                     >
-                      {env.host?.hostname || env.host?.name || env.host_id}
+                      {env.host?.name?.trim() ||
+                        env.host?.hostname?.trim() ||
+                        t("environmentAdmin.unnamedHost")}
                     </span>
                   </TableCell>
                 )}
@@ -745,9 +766,9 @@ function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {
                         <div className="flex items-center justify-end gap-2.5">
                           <OSIcon name={env.host?.os_name} avatar size="sm" />
                           <span className="min-w-0 break-words">
-                            {env.host?.hostname ||
-                              env.host?.name ||
-                              t("environmentAdmin.unknownHost")}
+                            {env.host?.name?.trim() ||
+                              env.host?.hostname?.trim() ||
+                              t("environmentAdmin.unnamedHost")}
                           </span>
                         </div>,
                       ],

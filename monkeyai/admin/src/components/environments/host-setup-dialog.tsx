@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { useEnvironmentData } from "@/hooks/use-environment-data"
 import { FormError, LoadState } from "./common"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
 import {
@@ -124,6 +125,8 @@ function SetupForm({
   onBusy: (busy: boolean) => void
 }) {
   const { t, i18n } = useTranslation()
+  const [name, setName] = useState(value.host_name)
+  const [grantsChanged, setGrantsChanged] = useState(false)
   const root = groups.find((group) => !group.parentId)?.id
   const [authorization, setAuthorization] = useState(() => ({
     groupIds: value.grants?.length
@@ -139,11 +142,19 @@ function SetupForm({
     event.preventDefault()
     if (busy) return
     setError("")
+    const normalizedName = name.trim()
+    if (new TextEncoder().encode(normalizedName).length > 128) {
+      setError(t("environmentAdmin.hostNameTooLong"))
+      return
+    }
     const body = {
-      grants: [
-        ...authorization.groupIds.map((group_id) => ({ group_id })),
-        ...authorization.userIds.map((user_id) => ({ user_id })),
-      ],
+      ...(normalizedName !== value.host_name && { name: normalizedName }),
+      ...(grantsChanged && {
+        grants: [
+          ...authorization.groupIds.map((group_id) => ({ group_id })),
+          ...authorization.userIds.map((user_id) => ({ user_id })),
+        ],
+      }),
     }
     setBusy(true)
     onBusy(true)
@@ -166,6 +177,17 @@ function SetupForm({
       <div className="-mx-1 min-h-0 min-w-0 space-y-4 overflow-y-auto overflow-x-hidden px-1">
         <fieldset disabled={busy} className="min-w-0 space-y-5">
           <Field>
+            <FieldLabel htmlFor="setup-host-name">
+              {t("environmentAdmin.hostName")}
+            </FieldLabel>
+            <Input
+              id="setup-host-name"
+              value={name}
+              placeholder={t("environmentAdmin.unnamedHost")}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+          <Field>
             <FieldLabel htmlFor="setup-host-access">
               {t("pages.models.authorizedScope")}
             </FieldLabel>
@@ -174,12 +196,13 @@ function SetupForm({
               options={groups}
               users={users}
               value={authorization}
-              onValueChange={(next) =>
+              onValueChange={(next) => {
+                setGrantsChanged(true)
                 setAuthorization({
                   groupIds: [...next.groupIds],
                   userIds: [...next.userIds],
                 })
-              }
+              }}
               label={t("pages.models.authorizedScope")}
               placeholder={t("pages.models.authorizationPlaceholder")}
               emptyText={t("pages.models.noMatchingAuthorization")}

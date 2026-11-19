@@ -3,6 +3,7 @@ package environment
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/hostname"
 	"net/http"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 )
 
 type Setup struct {
+	Name    *string            `json:"name,omitempty"`
 	Billing *BillingConfig     `json:"billing,omitempty"`
 	Grants  *[]resource.Object `json:"grants,omitempty"`
 }
@@ -106,6 +108,13 @@ func (s *Service) saveSetup(ctx context.Context, id string, in Setup) (SetupView
 	if !uuid.MatchString(id) {
 		return out, bad("宿主 ID 无效")
 	}
+	if in.Name != nil {
+		name, ok := hostname.Normalize(*in.Name)
+		if !ok {
+			return out, bad("宿主机显示名称无效，最多128字节")
+		}
+		in.Name = &name
+	}
 	if in.Grants != nil {
 		if err := validateHostGrants(*in.Grants); err != nil {
 			return out, err
@@ -135,6 +144,11 @@ func (s *Service) saveSetup(ctx context.Context, id string, in Setup) (SetupView
 				return err
 			}
 			if err = resource.Audit(ctx, tx, actor.ID, "host", id, "grants"); err != nil {
+				return err
+			}
+		}
+		if in.Name != nil && *in.Name != current.HostName {
+			if err = q.SetHostName(ctx, sqlc.SetHostNameParams{ID: id, Name: *in.Name}); err != nil {
 				return err
 			}
 		}
