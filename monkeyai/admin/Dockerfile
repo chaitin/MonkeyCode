@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG NGINX_ACME_IMAGE=chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/nginx-acme:1.31.6-acme0.4.1-r1
+ARG NGINX_ACME_IMAGE=chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/nginx-acme:1.31.9-acme0.4.1-r1
 
 FROM --platform=$BUILDPLATFORM chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/node:26.13.1-alpine AS builder
 
