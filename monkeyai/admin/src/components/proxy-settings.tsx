@@ -1,5 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  Delete02Icon,
+  DotIcon,
+  Edit02Icon,
+  MoreHorizontalIcon,
+} from "@hugeicons/core-free-icons"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -17,6 +24,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -239,47 +253,77 @@ export function ProxySettings() {
           </Dialog>
         </CardAction>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="gap-3">
         {proxies.map((item) => (
           <div
             key={item.id}
             className="flex items-center justify-between gap-2 rounded-md border p-3"
           >
-            <span className="min-w-0 truncate">
-              {item.name} · {item.url}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={saving}
-                onClick={() => {
-                  setEditing(item)
-                  setError("")
-                }}
-              >
-                {t("pages.otherSettings.proxies.editAction")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={saving}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      t("pages.otherSettings.proxies.confirmDelete")
-                    )
-                  )
-                    void persist(
-                      proxies.filter((proxy) => proxy.id !== item.id)
-                    )
-                }}
-              >
-                {t("pages.otherSettings.proxies.delete")}
-              </Button>
+            <div className="flex min-w-0 items-center gap-1">
+              <span className="truncate">{item.name}</span>
+              <HugeiconsIcon
+                icon={DotIcon}
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <span className="truncate">{item.url}</span>
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={saving}
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${t("common.more")} · ${item.name}`}
+                  />
+                }
+              >
+                <HugeiconsIcon
+                  icon={MoreHorizontalIcon}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setEditing(item)
+                    setError("")
+                  }}
+                >
+                  <HugeiconsIcon
+                    icon={Edit02Icon}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                  {t("pages.otherSettings.proxies.editAction")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        t("pages.otherSettings.proxies.confirmDelete")
+                      )
+                    ) {
+                      void persist(
+                        proxies.filter((proxy) => proxy.id !== item.id)
+                      )
+                    }
+                  }}
+                >
+                  <HugeiconsIcon
+                    icon={Delete02Icon}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                  {t("pages.otherSettings.proxies.delete")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ))}
         {!editing && error && (

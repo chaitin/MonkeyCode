@@ -1131,11 +1131,12 @@ export const deDE = {
     otherSettings: {
       about: "Über",
       mcpNetwork: {
-        title: "MCP-Netzwerkzugriff",
-        description:
-          "Öffentliche und private Netzwerke sind standardmäßig erlaubt. Gesperrte Adressen werden immer abgewiesen.",
+        title: "Netzwerkzugriffskontrolle",
+        blocklist: "MCP-Netzwerksperrliste",
+        configure: "Konfigurieren",
+        description: "Zugriff gesperrt für <ranges>{{cidrs}}</ranges>",
         label: "IP-Bereichssperrliste",
-        hint: "IPv4-/IPv6-CIDRs wie 10.0.0.0/8 oder fd00::/8 verwenden. Für einzelne IPs /32 oder /128 verwenden. Gespeicherte Regeln gelten für neue MCP- und OAuth-Anfragen, auch über Proxys.",
+        hint: "IPv4-/IPv6-CIDRs wie 10.0.0.0/8 oder fd00::/8 verwenden.",
         entry: "IP-Bereich {{index}}",
         add: "IP-Bereich hinzufügen",
         remove: "Entfernen",
@@ -1203,71 +1204,6 @@ export const deDE = {
         saved: "Tag gespeichert.",
         deleted: "Tag gelöscht.",
         empty: "Es wurden noch keine Tags konfiguriert.",
-      },
-      knowledgeBase: {
-        title: "Wissensdatenbank-Einstellungen",
-        description:
-          "Verwalten Sie die Verarbeitung und den Abruf von Wissensinhalten.",
-        embeddingModel: "Embedding-Modell",
-        rerankerModel: "Reranker-Modell",
-        documentParsingEngine: {
-          title: "Erweiterte Dokumentenanalyse",
-          provider: "Baizhi Cloud",
-          defaultDescription:
-            "Nicht konfiguriert. Der integrierte Parser extrahiert einfachen Text aus Dateien.",
-          configuredDescription:
-            "Baizhi Cloud ist konfiguriert und verbessert die Analyse hochgeladener Dokumente.",
-          dialogTitle: "Erweiterte Dokumentenanalyse konfigurieren",
-          dialogDescription:
-            "MonkeyAI enthält eine grundlegende Dokumentenanalyse. Wenn die Textextraktion bei komplexen Dokumenten nicht ausreicht, kann Baizhi Cloud die Ergebnisse verbessern.",
-          providerLabel: "Dienstanbieter",
-          providerDescription:
-            "Baizhi Cloud · Der Endpunkt ist systemseitig festgelegt und muss nicht konfiguriert werden.",
-          apiKey: "API-Schlüssel",
-          apiKeyPlaceholder: "API-Schlüssel von Baizhi Cloud eingeben",
-          apiKeyUpdatePlaceholder:
-            "Leer lassen, um den aktuellen Schlüssel beizubehalten",
-          apiKeyDescription:
-            "Der Schlüssel wird nur beim Speichern übertragen und danach nicht vollständig angezeigt.",
-          apiKeyUpdateDescription:
-            "Leer lassen, um den aktuellen Schlüssel beizubehalten.",
-        },
-        contentEnhancementModel: {
-          title: "Modell zur Inhaltsverbesserung",
-          notConfiguredDescription:
-            "Noch nicht konfiguriert. Erweiterte Inhalte wie Textzusammenfassungen können nicht erstellt werden.",
-          dialogTitle: "Modell zur Inhaltsverbesserung konfigurieren",
-          dialogDescription:
-            "Konfigurieren Sie das Sprachmodell für Wissensdatenbank-Erweiterungen wie Textzusammenfassungen. Es verwendet dieselben Verbindungseinstellungen wie ein Systemmodell.",
-        },
-        notConfigured: "Noch nicht konfiguriert",
-        configure: "Konfigurieren",
-        edit: "Konfiguration ändern",
-        dialogTitle: "{{model}} konfigurieren",
-        dialogDescription:
-          "Geben Sie den Modell-Endpunkt und die Zugangsdaten ein.",
-        model: "Modell",
-        modelId: "Modell-ID",
-        modelIdPlaceholder: "Die vom Dienst verwendete Modell-ID eingeben",
-        modelIdDescription:
-          "Der Dienst legt die Modell-ID fest; sie kann daher vom ausgewählten Modellnamen abweichen.",
-        rerankerModelIdPlaceholder: "Zum Beispiel: BAAI/bge-reranker-v2-m3",
-        embeddingSupportDescription:
-          "Derzeit wird nur das Modell bge-m3 unterstützt.",
-        rerankerSupportDescription:
-          "Derzeit wird nur das Modell bge-reranker-v2-m3 unterstützt.",
-        baseUrl: "Base URL",
-        baseUrlPlaceholder: "https://api.example.com/v1",
-        apiKey: "API-Schlüssel",
-        apiKeyPlaceholder: "API-Schlüssel des Modells eingeben",
-        apiKeyUpdatePlaceholder:
-          "Leer lassen, um den aktuellen Schlüssel beizubehalten",
-        apiKeyDescription:
-          "Der Schlüssel wird nur beim Speichern übertragen und danach nicht vollständig angezeigt.",
-        apiKeyUpdateDescription:
-          "Leer lassen, um den aktuellen Schlüssel beizubehalten.",
-        cancel: "Abbrechen",
-        save: "Konfiguration speichern",
       },
       loginMethods: {
         title: "Anmeldemethoden",

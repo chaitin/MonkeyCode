@@ -1113,11 +1113,12 @@ export const es419 = {
     otherSettings: {
       about: "Acerca de",
       mcpNetwork: {
-        title: "Acceso de red MCP",
-        description:
-          "Las redes públicas y privadas se permiten de forma predeterminada. Las direcciones bloqueadas siempre se rechazan.",
+        title: "Control de acceso a la red",
+        blocklist: "Lista de bloqueo de red de MCP",
+        configure: "Configurar",
+        description: "Acceso bloqueado a <ranges>{{cidrs}}</ranges>",
         label: "Lista de bloqueo de rangos IP",
-        hint: "Usa CIDR IPv4/IPv6, como 10.0.0.0/8 o fd00::/8. Usa /32 o /128 para una sola IP. Las reglas guardadas se aplican a nuevas solicitudes MCP y OAuth, incluso a través de proxies.",
+        hint: "Usa CIDR IPv4/IPv6, como 10.0.0.0/8 o fd00::/8.",
         entry: "Rango IP {{index}}",
         add: "Agregar rango IP",
         remove: "Eliminar",
@@ -1186,69 +1187,6 @@ export const es419 = {
         saved: "Etiqueta guardada.",
         deleted: "Etiqueta eliminada.",
         empty: "No hay etiquetas configuradas.",
-      },
-      knowledgeBase: {
-        title: "Configuración de la base de conocimientos",
-        description:
-          "Administra cómo se procesa y recupera el contenido de conocimiento.",
-        embeddingModel: "Modelo de embedding",
-        rerankerModel: "Modelo de reranking",
-        documentParsingEngine: {
-          title: "Motor avanzado de análisis de documentos",
-          provider: "Baizhi Cloud",
-          defaultDescription:
-            "No configurado. El analizador integrado extraerá texto sin formato de los archivos.",
-          configuredDescription:
-            "Baizhi Cloud está configurado y mejorará el análisis de los documentos cargados.",
-          dialogTitle: "Configurar el análisis avanzado de documentos",
-          dialogDescription:
-            "MonkeyAI incluye análisis básico de documentos. Si la extracción de texto de documentos complejos no es suficiente, Baizhi Cloud puede mejorar los resultados.",
-          providerLabel: "Proveedor del servicio",
-          providerDescription:
-            "Baizhi Cloud · El endpoint está fijado por el sistema y no necesita configuración.",
-          apiKey: "Clave API",
-          apiKeyPlaceholder: "Ingresa la clave API de Baizhi Cloud",
-          apiKeyUpdatePlaceholder:
-            "Déjalo vacío para conservar la clave actual",
-          apiKeyDescription:
-            "La clave solo se envía al guardar y no volverá a mostrarse completa.",
-          apiKeyUpdateDescription:
-            "Déjalo vacío para conservar la clave actual.",
-        },
-        contentEnhancementModel: {
-          title: "Modelo de mejora de contenido",
-          notConfiguredDescription:
-            "Aún no está configurado. No se podrá generar contenido mejorado, como resúmenes de texto.",
-          dialogTitle: "Configurar modelo de mejora de contenido",
-          dialogDescription:
-            "Configura el modelo de lenguaje que genera mejoras para la base de conocimientos, como resúmenes de texto. Usa la misma conexión que un modelo del sistema.",
-        },
-        notConfigured: "Aún no configurado",
-        configure: "Configurar",
-        edit: "Editar configuración",
-        dialogTitle: "Configurar {{model}}",
-        dialogDescription:
-          "Ingresa el endpoint del modelo y las credenciales de acceso.",
-        model: "Modelo",
-        modelId: "ID del modelo",
-        modelIdPlaceholder: "Ingresa el ID usado por el servicio",
-        modelIdDescription:
-          "El servicio define el ID del modelo, por lo que puede diferir del nombre seleccionado.",
-        rerankerModelIdPlaceholder: "Por ejemplo: BAAI/bge-reranker-v2-m3",
-        embeddingSupportDescription:
-          "Actualmente solo se admite el modelo bge-m3.",
-        rerankerSupportDescription:
-          "Actualmente solo se admite el modelo bge-reranker-v2-m3.",
-        baseUrl: "Base URL",
-        baseUrlPlaceholder: "https://api.example.com/v1",
-        apiKey: "Clave API",
-        apiKeyPlaceholder: "Ingresa la clave API del modelo",
-        apiKeyUpdatePlaceholder: "Déjalo vacío para conservar la clave actual",
-        apiKeyDescription:
-          "La clave solo se envía al guardar y no volverá a mostrarse completa.",
-        apiKeyUpdateDescription: "Déjalo vacío para conservar la clave actual.",
-        cancel: "Cancelar",
-        save: "Guardar configuración",
       },
       loginMethods: {
         title: "Métodos de inicio de sesión",

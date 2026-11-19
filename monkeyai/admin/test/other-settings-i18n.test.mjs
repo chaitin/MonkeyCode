@@ -96,7 +96,7 @@ test("email sender identity fields appear at the bottom of the dialog", async ()
   assert.equal(zhTW.pages.otherSettings.email.senderEmail, "發信信箱")
 })
 
-test("settings cards place tags and knowledge after email", async () => {
+test("settings cards place tags after email and omit knowledge settings", async () => {
   const source = await readFile(
     new URL("../src/pages/other-settings-page.tsx", import.meta.url),
     "utf8"
@@ -105,7 +105,7 @@ test("settings cards place tags and knowledge after email", async () => {
   assert.match(source, /<Card className="order-1">[\s\S]*?loginMethods\.title/)
   assert.match(source, /<Card className="order-2">[\s\S]*?email\.title/)
   assert.match(source, /<Card className="order-3">[\s\S]*?skillTags\.title/)
-  assert.match(source, /<Card className="order-4">[\s\S]*?knowledgeBase\.title/)
+  assert.doesNotMatch(source, /pages\.otherSettings\.knowledgeBase/)
 })
 
 test("skill tags use an auto-fit grid without fixed item widths", async () => {
@@ -155,16 +155,8 @@ test("settings cards use abstract purpose-oriented descriptions", () => {
     "用于统一组织和管理系统资源。"
   )
   assert.equal(
-    zhCN.pages.otherSettings.knowledgeBase.description,
-    "用于管理知识内容的处理与检索能力。"
-  )
-  assert.equal(
     zhTW.pages.otherSettings.skillTags.description,
     "用於統一組織和管理系統資源。"
-  )
-  assert.equal(
-    zhTW.pages.otherSettings.knowledgeBase.description,
-    "用於管理知識內容的處理與檢索能力。"
   )
 })
 
@@ -324,21 +316,9 @@ test("other settings configuration buttons use the secondary style", async () =>
     "utf8"
   )
 
-  assert.equal(
-    (
-      source.match(
-        /DialogTrigger render=\{<Button variant="secondary" \/>\}/g
-      ) ?? []
-    ).length,
-    3
-  )
   assert.match(
     source,
     /variant="secondary"\s+onClick=\{\(\) => handleEmailDialogOpenChange\(true\)\}/
-  )
-  assert.doesNotMatch(
-    source,
-    /DialogTrigger render=\{<Button variant="outline" \/>\}[\s\S]*?knowledgeBase\.configure/
   )
   assert.match(
     source,

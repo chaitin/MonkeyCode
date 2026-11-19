@@ -1073,11 +1073,12 @@ export const koKR = {
     otherSettings: {
       about: "정보",
       mcpNetwork: {
-        title: "MCP 네트워크 접근",
-        description:
-          "기본적으로 공용 및 사설 네트워크를 허용합니다. 차단 목록의 주소는 항상 거부됩니다.",
+        title: "네트워크 접근 제어",
+        blocklist: "MCP 네트워크 차단 목록",
+        configure: "설정",
+        description: "접근 차단: <ranges>{{cidrs}}</ranges>",
         label: "IP 대역 차단 목록",
-        hint: "10.0.0.0/8 또는 fd00::/8 같은 IPv4/IPv6 CIDR을 사용하세요. 단일 IP에는 /32 또는 /128을 사용하세요. 저장된 규칙은 프록시를 포함한 새로운 MCP 및 OAuth 요청에 적용됩니다.",
+        hint: "10.0.0.0/8 또는 fd00::/8 같은 IPv4/IPv6 CIDR을 사용하세요.",
         entry: "IP 대역 {{index}}",
         add: "IP 대역 추가",
         remove: "삭제",
@@ -1143,64 +1144,6 @@ export const koKR = {
         saved: "태그가 저장되었습니다.",
         deleted: "태그가 삭제되었습니다.",
         empty: "설정된 태그가 없습니다.",
-      },
-      knowledgeBase: {
-        title: "지식 베이스 설정",
-        description: "지식 콘텐츠의 처리 및 검색 방식을 관리합니다.",
-        embeddingModel: "임베딩 모델",
-        rerankerModel: "리랭커 모델",
-        documentParsingEngine: {
-          title: "문서 파싱 향상 엔진",
-          provider: "Baizhi Cloud",
-          defaultDescription:
-            "아직 설정되지 않았습니다. 내장 기본 파서가 파일에서 일반 텍스트를 추출합니다.",
-          configuredDescription:
-            "Baizhi Cloud가 설정되어 업로드한 문서의 파싱을 향상합니다.",
-          dialogTitle: "문서 파싱 향상 엔진 설정",
-          dialogDescription:
-            "MonkeyAI는 기본 문서 파싱을 제공합니다. 복잡한 문서의 텍스트 추출 결과가 충분하지 않을 때 Baizhi Cloud로 파싱을 향상할 수 있습니다.",
-          providerLabel: "서비스 제공자",
-          providerDescription:
-            "Baizhi Cloud · 서비스 주소는 시스템에 고정되어 있어 설정할 필요가 없습니다.",
-          apiKey: "API 키",
-          apiKeyPlaceholder: "Baizhi Cloud API 키 입력",
-          apiKeyUpdatePlaceholder: "현재 키를 유지하려면 비워 두세요",
-          apiKeyDescription:
-            "키는 저장할 때만 제출되며 이후 전체가 표시되지 않습니다.",
-          apiKeyUpdateDescription: "비워 두면 현재 키를 유지합니다.",
-        },
-        contentEnhancementModel: {
-          title: "콘텐츠 강화 모델",
-          notConfiguredDescription:
-            "아직 설정되지 않아 텍스트 요약 등의 강화 콘텐츠를 생성할 수 없습니다.",
-          dialogTitle: "콘텐츠 강화 모델 설정",
-          dialogDescription:
-            "텍스트 요약 등 지식 베이스 강화 콘텐츠를 생성할 언어 모델을 설정합니다. 시스템 모델과 동일한 연결 설정을 사용합니다.",
-        },
-        notConfigured: "아직 설정되지 않음",
-        configure: "설정",
-        edit: "설정 수정",
-        dialogTitle: "{{model}} 설정",
-        dialogDescription: "모델 엔드포인트와 액세스 자격 증명을 입력합니다.",
-        model: "모델",
-        modelId: "모델 ID",
-        modelIdPlaceholder: "서비스에서 실제 사용하는 모델 ID 입력",
-        modelIdDescription:
-          "모델 ID는 서비스에서 정의하므로 선택한 모델 이름과 다를 수 있습니다.",
-        rerankerModelIdPlaceholder: "예: BAAI/bge-reranker-v2-m3",
-        embeddingSupportDescription: "현재 bge-m3 모델만 지원됩니다.",
-        rerankerSupportDescription:
-          "현재 bge-reranker-v2-m3 모델만 지원됩니다.",
-        baseUrl: "Base URL",
-        baseUrlPlaceholder: "https://api.example.com/v1",
-        apiKey: "API 키",
-        apiKeyPlaceholder: "모델 API 키 입력",
-        apiKeyUpdatePlaceholder: "현재 키를 유지하려면 비워 두세요",
-        apiKeyDescription:
-          "키는 저장할 때만 제출되며 이후 전체가 표시되지 않습니다.",
-        apiKeyUpdateDescription: "비워 두면 현재 키를 유지합니다.",
-        cancel: "취소",
-        save: "설정 저장",
       },
       loginMethods: {
         title: "로그인 방식",

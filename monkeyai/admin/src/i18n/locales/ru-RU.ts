@@ -1115,11 +1115,12 @@ export const ruRU = {
     otherSettings: {
       about: "О программе",
       mcpNetwork: {
-        title: "Сетевой доступ MCP",
-        description:
-          "Публичные и частные сети разрешены по умолчанию. Адреса из списка блокировки всегда отклоняются.",
+        title: "Управление сетевым доступом",
+        blocklist: "Список блокировки сети MCP",
+        configure: "Настроить",
+        description: "Доступ запрещён к <ranges>{{cidrs}}</ranges>",
         label: "Список блокировки диапазонов IP",
-        hint: "Используйте CIDR IPv4/IPv6, например 10.0.0.0/8 или fd00::/8. Для одного IP используйте /32 или /128. Сохранённые правила применяются к новым запросам MCP и OAuth, в том числе через прокси.",
+        hint: "Используйте CIDR IPv4/IPv6, например 10.0.0.0/8 или fd00::/8.",
         entry: "Диапазон IP {{index}}",
         add: "Добавить диапазон IP",
         remove: "Удалить",
@@ -1187,69 +1188,6 @@ export const ruRU = {
         saved: "Тег сохранён.",
         deleted: "Тег удалён.",
         empty: "Теги ещё не настроены.",
-      },
-      knowledgeBase: {
-        title: "Настройки базы знаний",
-        description: "Управляйте обработкой и поиском содержимого базы знаний.",
-        embeddingModel: "Модель эмбеддингов",
-        rerankerModel: "Модель реранжирования",
-        documentParsingEngine: {
-          title: "Улучшенный анализ документов",
-          provider: "Baizhi Cloud",
-          defaultDescription:
-            "Не настроено. Встроенный анализатор извлечёт из файлов обычный текст.",
-          configuredDescription:
-            "Baizhi Cloud настроен и будет улучшать анализ загружаемых документов.",
-          dialogTitle: "Настроить улучшенный анализ документов",
-          dialogDescription:
-            "MonkeyAI включает базовый анализ документов. Если извлечение текста из сложных документов недостаточно качественное, Baizhi Cloud может улучшить результат.",
-          providerLabel: "Поставщик услуги",
-          providerDescription:
-            "Baizhi Cloud · Адрес сервиса задан системой и не требует настройки.",
-          apiKey: "API-ключ",
-          apiKeyPlaceholder: "Введите API-ключ Baizhi Cloud",
-          apiKeyUpdatePlaceholder:
-            "Оставьте пустым, чтобы сохранить текущий ключ",
-          apiKeyDescription:
-            "Ключ передаётся только при сохранении и больше не показывается полностью.",
-          apiKeyUpdateDescription:
-            "Оставьте пустым, чтобы сохранить текущий ключ.",
-        },
-        contentEnhancementModel: {
-          title: "Модель улучшения контента",
-          notConfiguredDescription:
-            "Ещё не настроено. Нельзя создавать улучшенный контент, например резюме текста.",
-          dialogTitle: "Настроить модель улучшения контента",
-          dialogDescription:
-            "Настройте языковую модель для создания улучшений базы знаний, например резюме текста. Используются те же параметры подключения, что и для системной модели.",
-        },
-        notConfigured: "Ещё не настроено",
-        configure: "Настроить",
-        edit: "Изменить конфигурацию",
-        dialogTitle: "Настроить {{model}}",
-        dialogDescription: "Введите адрес модели и учётные данные для доступа.",
-        model: "Модель",
-        modelId: "ID модели",
-        modelIdPlaceholder: "Введите ID модели, используемый сервисом",
-        modelIdDescription:
-          "ID задаётся сервисом и может отличаться от названия выбранной модели.",
-        rerankerModelIdPlaceholder: "Например: BAAI/bge-reranker-v2-m3",
-        embeddingSupportDescription:
-          "Сейчас поддерживается только модель bge-m3.",
-        rerankerSupportDescription:
-          "Сейчас поддерживается только модель bge-reranker-v2-m3.",
-        baseUrl: "Base URL",
-        baseUrlPlaceholder: "https://api.example.com/v1",
-        apiKey: "API-ключ",
-        apiKeyPlaceholder: "Введите API-ключ модели",
-        apiKeyUpdatePlaceholder:
-          "Оставьте пустым, чтобы сохранить текущий ключ",
-        apiKeyDescription:
-          "Ключ передаётся только при сохранении и больше не показывается полностью.",
-        apiKeyUpdateDescription:
-          "Оставьте пустым, чтобы сохранить текущий ключ.",
-        cancel: "Отмена",
-        save: "Сохранить конфигурацию",
       },
       loginMethods: {
         title: "Способы входа",

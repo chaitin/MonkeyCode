@@ -2413,11 +2413,12 @@ export const enUS = {
     otherSettings: {
       about: "About",
       mcpNetwork: {
-        title: "MCP network access",
-        description:
-          "Public and private networks are allowed by default. Blocklisted addresses are always denied.",
+        title: "Network access control",
+        blocklist: "MCP network blocklist",
+        configure: "Configure",
+        description: "Access blocked to <ranges>{{cidrs}}</ranges>",
         label: "IP range blocklist",
-        hint: "Use IPv4/IPv6 CIDRs, such as 10.0.0.0/8 or fd00::/8. Use /32 or /128 for a single IP. Saved rules apply to new MCP and OAuth requests, including proxied requests.",
+        hint: "Use IPv4/IPv6 CIDRs, such as 10.0.0.0/8 or fd00::/8.",
         entry: "IP range {{index}}",
         add: "Add IP range",
         remove: "Remove",
@@ -2484,65 +2485,6 @@ export const enUS = {
         saved: "Tag saved.",
         deleted: "Tag deleted.",
         empty: "No tags have been configured.",
-      },
-      knowledgeBase: {
-        title: "Knowledge base settings",
-        description: "Manage how knowledge content is processed and retrieved.",
-        embeddingModel: "Embedding model",
-        rerankerModel: "Reranker model",
-        documentParsingEngine: {
-          title: "Enhanced document parsing engine",
-          provider: "Baizhi Cloud",
-          defaultDescription:
-            "Not configured. The built-in basic parser will extract plain text from files.",
-          configuredDescription:
-            "Baizhi Cloud is configured and will enhance parsing for uploaded documents.",
-          dialogTitle: "Configure enhanced document parsing",
-          dialogDescription:
-            "MonkeyAI includes basic document parsing. When plain-text extraction is not good enough for complex documents, Baizhi Cloud can enhance the results.",
-          providerLabel: "Service provider",
-          providerDescription:
-            "Baizhi Cloud · The service endpoint is fixed by the system and does not need configuration.",
-          apiKey: "API key",
-          apiKeyPlaceholder: "Enter the Baizhi Cloud API key",
-          apiKeyUpdatePlaceholder: "Leave blank to keep the current key",
-          apiKeyDescription:
-            "The key is submitted only when saved and will not be shown in full again.",
-          apiKeyUpdateDescription: "Leave blank to keep the current key.",
-        },
-        contentEnhancementModel: {
-          title: "Content enhancement model",
-          notConfiguredDescription:
-            "Not configured. Enhanced content such as text summaries cannot be generated.",
-          dialogTitle: "Configure content enhancement model",
-          dialogDescription:
-            "Configure the language model used to generate knowledge base enhancements such as text summaries. It uses the same connection settings as a system model.",
-        },
-        notConfigured: "Not configured yet",
-        configure: "Configure",
-        edit: "Edit configuration",
-        dialogTitle: "Configure {{model}}",
-        dialogDescription: "Enter the model endpoint and access credentials.",
-        model: "Model",
-        modelId: "Model ID",
-        modelIdPlaceholder: "Enter the model ID used by the service",
-        modelIdDescription:
-          "The service defines the model ID, so it may differ from the selected model name.",
-        rerankerModelIdPlaceholder: "For example: BAAI/bge-reranker-v2-m3",
-        embeddingSupportDescription:
-          "Only the bge-m3 model is currently supported.",
-        rerankerSupportDescription:
-          "Only the bge-reranker-v2-m3 model is currently supported.",
-        baseUrl: "Base URL",
-        baseUrlPlaceholder: "https://api.example.com/v1",
-        apiKey: "API key",
-        apiKeyPlaceholder: "Enter the model API key",
-        apiKeyUpdatePlaceholder: "Leave blank to keep the current key",
-        apiKeyDescription:
-          "The key is submitted only when saved and will not be shown in full again.",
-        apiKeyUpdateDescription: "Leave blank to keep the current key.",
-        cancel: "Cancel",
-        save: "Save configuration",
       },
       loginMethods: {
         title: "Sign-in methods",

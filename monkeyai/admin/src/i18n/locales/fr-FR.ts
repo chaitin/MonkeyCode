@@ -1128,11 +1128,12 @@ export const frFR = {
     otherSettings: {
       about: "À propos",
       mcpNetwork: {
-        title: "Accès réseau MCP",
-        description:
-          "Les réseaux publics et privés sont autorisés par défaut. Les adresses bloquées sont toujours refusées.",
+        title: "Contrôle d’accès au réseau",
+        blocklist: "Liste de blocage réseau MCP",
+        configure: "Configurer",
+        description: "Accès interdit à <ranges>{{cidrs}}</ranges>",
         label: "Liste de blocage des plages IP",
-        hint: "Utilisez des CIDR IPv4/IPv6, comme 10.0.0.0/8 ou fd00::/8. Utilisez /32 ou /128 pour une seule IP. Les règles enregistrées s’appliquent aux nouvelles requêtes MCP et OAuth, y compris via proxy.",
+        hint: "Utilisez des CIDR IPv4/IPv6, comme 10.0.0.0/8 ou fd00::/8.",
         entry: "Plage IP {{index}}",
         add: "Ajouter une plage IP",
         remove: "Supprimer",
@@ -1200,69 +1201,6 @@ export const frFR = {
         saved: "Étiquette enregistrée.",
         deleted: "Étiquette supprimée.",
         empty: "Aucune étiquette n’est configurée.",
-      },
-      knowledgeBase: {
-        title: "Paramètres de la base de connaissances",
-        description:
-          "Gérez le traitement et la recherche du contenu de connaissance.",
-        embeddingModel: "Modèle d’embedding",
-        rerankerModel: "Modèle de reranking",
-        documentParsingEngine: {
-          title: "Moteur avancé d’analyse de documents",
-          provider: "Baizhi Cloud",
-          defaultDescription:
-            "Non configuré. L’analyseur intégré extraira le texte brut des fichiers.",
-          configuredDescription:
-            "Baizhi Cloud est configuré et améliorera l’analyse des documents importés.",
-          dialogTitle: "Configurer l’analyse avancée des documents",
-          dialogDescription:
-            "MonkeyAI inclut une analyse de documents basique. Lorsque l’extraction de texte des documents complexes est insuffisante, Baizhi Cloud peut améliorer les résultats.",
-          providerLabel: "Fournisseur de service",
-          providerDescription:
-            "Baizhi Cloud · Le point d’accès est fixé par le système et ne nécessite aucune configuration.",
-          apiKey: "Clé API",
-          apiKeyPlaceholder: "Saisissez la clé API Baizhi Cloud",
-          apiKeyUpdatePlaceholder:
-            "Laissez vide pour conserver la clé actuelle",
-          apiKeyDescription:
-            "La clé est transmise uniquement à l’enregistrement et ne sera plus affichée en entier.",
-          apiKeyUpdateDescription:
-            "Laissez vide pour conserver la clé actuelle.",
-        },
-        contentEnhancementModel: {
-          title: "Modèle d’enrichissement du contenu",
-          notConfiguredDescription:
-            "Pas encore configuré. Les contenus enrichis, tels que les résumés de texte, ne peuvent pas être générés.",
-          dialogTitle: "Configurer le modèle d’enrichissement du contenu",
-          dialogDescription:
-            "Configurez le modèle de langage utilisé pour enrichir la base de connaissances, par exemple en générant des résumés. Il utilise les mêmes paramètres de connexion qu’un modèle système.",
-        },
-        notConfigured: "Pas encore configuré",
-        configure: "Configurer",
-        edit: "Modifier la configuration",
-        dialogTitle: "Configurer {{model}}",
-        dialogDescription:
-          "Saisissez le point d’accès du modèle et les identifiants.",
-        model: "Modèle",
-        modelId: "ID du modèle",
-        modelIdPlaceholder: "Saisissez l’ID utilisé par le service",
-        modelIdDescription:
-          "Le service définit l’ID du modèle ; il peut différer du nom du modèle sélectionné.",
-        rerankerModelIdPlaceholder: "Par exemple : BAAI/bge-reranker-v2-m3",
-        embeddingSupportDescription:
-          "Seul le modèle bge-m3 est actuellement pris en charge.",
-        rerankerSupportDescription:
-          "Seul le modèle bge-reranker-v2-m3 est actuellement pris en charge.",
-        baseUrl: "Base URL",
-        baseUrlPlaceholder: "https://api.example.com/v1",
-        apiKey: "Clé API",
-        apiKeyPlaceholder: "Saisissez la clé API du modèle",
-        apiKeyUpdatePlaceholder: "Laissez vide pour conserver la clé actuelle",
-        apiKeyDescription:
-          "La clé est transmise uniquement à l’enregistrement et ne sera plus affichée en entier.",
-        apiKeyUpdateDescription: "Laissez vide pour conserver la clé actuelle.",
-        cancel: "Annuler",
-        save: "Enregistrer la configuration",
       },
       loginMethods: {
         title: "Méthodes de connexion",

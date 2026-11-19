@@ -1090,11 +1090,12 @@ export const jaJP = {
     otherSettings: {
       about: "このアプリについて",
       mcpNetwork: {
-        title: "MCP ネットワークアクセス",
-        description:
-          "既定ではパブリックおよびプライベートネットワークを許可します。ブロック対象のアドレスは常に拒否されます。",
+        title: "ネットワークアクセス制御",
+        blocklist: "MCP ネットワークブロックリスト",
+        configure: "設定",
+        description: "<ranges>{{cidrs}}</ranges> へのアクセスを禁止",
         label: "IP 範囲のブロックリスト",
-        hint: "10.0.0.0/8 や fd00::/8 などの IPv4/IPv6 CIDR を使用します。単一 IP には /32 または /128 を指定します。保存したルールは、プロキシ経由を含む新しい MCP および OAuth リクエストに適用されます。",
+        hint: "10.0.0.0/8 や fd00::/8 などの IPv4/IPv6 CIDR を使用します。",
         entry: "IP 範囲 {{index}}",
         add: "IP 範囲を追加",
         remove: "削除",
@@ -1161,64 +1162,6 @@ export const jaJP = {
         saved: "タグを保存しました。",
         deleted: "タグを削除しました。",
         empty: "タグはまだ設定されていません。",
-      },
-      knowledgeBase: {
-        title: "ナレッジベース設定",
-        description: "ナレッジコンテンツの処理と検索を管理します。",
-        embeddingModel: "埋め込みモデル",
-        rerankerModel: "リランカーモデル",
-        documentParsingEngine: {
-          title: "文書解析強化エンジン",
-          provider: "Baizhi Cloud",
-          defaultDescription:
-            "未設定です。内蔵の基本解析でファイルからプレーンテキストを抽出します。",
-          configuredDescription:
-            "Baizhi Cloud が設定され、アップロード文書の解析が強化されます。",
-          dialogTitle: "文書解析強化エンジンを設定",
-          dialogDescription:
-            "MonkeyAI には基本的な文書解析が含まれています。複雑な文書からのテキスト抽出が十分でない場合は、Baizhi Cloud で解析を強化できます。",
-          providerLabel: "サービスプロバイダー",
-          providerDescription:
-            "Baizhi Cloud · サービスの接続先はシステムで固定されているため、設定は不要です。",
-          apiKey: "API キー",
-          apiKeyPlaceholder: "Baizhi Cloud の API キーを入力",
-          apiKeyUpdatePlaceholder: "空欄の場合は現在のキーを保持",
-          apiKeyDescription: "キーは保存時のみ送信され、再表示されません。",
-          apiKeyUpdateDescription: "空欄の場合は現在のキーを保持します。",
-        },
-        contentEnhancementModel: {
-          title: "コンテンツ強化モデル",
-          notConfiguredDescription:
-            "未設定のため、テキスト要約などの強化コンテンツは生成されません。",
-          dialogTitle: "コンテンツ強化モデルを設定",
-          dialogDescription:
-            "テキスト要約などのナレッジベース強化コンテンツを生成する言語モデルを設定します。システムモデルと同じ接続設定を使用します。",
-        },
-        notConfigured: "未設定",
-        configure: "設定",
-        edit: "設定を変更",
-        dialogTitle: "{{model}}を設定",
-        dialogDescription:
-          "モデルのエンドポイントとアクセス認証情報を入力します。",
-        model: "モデル",
-        modelId: "モデル ID",
-        modelIdPlaceholder: "サービスで使用するモデル ID を入力",
-        modelIdDescription:
-          "モデル ID はサービス側で定義されるため、選択したモデル名と異なる場合があります。",
-        rerankerModelIdPlaceholder: "例：BAAI/bge-reranker-v2-m3",
-        embeddingSupportDescription:
-          "現在サポートされているのは bge-m3 モデルのみです。",
-        rerankerSupportDescription:
-          "現在サポートされているのは bge-reranker-v2-m3 モデルのみです。",
-        baseUrl: "Base URL",
-        baseUrlPlaceholder: "https://api.example.com/v1",
-        apiKey: "API キー",
-        apiKeyPlaceholder: "モデルの API キーを入力",
-        apiKeyUpdatePlaceholder: "空欄の場合は現在のキーを保持",
-        apiKeyDescription: "キーは保存時のみ送信され、再表示されません。",
-        apiKeyUpdateDescription: "空欄の場合は現在のキーを保持します。",
-        cancel: "キャンセル",
-        save: "設定を保存",
       },
       loginMethods: {
         title: "ログイン方法",

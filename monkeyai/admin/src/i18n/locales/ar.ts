@@ -1065,11 +1065,12 @@ export const ar = {
     otherSettings: {
       about: "حول",
       mcpNetwork: {
-        title: "الوصول إلى شبكة MCP",
-        description:
-          "يُسمح بالشبكات العامة والخاصة افتراضيًا. تُرفض العناوين المدرجة في قائمة الحظر دائمًا.",
+        title: "التحكم في الوصول إلى الشبكة",
+        blocklist: "قائمة حظر شبكة MCP",
+        configure: "إعداد",
+        description: "يُحظر الوصول إلى <ranges>{{cidrs}}</ranges>",
         label: "قائمة حظر نطاقات IP",
-        hint: "استخدم CIDR لـ IPv4/IPv6، مثل 10.0.0.0/8 أو fd00::/8. استخدم /32 أو /128 لعنوان IP واحد. تنطبق القواعد المحفوظة على طلبات MCP وOAuth الجديدة، بما فيها الطلبات عبر الوكيل.",
+        hint: "استخدم CIDR لـ IPv4/IPv6، مثل 10.0.0.0/8 أو fd00::/8.",
         entry: "نطاق IP {{index}}",
         add: "إضافة نطاق IP",
         remove: "إزالة",
@@ -1135,64 +1136,6 @@ export const ar = {
         saved: "تم حفظ الوسم.",
         deleted: "تم حذف الوسم.",
         empty: "لم يتم إعداد أي وسوم.",
-      },
-      knowledgeBase: {
-        title: "إعدادات قاعدة المعرفة",
-        description: "إدارة معالجة محتوى المعرفة واسترجاعه.",
-        embeddingModel: "نموذج التضمين",
-        rerankerModel: "نموذج إعادة الترتيب",
-        documentParsingEngine: {
-          title: "محرك تحليل المستندات المحسّن",
-          provider: "Baizhi Cloud",
-          defaultDescription:
-            "غير مهيأ. سيستخرج المحلل الأساسي المدمج النص العادي من الملفات.",
-          configuredDescription:
-            "تمت تهيئة Baizhi Cloud لتحسين تحليل المستندات المرفوعة.",
-          dialogTitle: "تهيئة تحليل المستندات المحسّن",
-          dialogDescription:
-            "يتضمن MonkeyAI تحليلاً أساسيًا للمستندات. عندما لا يكون استخراج النص من المستندات المعقدة كافيًا، يمكن لـ Baizhi Cloud تحسين النتائج.",
-          providerLabel: "مقدم الخدمة",
-          providerDescription:
-            "Baizhi Cloud · عنوان الخدمة ثابت في النظام ولا يحتاج إلى تهيئة.",
-          apiKey: "مفتاح API",
-          apiKeyPlaceholder: "أدخل مفتاح API لخدمة Baizhi Cloud",
-          apiKeyUpdatePlaceholder: "اتركه فارغًا للاحتفاظ بالمفتاح الحالي",
-          apiKeyDescription:
-            "يُرسل المفتاح عند الحفظ فقط ولن يظهر كاملاً مرة أخرى.",
-          apiKeyUpdateDescription: "اتركه فارغًا للاحتفاظ بالمفتاح الحالي.",
-        },
-        contentEnhancementModel: {
-          title: "نموذج تحسين المحتوى",
-          notConfiguredDescription:
-            "لم تتم تهيئته بعد. لا يمكن إنشاء محتوى محسّن مثل ملخصات النصوص.",
-          dialogTitle: "تهيئة نموذج تحسين المحتوى",
-          dialogDescription:
-            "اضبط نموذج اللغة المستخدم لإنشاء تحسينات قاعدة المعرفة، مثل ملخصات النصوص. يستخدم إعدادات الاتصال نفسها الخاصة بنموذج النظام.",
-        },
-        notConfigured: "لم تتم تهيئته بعد",
-        configure: "تهيئة",
-        edit: "تعديل الإعداد",
-        dialogTitle: "تهيئة {{model}}",
-        dialogDescription: "أدخل نقطة نهاية النموذج وبيانات اعتماد الوصول.",
-        model: "النموذج",
-        modelId: "معرّف النموذج",
-        modelIdPlaceholder: "أدخل معرّف النموذج المستخدم في الخدمة",
-        modelIdDescription:
-          "تحدد الخدمة معرّف النموذج، لذلك قد يختلف عن اسم النموذج المحدد.",
-        rerankerModelIdPlaceholder: "مثال: BAAI/bge-reranker-v2-m3",
-        embeddingSupportDescription: "نموذج bge-m3 هو المدعوم حاليًا فقط.",
-        rerankerSupportDescription:
-          "نموذج bge-reranker-v2-m3 هو المدعوم حاليًا فقط.",
-        baseUrl: "Base URL",
-        baseUrlPlaceholder: "https://api.example.com/v1",
-        apiKey: "مفتاح API",
-        apiKeyPlaceholder: "أدخل مفتاح API للنموذج",
-        apiKeyUpdatePlaceholder: "اتركه فارغًا للاحتفاظ بالمفتاح الحالي",
-        apiKeyDescription:
-          "يُرسل المفتاح عند الحفظ فقط ولن يظهر كاملاً مرة أخرى.",
-        apiKeyUpdateDescription: "اتركه فارغًا للاحتفاظ بالمفتاح الحالي.",
-        cancel: "إلغاء",
-        save: "حفظ الإعداد",
       },
       loginMethods: {
         title: "طرق تسجيل الدخول",
