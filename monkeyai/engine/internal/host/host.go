@@ -53,7 +53,7 @@ func open() (*driver.Driver, error) {
 	if err != nil {
 		return nil, err
 	}
-	d.WithNetwork(cfg.NetworkConfig)
+	d.WithNetwork(cfg.NetworkConfig).WithRawLogs(cfg.RawLogEnvironments)
 	manager := func(ctx context.Context, spec lifecycle.Spec) (*runtimeupdate.Manager, error) {
 		mounts, err := volumes.Ensure(ctx, spec)
 		if err != nil {

@@ -98,6 +98,16 @@ sudo journalctl -u monkeyai-engine.service --since '-10 min'
 
 history 按环境 ID 从本机 systemd journal 读取接单、执行/巡检、生命周期阶段、失败、结果和后台确认，省略 --follow 可查询已有记录。只包含升级后本宿主实际记录且未被 journal 清理的事件，不能追溯未下发给宿主的请求。宿主级故障（如心跳或命令同步失败）请看整个服务日志。CLI 不自行签发运行目标或覆盖控制面代次。
 
+### 用 docker logs 查看环境与 runtime 输出
+
+主进程输出已经进入容器的 stdout/stderr。要将 runtime serve 的原文也写入**同一容器**，在宿主 `/etc/monkeyai-engine/config.json` 的顶层配置 `"raw_log_environments": ["目标环境ID"]`。精确匹配环境 ID，不是实例 ID；默认不启用。配置在下一次启动该环境的 runtime serve 时生效，已有运行进程不会因为配置变更被重启。可在维护窗口从平台停止并启动目标环境，不用重启 Docker。
+
+~~~bash
+sudo docker logs --timestamps --tail 100 -f <容器名或ID>
+~~~
+
+输出保留 stdout 和 stderr 的区分，沿用容器日志轮转策略；旧容器若使用 none 日志驱动，不能用 docker logs 回看。原文不复制到宿主 service journal。排队、容器创建失败、设备授权等诊断仍用 environment history 或 journalctl 查看；设备码、login/status 协议输出不做重定向。原文可能含用户数据或凭据，请限制 Docker 访问权限；移除 ID 后需重新启动对应环境才能停止重定向，不会抹除历史日志。
+
 ## 失败恢复与撤销
 
 - 下载／校验失败时不执行该文件，清理暂存下载；已创建的身份和配置保留。

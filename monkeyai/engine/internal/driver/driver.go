@@ -34,14 +34,15 @@ type Volumes interface {
 	Ensure(context.Context, lifecycle.Spec) ([]storage.Mount, error)
 }
 type Driver struct {
-	privateCIDRs   []netip.Prefix
-	proxyEnv       []string
-	runtimeUpdater func(context.Context, lifecycle.Spec) error
-	runtimeSource  func(context.Context, lifecycle.Spec) (standalone.Files, error)
-	registryAuth   func(string) (string, error)
-	client         *dockerapi.Client
-	volumes        Volumes
-	root           string
+	rawLogEnvironments []string
+	privateCIDRs       []netip.Prefix
+	proxyEnv           []string
+	runtimeUpdater     func(context.Context, lifecycle.Spec) error
+	runtimeSource      func(context.Context, lifecycle.Spec) (standalone.Files, error)
+	registryAuth       func(string) (string, error)
+	client             *dockerapi.Client
+	volumes            Volumes
+	root               string
 }
 
 func New(socket, root string, volumes Volumes) (*Driver, error) {
@@ -52,6 +53,10 @@ func New(socket, root string, volumes Volumes) (*Driver, error) {
 		return nil, err
 	}
 	return &Driver{client: dockerapi.New(socket), volumes: volumes, root: root}, nil
+}
+func (d *Driver) WithRawLogs(ids []string) *Driver {
+	d.rawLogEnvironments = slices.Clone(ids)
+	return d
 }
 func (d *Driver) WithNetwork(cfg control.NetworkConfig) *Driver {
 	d.privateCIDRs = cfg.AllowPrivateCIDRs

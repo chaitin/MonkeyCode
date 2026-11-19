@@ -22,15 +22,16 @@ import (
 
 type Config struct {
 	NetworkConfig
-	OperationWorkers  int    `json:"operation_workers,omitempty"`
-	InspectionWorkers int    `json:"inspection_workers,omitempty"`
-	Insecure          bool   `json:"insecure,omitempty"`
-	Server            string `json:"server"`
-	ServerURL         string `json:"server_url,omitempty"`
-	HostID            string `json:"host_id"`
-	Architecture      string `json:"architecture"`
-	Version           string `json:"version"`
-	DataDir           string `json:"data_dir"`
+	RawLogEnvironments []string `json:"raw_log_environments,omitempty"`
+	OperationWorkers   int      `json:"operation_workers,omitempty"`
+	InspectionWorkers  int      `json:"inspection_workers,omitempty"`
+	Insecure           bool     `json:"insecure,omitempty"`
+	Server             string   `json:"server"`
+	ServerURL          string   `json:"server_url,omitempty"`
+	HostID             string   `json:"host_id"`
+	Architecture       string   `json:"architecture"`
+	Version            string   `json:"version"`
+	DataDir            string   `json:"data_dir"`
 }
 type Client struct {
 	Server  string
