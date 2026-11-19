@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -22,6 +23,10 @@ func decodeMCPArguments(arguments map[string]any, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
+		var detail *resource.Error
+		if errors.As(err, &detail) {
+			return detail
+		}
 		return resource.Invalid("工具参数无效")
 	}
 	return nil
@@ -30,7 +35,7 @@ func decodeMCPArguments(arguments map[string]any, target any) error {
 type mcpKnowledgeBaseUpdate struct {
 	KbID             string          `json:"kb_id"`
 	ExpectedRevision int64           `json:"expected_revision"`
-	Name             string          `json:"name"`
+	Name             *string         `json:"name"`
 	Description      *string         `json:"description"`
 	TagIDs           *[]string       `json:"tag_ids"`
 	FusionConfig     json.RawMessage `json:"fusion_config"`
@@ -42,14 +47,24 @@ func (s *Service) updateMCPKnowledgeBase(ctx context.Context, actor string, argu
 	if err := decodeMCPArguments(arguments, &input); err != nil {
 		return nil, err
 	}
-	input.KbID, input.Name = strings.TrimSpace(input.KbID), strings.TrimSpace(input.Name)
-	if input.KbID == "" || input.Name == "" || len(input.Name) > 200 {
-		return nil, resource.Invalid("kb_id 和 name 必填，名称不能超过 200 字节")
+	input.KbID = strings.TrimSpace(input.KbID)
+	if input.KbID == "" {
+		return nil, resource.Invalid("kb_id 必填")
 	}
 	if input.ExpectedRevision <= 0 {
 		return nil, &resource.Error{Status: 428, Code: "precondition_required", Message: "请先读取知识库并提供 expected_revision"}
 	}
-	metadata := resource.Object{"name": input.Name}
+	metadata := resource.Object{}
+	if input.Name != nil {
+		name := strings.TrimSpace(*input.Name)
+		if name == "" || len(name) > 200 {
+			return nil, resource.Invalid("名称不能为空且不能超过 200 字节")
+		}
+		metadata["name"] = name
+	}
+	if input.Name == nil && input.Description == nil && input.TagIDs == nil && input.FusionConfig == nil && input.AvatarBase64 == nil {
+		return nil, resource.Invalid("至少需要一个可更新字段")
+	}
 	if input.Description != nil {
 		metadata["description"] = *input.Description
 	}
@@ -76,6 +91,15 @@ func (s *Service) updateMCPKnowledgeBase(ctx context.Context, actor string, argu
 		if err != nil {
 			return nil, err
 		}
+	}
+	if input.Name == nil {
+		current, err := s.ownedUserKB(ctx, actor, input.KbID)
+		if err != nil {
+			return nil, err
+		}
+		// SaveUser checks expected_revision under lock, so this fallback cannot
+		// overwrite a concurrent rename using a stale snapshot.
+		metadata["name"] = current.String("name")
 	}
 	item, err := s.saveAvatar(ctx, actor, input.KbID, fmt.Sprintf(`"%d"`, input.ExpectedRevision), metadata, avatar, true)
 	if err != nil {
@@ -148,14 +172,4 @@ func (s *Service) writeMCPDocuments(ctx context.Context, actor, tool string, arg
 		return nil, err
 	}
 	return resource.Object{"succeeded": result.Succeeded, "failed": result.Failed}, nil
-}
-
-func mcpDocumentOperationSchema(properties resource.Object) resource.Object {
-	properties["ids"] = resource.Object{"type": "array", "minItems": 1, "maxItems": maxBatchDocuments, "items": mcpIDSchema()}
-	schema := mcpObjectSchema(properties, "kb_id")
-	schema["oneOf"] = []any{
-		resource.Object{"required": []string{"ids"}, "not": resource.Object{"required": []string{"document_id"}}},
-		resource.Object{"required": []string{"document_id"}, "not": resource.Object{"required": []string{"ids"}}},
-	}
-	return schema
 }

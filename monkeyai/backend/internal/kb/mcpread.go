@@ -26,30 +26,7 @@ func (s *Service) readMCPKnowledgeBase(ctx context.Context, actor, tool string, 
 	var input struct {
 		KbID string `json:"kb_id"`
 	}
-	if tool == "kb_list_chunks" {
-		var document struct {
-			KbID       string `json:"kb_id"`
-			DocumentID string `json:"document_id"`
-		}
-		if err := decodeMCPArguments(arguments, &document); err != nil {
-			return nil, err
-		}
-		if document.KbID == "" || document.DocumentID == "" {
-			return nil, resource.Invalid("kb_id 和 document_id 必填")
-		}
-		if _, err := s.GetAccessibleDocumentInKB(ctx, actor, document.KbID, document.DocumentID); err != nil {
-			return nil, err
-		}
-		items, err := s.ListChunks(ctx, document.DocumentID)
-		if err != nil {
-			return nil, err
-		}
-		// Retrieval may outlive a permission change; check again before returning content.
-		if _, err := s.GetAccessibleDocumentInKB(ctx, actor, document.KbID, document.DocumentID); err != nil {
-			return nil, err
-		}
-		return resource.Object{"items": items}, nil
-	}
+
 	if err := decodeMCPArguments(arguments, &input); err != nil {
 		return nil, err
 	}
@@ -72,8 +49,9 @@ func (s *Service) readMCPKnowledgeBase(ctx context.Context, actor, tool string, 
 
 func (s *Service) readMCPImage(ctx context.Context, actor string, arguments map[string]any) (resource.Object, error) {
 	var input struct {
-		KbID string `json:"kb_id"`
-		Name string `json:"name"`
+		KbID        string `json:"kb_id"`
+		Name        string `json:"name"`
+		IncludeData *bool  `json:"include_data"`
 	}
 	if err := decodeMCPArguments(arguments, &input); err != nil {
 		return nil, err
@@ -102,6 +80,9 @@ func (s *Service) readMCPImage(ctx context.Context, actor string, arguments map[
 	text, err := json.Marshal(metadata)
 	if err != nil {
 		return nil, err
+	}
+	if input.IncludeData != nil && !*input.IncludeData {
+		return resource.Object{"content": []any{resource.Object{"type": "text", "text": string(text)}}, "structuredContent": metadata}, nil
 	}
 	return resource.Object{
 		"content": []any{
