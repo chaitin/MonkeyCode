@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -209,7 +210,14 @@ func (d *Driver) Login(ctx context.Context, s lifecycle.Spec, authorize func(str
 	ctx, cancel := context.WithTimeout(ctx, 11*time.Minute)
 	defer cancel()
 	authorized := false
+	reason := "unknown"
 	code, err := d.runRuntime(ctx, s, "monkeyai-login", []string{"login", "--device-code", "--state-dir", standalone.StateDir, "--server", s.Runtime.Server, "--server-id", s.Runtime.ServerID, "--user", s.Runtime.UserID, "--name", "MonkeyAI Cloud"}, func(event runtimeEvent) error {
+		if event.Event == "error" {
+			switch event.Reason {
+			case "network_error", "access_denied", "expired_token", "invalid_client", "invalid_request", "authorization_pending", "server_error":
+				reason = event.Reason
+			}
+		}
 		if event.Event == "authorize" {
 			if authorized || event.UserCode == "" || len(event.UserCode) > 16 {
 				return errors.New("运行时设备申请无效")
@@ -223,7 +231,7 @@ func (d *Driver) Login(ctx context.Context, s lifecycle.Spec, authorize func(str
 		return err
 	}
 	if code != 0 || !authorized {
-		return errors.New("运行时登录失败")
+		return fmt.Errorf("运行时登录失败: reason=%s exit=%d authorize=%t", reason, code, authorized)
 	}
 	return nil
 }

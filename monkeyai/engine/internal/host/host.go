@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/dockerapi"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -230,7 +231,7 @@ func (Executor) Runtime(ctx context.Context, s lifecycle.Spec, approve standalon
 		}
 		state.Phase = lifecycle.PhaseFailed
 		state.Reason = "runtime_failed"
-		slog.Error("云环境运行时初始化失败", "environment_id", s.EnvironmentID, "generation", s.Generation, "error", err)
+		slog.Error("云环境运行时初始化失败", "environment_id", s.EnvironmentID, "generation", s.Generation, "error", dockerapi.Diagnostic(err))
 		saveErr := (lifecycle.FileStore{Root: filepath.Join(root, "states")}).Save(s.EnvironmentID, state)
 		return errors.Join(err, saveErr)
 	}

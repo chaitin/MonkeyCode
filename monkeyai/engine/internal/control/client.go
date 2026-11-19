@@ -103,13 +103,16 @@ func (c *Client) post(ctx context.Context, path string, in, out any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return ErrUnauthorized
+		return fmt.Errorf("%s: HTTP %d: %w", path, resp.StatusCode, ErrUnauthorized)
 	}
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("后台请求失败，状态码 %d", resp.StatusCode)
+		return fmt.Errorf("%s: 后台请求失败，状态码 %d", path, resp.StatusCode)
 	}
 	d := json.NewDecoder(io.LimitReader(resp.Body, 64<<10))
-	return d.Decode(out)
+	if err := d.Decode(out); err != nil {
+		return fmt.Errorf("%s: 后台响应不是有效 JSON: %w", path, err)
+	}
+	return nil
 }
 func (c *Client) Enroll(ctx context.Context, token, arch, version string) (string, error) {
 	name, err := os.Hostname()

@@ -13,8 +13,11 @@ import (
 )
 
 func environment(ctx context.Context, args []string, out, stderr io.Writer) int {
+	if len(args) > 0 && (args[0] == "list" || args[0] == "status" || args[0] == "history") {
+		return diagnostics(ctx, args, out, stderr)
+	}
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "用法：environment apply --file <规格.json> | inspect --id <环境 ID>")
+		fmt.Fprintln(stderr, "用法：environment list [--json] | status --id ID | history --id ID [--follow] | inspect --id ID | apply --file <规格.json>")
 		return 2
 	}
 	f := flag.NewFlagSet("environment "+args[0], flag.ContinueOnError)

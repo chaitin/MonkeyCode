@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/control"
+	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/dockerapi"
 	network "github.com/chaitin/MonkeyCode/monkeyai/engine/internal/dockernet"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/lifecycle"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/standalone"
@@ -66,21 +68,32 @@ type commands struct {
 	Acknowledged          []Observation      `json:"acknowledged"`
 	Runtime               []standalone.Reply `json:"runtime,omitempty"`
 }
+
+const (
+	operationSlots  = 4
+	inspectionSlots = 2
+)
+
+type job struct {
+	generation int64
+	inspect    bool
+	started    time.Time
+	cancel     context.CancelFunc
+}
 type Worker struct {
-	root           string
-	executor       Executor
-	mu             sync.Mutex
-	entries        map[string]entry
-	checked        map[string]time.Time
-	cursor         string
-	active         string
-	generation     int64
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
-	closed         bool
-	approval       *approval
-	runtimeUpdates bool
-	usage          bool
+	root                          string
+	executor                      Executor
+	mu                            sync.Mutex
+	entries                       map[string]entry
+	checked                       map[string]time.Time
+	cursor                        string
+	active                        map[string]job
+	lastOperation, lastInspection string
+	wg                            sync.WaitGroup
+	closed                        bool
+	approvals                     []*approval
+	runtimeUpdates                bool
+	usage                         bool
 }
 
 func New(root string, executor Executor) (*Worker, error) {
@@ -98,7 +111,7 @@ func New(root string, executor Executor) (*Worker, error) {
 	if err != nil || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("命令目录权限无效")
 	}
-	w := &Worker{root: root, executor: executor, entries: map[string]entry{}, checked: map[string]time.Time{}}
+	w := &Worker{root: root, executor: executor, entries: map[string]entry{}, checked: map[string]time.Time{}, active: make(map[string]job)}
 	files, err := os.ReadDir(root)
 	if err != nil {
 		return nil, err
@@ -164,8 +177,8 @@ func (w *Worker) save(e entry) error {
 func (w *Worker) Close() {
 	w.mu.Lock()
 	w.closed = true
-	if w.cancel != nil {
-		w.cancel()
+	for _, j := range w.active {
+		j.cancel()
 	}
 	w.mu.Unlock()
 	w.wg.Wait()
@@ -214,8 +227,11 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 			}
 		}
 	}
-	if w.approval != nil {
-		in.Runtime = []standalone.Request{w.approval.request}
+	// 老后台每次交换只接受一项授权；并发请求在内存中按到达顺序处理。
+	var pending *approval
+	if len(w.approvals) > 0 {
+		pending = w.approvals[0]
+		in.Runtime = []standalone.Request{pending.request}
 	}
 	w.mu.Unlock()
 	var out commands
@@ -246,13 +262,13 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 		if !slices.Contains(in.Runtime, reply.Request) {
 			return errors.New("后台返回了未知运行时授权")
 		}
-		if w.approval != nil && w.approval.request == reply.Request {
+		if len(w.approvals) > 0 && w.approvals[0] == pending && pending.request == reply.Request {
 			var err error
 			if reply.Reason != "" {
 				err = errors.New("后台拒绝运行时授权")
 			}
 			select {
-			case w.approval.done <- err:
+			case pending.done <- err:
 			default:
 			}
 		}
@@ -273,6 +289,9 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 			result.RuntimeVersion = ""
 		}
 		if sameObservation(result, ack) {
+			if !e.Acknowledged {
+				slog.Info("后台确认环境结果", "environment_id", ack.EnvironmentID, "generation", ack.Generation, "phase", ack.Phase)
+			}
 			e.Acknowledged = true
 			if err := w.save(e); err != nil {
 				return err
@@ -298,9 +317,10 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 		if err := w.save(entry{Target: s}); err != nil {
 			return err
 		}
+		slog.Info("已接收环境目标", "environment_id", s.EnvironmentID, "generation", s.Generation, "desired", s.DesiredState)
 		delete(w.checked, s.EnvironmentID)
-		if w.active == s.EnvironmentID && w.generation < s.Generation && w.cancel != nil {
-			w.cancel()
+		if j, ok := w.active[s.EnvironmentID]; ok && j.generation < s.Generation {
+			j.cancel()
 		}
 	}
 	w.cursor = out.Cursor
@@ -318,41 +338,64 @@ func (w *Worker) ids() []string {
 	return ids
 }
 func (w *Worker) start(ctx context.Context) {
-	if w.active != "" || w.closed {
+	if w.closed || ctx.Err() != nil {
 		return
 	}
-	for _, id := range w.ids() {
-		e := w.entries[id]
-		if e.Result != nil {
-			if e.Result.Phase != "running" {
-				continue
-			}
-			if time.Since(w.checked[id]) < 30*time.Second {
-				continue
-			}
+	ids := w.ids()
+	ops, checks := operationSlots, inspectionSlots
+	for _, j := range w.active {
+		if j.inspect {
+			checks--
+		} else {
+			ops--
 		}
-		if time.Since(w.checked[id]) < 3*time.Second {
+	}
+	w.dispatch(ctx, ids, false, ops, &w.lastOperation)
+	w.dispatch(ctx, ids, true, checks, &w.lastInspection)
+}
+func (w *Worker) dispatch(ctx context.Context, ids []string, inspect bool, slots int, last *string) {
+	start, found := slices.BinarySearch(ids, *last)
+	if found {
+		start++
+	}
+	for i := range ids {
+		if slots == 0 {
+			break
+		}
+		id := ids[(start+i)%len(ids)]
+		e := w.entries[id]
+		if _, busy := w.active[id]; busy || (e.Result != nil) != inspect {
 			continue
 		}
-		job, cancel := context.WithCancel(ctx)
-		w.active = id
-		w.generation = e.Target.Generation
-		w.cancel = cancel
-		w.checked[id] = time.Now()
+		if inspect && (e.Result.Phase != "running" || time.Since(w.checked[id]) < 30*time.Second) {
+			continue
+		}
+		run, cancel := context.WithCancel(ctx)
+		w.active[id] = job{e.Target.Generation, inspect, time.Now().UTC(), cancel}
+		*last = id
+		slots--
 		w.wg.Add(1)
 		usage := w.usage
-		go func() { defer w.wg.Done(); defer cancel(); w.execute(job, e, usage) }()
-		return
+		go func() { defer w.wg.Done(); defer cancel(); w.execute(run, e, usage) }()
 	}
 }
 func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 	s := e.Target
+	started := time.Now()
+	operation := "apply"
+	if e.Result != nil {
+		operation = "inspect"
+	}
+	log := slog.With("environment_id", s.EnvironmentID, "generation", s.Generation, "operation", operation)
+	log.Info("开始处理环境")
+	var cause error
 	result := Observation{EnvironmentID: s.EnvironmentID, InstanceID: s.InstanceID, Generation: s.Generation}
 	if e.Result != nil && e.Result.Phase == "running" {
 		state, instance, err := w.executor.Inspect(ctx, s.EnvironmentID)
 		if err != nil {
 			result.Phase = "failed"
 			result.Reason = "inspect_failed"
+			cause = err
 		} else if state.Spec.Generation != s.Generation || state.Spec.InstanceID != s.InstanceID {
 			result.Phase = "failed"
 			result.Reason = "local_state_conflict"
@@ -367,6 +410,7 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 		if err != nil {
 			result.Phase = "failed"
 			result.Reason = "apply_failed"
+			cause = err
 		} else if state.Spec.Generation != s.Generation || state.Spec.InstanceID != s.InstanceID || string(state.Phase) != string(s.DesiredState) {
 			result.Phase = "failed"
 			result.Reason = "local_state_conflict"
@@ -382,17 +426,25 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 		} else if err := executor.Runtime(ctx, s, w.approve, e.Result != nil); err != nil {
 			result.Phase = "failed"
 			result.Reason = "runtime_failed"
+			cause = err
 		}
 	}
 	if result.Phase == "stopped" && s.RuntimePackage != nil {
 		executor, ok := w.executor.(RuntimeUpdater)
-		if !ok || executor.UpdateRuntime(ctx, s) != nil {
+		if ok {
+			cause = executor.UpdateRuntime(ctx, s)
+		}
+		if !ok || cause != nil {
 			result.Phase, result.Reason = "failed", "runtime_upgrade_failed"
 		}
 	}
 	if s.Runtime != nil && s.DesiredState != lifecycle.DesiredDeleted {
 		if executor, ok := w.executor.(RuntimeUpdater); ok {
-			result.RuntimeVersion, _ = executor.RuntimeVersion(ctx, s)
+			version, err := executor.RuntimeVersion(ctx, s)
+			result.RuntimeVersion = version
+			if err != nil {
+				log.Warn("读取 runtime 版本失败", "error", dockerapi.Diagnostic(err))
+			}
 		}
 	}
 	if result.Phase == "stopped" && s.RuntimePackage != nil && result.RuntimeVersion != s.RuntimePackage.Version {
@@ -401,22 +453,32 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 	if result.Phase == "running" && usage {
 		if executor, ok := w.executor.(UsageExecutor); ok {
 			// 监控失败不能改变环境生命周期状态。
-			result.Usage, _ = executor.Usage(ctx, s)
+			usage, err := executor.Usage(ctx, s)
+			result.Usage = usage
+			if err != nil {
+				log.Warn("采集环境用量失败", "error", dockerapi.Diagnostic(err))
+			}
 		}
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.active = ""
-	w.cancel = nil
+	delete(w.active, s.EnvironmentID)
 	latest := w.entries[s.EnvironmentID]
 	if ctx.Err() != nil || latest.Target.Generation != s.Generation {
+		log.Info("环境处理已取消", "elapsed", time.Since(started))
 		return
+	}
+	w.checked[s.EnvironmentID] = time.Now()
+	if result.Phase == "failed" {
+		log.Error("环境处理失败", "phase", result.Phase, "reason", result.Reason, "error", dockerapi.Diagnostic(cause), "elapsed", time.Since(started))
+	} else {
+		log.Info("环境处理完成", "phase", result.Phase, "elapsed", time.Since(started))
 	}
 	latest.Result = &result
 	latest.Acknowledged = false
 	// 持久化失败时不提交结果，后续按本地生命周期检查点核对。
 	if err := w.save(latest); err != nil {
-		w.checked[s.EnvironmentID] = time.Now()
+		log.Error("保存环境执行结果失败", "error", err)
 	}
 }
 
@@ -431,17 +493,15 @@ func (*Worker) NetworkPolicies(ctx context.Context) []string { return network.Po
 func (w *Worker) approve(ctx context.Context, request standalone.Request) error {
 	p := &approval{request: request, done: make(chan error, 1)}
 	w.mu.Lock()
-	if w.closed || w.approval != nil {
+	if w.closed || ctx.Err() != nil {
 		w.mu.Unlock()
 		return errors.New("运行时授权请求冲突")
 	}
-	w.approval = p
+	w.approvals = append(w.approvals, p)
 	w.mu.Unlock()
 	defer func() {
 		w.mu.Lock()
-		if w.approval == p {
-			w.approval = nil
-		}
+		w.approvals = slices.DeleteFunc(w.approvals, func(a *approval) bool { return a == p })
 		w.mu.Unlock()
 	}()
 	select {

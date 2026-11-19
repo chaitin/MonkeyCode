@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -207,7 +208,7 @@ func (d *Driver) Prepare(ctx context.Context, s lifecycle.Spec) error {
 	if _, err = d.volumes.Ensure(ctx, s); err != nil {
 		return err
 	}
-	unlock, err := d.cacheLock()
+	unlock, err := d.cacheLock(ctx)
 	if err != nil {
 		return err
 	}
@@ -516,6 +517,7 @@ func (d *Driver) Start(ctx context.Context, s lifecycle.Spec, ref string) error 
 		missing := files.Binary == standalone.Binary
 		canInstall := c.State.Status == "created" || s.PersistentContainer && c.State.Status == "exited" && missing
 		if (files.Version != s.RuntimePackage.Version || missing) && canInstall && d.runtimeUpdater != nil {
+			slog.Info("准备环境 runtime 包", "environment_id", s.EnvironmentID, "generation", s.Generation, "version", s.RuntimePackage.Version)
 			if err := d.runtimeUpdater(ctx, s); err != nil {
 				return err
 			}

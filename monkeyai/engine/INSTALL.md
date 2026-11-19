@@ -73,6 +73,25 @@ engine 检查数据目录路径和权限，卷目录使用工作负载 UID/GID 1
 
 如果旧版已生成带 project ID 的卷映射，新版不会清除配额或修改已有数据，启动会提示先迁移到普通目录；该迁移需要单独安排。仅安装接入、尚未创建卷的宿主不受影响。
 
+## 宿主环境调度与排障
+
+环境变更同时最多执行 4 个，周期巡检独立最多执行 2 个。每个环境只允许一个任务执行，新代次取消旧任务并等待它退出。同类任务轮转选择；巡检间隔从任务结束起算。镜像缓存、卷映射等共享资源仍需互斥，增加并发不意味着并行拉取所有镜像。
+
+在宿主执行（默认需要 root）：
+
+~~~bash
+engine=/opt/monkeyai-engine/current/bin/monkeyai-engine
+sudo "$engine" environment list
+sudo "$engine" environment list --json
+sudo "$engine" environment status --id "$id"
+sudo "$engine" environment history --id "$id" --follow
+sudo journalctl -u monkeyai-engine.service --since '-10 min'
+~~~
+
+列表和状态通过仅本机可访问的 Unix socket 读取当前调度，不获取环境操作锁。尚未创建容器的已接单环境也会出现。调度状态分别是 queued（排队）、applying（执行变更）、inspecting（巡检）、idle（无任务）。目标代次是当前期望值，active_generation 是实际在执行的代次；local_phase 是已写入宿主检查点的阶段，不等于后台已确认结果。核对真实容器可继续使用 environment inspect --id。
+
+history 按环境 ID 从本机 systemd journal 读取接单、执行/巡检、生命周期阶段、失败、结果和后台确认，省略 --follow 可查询已有记录。只包含升级后本宿主实际记录且未被 journal 清理的事件，不能追溯未下发给宿主的请求。宿主级故障（如心跳或命令同步失败）请看整个服务日志。CLI 不自行签发运行目标或覆盖控制面代次。
+
 ## 失败恢复与撤销
 
 - 下载／校验失败时不执行该文件，清理暂存下载；已创建的身份和配置保留。
