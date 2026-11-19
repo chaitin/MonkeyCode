@@ -87,7 +87,7 @@ func TestSystemHostRequiresConfirmedProcessExit(t *testing.T) {
 func TestSystemHostRejectsUnsafeControlGroup(t *testing.T) {
 	h := systemFixture(t)
 	for _, group := range []string{"/system.slice/docker.service", "/system.slice/monkeyai-fc-abc/../../docker.service", "relative"} {
-		if err := h.emptyCgroup(group); err == nil {
+		if err := h.emptyCgroup(strings.Repeat("a", 64), group); err == nil {
 			t.Fatal("接受不安全cgroup", group)
 		}
 	}
@@ -158,7 +158,7 @@ func TestAPIStartupReportsEarlyExitAndJournal(t *testing.T) {
 		if name == "systemctl" {
 			return []byte("LoadState=loaded\nActiveState=failed\nDescription=MonkeyAI Firecracker boot-1\nMainPID=0\nResult=exit-code\nExecMainStatus=153\n"), nil
 		}
-		if name != "journalctl" || !strings.Contains(strings.Join(args, " "), "--unit="+h.unit(record.ID)) || !strings.Contains(strings.Join(args, " "), "--since=@") {
+		if name != "journalctl" || !strings.Contains(strings.Join(args, " "), "--unit="+Unit(record.ID)) || !strings.Contains(strings.Join(args, " "), "--since=@") {
 			t.Fatal("日志查询未限定实例和本次启动时间", name, args)
 		}
 		return []byte("Arguments parsing error: The argument 'id' was provided more than once."), nil

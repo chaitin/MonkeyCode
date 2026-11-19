@@ -26,7 +26,7 @@ func (h *SystemHost) ActiveProcess(ctx context.Context, id string) (bool, error)
 		return true, nil
 	}
 	if props["ActiveState"] == "inactive" || props["ActiveState"] == "failed" {
-		return false, h.emptyCgroup(props["ControlGroup"])
+		return false, h.emptyCgroup(id, props["ControlGroup"])
 	}
 	return false, errors.New("宿主服务仍处于不确定的进程状态")
 }

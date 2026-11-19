@@ -137,28 +137,50 @@ func New(root string, executor Executor) (*Worker, error) {
 			continue
 		}
 		path := filepath.Join(root, file.Name())
-		info, err := os.Lstat(path)
-		if err != nil || !info.Mode().IsRegular() || info.Size() > 64<<10 {
-			return nil, errors.New("命令记录类型或大小无效")
-		}
-		raw, err := os.ReadFile(path)
+		e, err := readEntry(path)
 		if err != nil {
 			return nil, err
-		}
-		var e entry
-		if json.Unmarshal(raw, &e) != nil || e.Target.Validate() != nil || file.Name() != e.Target.EnvironmentID+".json" {
-			return nil, errors.New("命令记录损坏")
-		}
-		if e.Result != nil && !validResult(e) {
-			return nil, errors.New("本地结果与目标不一致")
-		}
-		if e.Acknowledged && e.Result == nil {
-			return nil, errors.New("本地确认缺少执行结果")
 		}
 		w.entries[e.Target.EnvironmentID] = e
 	}
 	return w, nil
 }
+func readEntry(path string) (entry, error) {
+	var e entry
+	info, err := os.Lstat(path)
+	if err != nil {
+		return e, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 64<<10 {
+		return e, errors.New("命令记录类型或大小无效")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return e, err
+	}
+	if json.Unmarshal(raw, &e) != nil || e.Target.Validate() != nil || filepath.Base(path) != e.Target.EnvironmentID+".json" {
+		return e, errors.New("命令记录损坏")
+	}
+	if e.Result != nil && !validResult(e) || e.Acknowledged && e.Result == nil {
+		return e, errors.New("本地结果与目标不一致")
+	}
+	return e, nil
+}
+
+func LastObservation(root string, s lifecycle.Spec) (*Observation, error) {
+	e, err := readEntry(filepath.Join(root, s.EnvironmentID+".json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if e.Target.InstanceID != s.InstanceID || e.Target.Generation != s.Generation || e.Target.Driver != s.Driver || e.Target.DesiredState != s.DesiredState {
+		return nil, nil
+	}
+	return e.Result, nil
+}
+
 func validResult(e entry) bool {
 	r := e.Result
 	if r.RuntimeVersion != "" && !lifecycle.ValidRuntimeVersion(r.RuntimeVersion) {

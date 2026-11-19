@@ -26,8 +26,8 @@ func (h *SystemHost) Sample(ctx context.Context, id string) (Sample, error) {
 	if err != nil {
 		return Sample{}, err
 	}
-	group := "/system.slice/" + h.unit(id)
-	if props["ActiveState"] != "active" || props["ControlGroup"] != group {
+	group := props["ControlGroup"]
+	if props["ActiveState"] != "active" || !ownsGroup(id, group) {
 		return Sample{}, errors.New("无法核验资源指标所属的运行实例")
 	}
 	path := "/sys/fs/cgroup" + group

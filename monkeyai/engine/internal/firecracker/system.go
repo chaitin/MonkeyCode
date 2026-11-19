@@ -164,7 +164,15 @@ func (h *SystemHost) socketDir(id string) string { return filepath.Join(h.config
 func (h *SystemHost) socket(id string) string {
 	return filepath.Join(h.socketDir(id), "firecracker.socket")
 }
-func (h *SystemHost) unit(id string) string { return "monkeyai-fc-" + id + ".service" }
+
+const vmSlice = "monkeyai-vm.slice"
+
+func Unit(id string) string { return "monkeyai-fc-" + id + ".service" }
+
+func ownsGroup(id, group string) bool {
+	unit := Unit(id)
+	return group == "/monkeyai.slice/"+vmSlice+"/"+unit || group == "/system.slice/"+unit
+}
 func (h *SystemHost) load(id string) (hostRecord, error) {
 	if len(id) != 64 {
 		return hostRecord{}, errors.New("宿主虚拟机ID无效")
@@ -191,7 +199,7 @@ func (h *SystemHost) load(id string) (hostRecord, error) {
 	return record, nil
 }
 func (h *SystemHost) status(ctx context.Context, record hostRecord) (map[string]string, error) {
-	out, err := h.command(ctx, "systemctl", "show", h.unit(record.ID), "--property=LoadState,ActiveState,SubState,Description,MainPID,ControlGroup,Result,ExecMainStatus")
+	out, err := h.command(ctx, "systemctl", "show", Unit(record.ID), "--property=LoadState,ActiveState,SubState,Description,MainPID,ControlGroup,Result,ExecMainStatus")
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +238,7 @@ func (h *SystemHost) Running(ctx context.Context, id string) (bool, error) {
 		if props["MainPID"] != "0" {
 			return false, errors.New("已退出服务仍有主进程")
 		}
-		return false, h.emptyCgroup(props["ControlGroup"])
+		return false, h.emptyCgroup(id, props["ControlGroup"])
 	case "active":
 		client, err := NewClient(h.socket(id))
 		if err != nil {
@@ -249,11 +257,11 @@ func (h *SystemHost) Running(ctx context.Context, id string) (bool, error) {
 		return false, errors.New("虚拟机服务仍在启动或退出中")
 	}
 }
-func (h *SystemHost) emptyCgroup(group string) error {
+func (h *SystemHost) emptyCgroup(id, group string) error {
 	if group == "" {
 		return nil
 	}
-	if !strings.HasPrefix(group, "/system.slice/monkeyai-fc-") || filepath.Clean(group) != group {
+	if !ownsGroup(id, group) {
 		return errors.New("虚拟机cgroup归属异常")
 	}
 	path := "/sys/fs/cgroup" + group
@@ -310,7 +318,7 @@ func (h *SystemHost) Start(ctx context.Context, l Launch) (result error) {
 		if props["LoadState"] != "not-found" && props["ActiveState"] != "inactive" && props["ActiveState"] != "failed" {
 			return errors.New("不能覆盖仍活跃的虚拟机服务")
 		}
-		if err := h.emptyCgroup(props["ControlGroup"]); err != nil {
+		if err := h.emptyCgroup(l.ID, props["ControlGroup"]); err != nil {
 			return err
 		}
 		if err := h.Remove(ctx, l.ID); err != nil {
@@ -441,8 +449,8 @@ func (h *SystemHost) launchCommand(l Launch, lease NetworkLease) []string {
 		output = "journal"
 	}
 	return []string{
-		"--unit=" + h.unit(l.ID), "--description=MonkeyAI Firecracker " + l.BootID,
-		"--service-type=exec", "--property=Restart=no", "--property=KillMode=control-group",
+		"--unit=" + Unit(l.ID), "--description=MonkeyAI Firecracker " + l.BootID,
+		"--slice=" + vmSlice, "--service-type=exec", "--property=Restart=no", "--property=KillMode=control-group",
 		"--property=TimeoutStopSec=25s", "--property=MemoryMax=" + strconv.FormatInt(l.MemoryMiB+h.config.OverheadMiB, 10) + "M",
 		"--property=MemorySwapMax=0", "--property=CPUQuota=" + cpuQuota(l), "--property=TasksMax=512",
 		"--property=LimitNOFILE=4096", "--property=StandardOutput=" + output, "--property=StandardError=journal",
@@ -457,7 +465,7 @@ func (h *SystemHost) launchCommand(l Launch, lease NetworkLease) []string {
 func (h *SystemHost) startError(ctx context.Context, record hostRecord, started time.Time, cause error) error {
 	diagnostic, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
-	out, err := h.command(diagnostic, "journalctl", "--unit="+h.unit(record.ID), "--since=@"+strconv.FormatInt(started.Unix(), 10), "--lines=20", "--no-pager", "--output=cat")
+	out, err := h.command(diagnostic, "journalctl", "--unit="+Unit(record.ID), "--since=@"+strconv.FormatInt(started.Unix(), 10), "--lines=20", "--no-pager", "--output=cat")
 	if err != nil {
 		return fmt.Errorf("%w；读取Firecracker启动日志失败: %v", cause, err)
 	}
@@ -559,7 +567,7 @@ func (h *SystemHost) Stop(ctx context.Context, id string) error {
 			client.Close()
 		}
 	}
-	if _, err := h.command(ctx, "systemctl", "stop", h.unit(id)); err != nil {
+	if _, err := h.command(ctx, "systemctl", "stop", Unit(id)); err != nil {
 		return err
 	}
 	props, err = h.status(ctx, record)
@@ -569,7 +577,7 @@ func (h *SystemHost) Stop(ctx context.Context, id string) error {
 	if props["LoadState"] != "not-found" && (props["MainPID"] != "0" || props["ActiveState"] != "inactive" && props["ActiveState"] != "failed") {
 		return errors.New("虚拟机仍未确认退出")
 	}
-	return h.emptyCgroup(props["ControlGroup"])
+	return h.emptyCgroup(id, props["ControlGroup"])
 }
 func (h *SystemHost) Remove(ctx context.Context, id string) error {
 	record, err := h.load(id)

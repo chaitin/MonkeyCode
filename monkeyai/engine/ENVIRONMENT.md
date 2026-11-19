@@ -15,6 +15,21 @@ sudo /opt/monkeyai-engine/current/bin/monkeyai-engine environment inspect --id e
 
 `apply` 同步返回本地检查点；失败同时输出当前状态和错误。`inspect` 分别返回保存的状态和 Docker 实际状态，`workload_verified` 保持 false。`running` 只代表观察到容器进程运行，不代表 runtime 已登录、后台已连接或隔离验收通过。
 
+## 宿主排障
+
+在安装 Engine 的 Linux 宿主以 root 执行（以下假定二进制已在 PATH）：
+
+```bash
+monkeyai-engine environment snapshot
+monkeyai-engine environment inspect --id env-demo
+monkeyai-engine environment logs --id env-demo -n 100
+systemd-cgls --unit monkeyai-vm.slice
+```
+
+`snapshot` 返回 JSON 快照，包含已停止和已删除环境。每行的 `phase` 是生命周期检查点；`observation`、`guest` 和 `runtime` 来自同实例同代次的最近一次 worker 检查，Firecracker 的观测时间见 `observed_at`。没有证据时显示 `unknown`，不适用时为 `n/a`。列表不会启动 VM、探测 guest 或触发登录。宿主离线或 Engine 已停时，历史观测不代表当前状态；实时实例阶段用 `inspect` 查询。
+
+`logs` 按环境查 Firecracker 的宿主 unit，即使临时服务已经退出，也可查询 journal 尚保留的记录。普通 VM 只将标准错误写入 journal；不包含 guest 业务日志。新启动的 VM 各有独立服务并归入 `monkeyai-vm.slice`；升级前正在运行的服务不迁移，下次正常启动后进入新分组。
+
 ## 生命周期与恢复
 
 | 操作 | 规格变化 | 行为 |

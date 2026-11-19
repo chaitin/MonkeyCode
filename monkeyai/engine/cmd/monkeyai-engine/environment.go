@@ -17,12 +17,37 @@ func environment(ctx context.Context, args []string, out, stderr io.Writer) int 
 		return diagnostics(ctx, args, out, stderr)
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "用法：environment list [--json] | status --id ID | history --id ID [--follow] | inspect --id ID | apply --file <规格.json>")
+		fmt.Fprintln(stderr, "用法：environment list [--json] | snapshot | status --id ID | history --id ID [--follow] | logs --id ID [-n 行数] | inspect --id ID | apply --file <规格.json> | retained | destroy-disks")
 		return 2
 	}
 	f := flag.NewFlagSet("environment "+args[0], flag.ContinueOnError)
 	f.SetOutput(stderr)
 	switch args[0] {
+	case "snapshot":
+		if f.Parse(args[1:]) != nil || f.NArg() != 0 {
+			return 2
+		}
+		rows, err := host.List()
+		if err == nil {
+			err = json.NewEncoder(out).Encode(rows)
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	case "logs":
+		id := f.String("id", "", "环境 ID")
+		n := f.Int("n", 100, "显示最近的日志行数（1 至 10000）")
+		if f.Parse(args[1:]) != nil || f.NArg() != 0 || *id == "" || *n < 1 || *n > 10000 {
+			f.Usage()
+			return 2
+		}
+		if err := host.Logs(ctx, *id, *n, out, stderr); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
 	case "apply":
 		file := f.String("file", "", "规范化环境规格 JSON")
 		if f.Parse(args[1:]) != nil || f.NArg() != 0 || *file == "" {
