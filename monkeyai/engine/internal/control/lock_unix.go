@@ -3,11 +3,30 @@
 package control
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 )
 
+func WaitLock(ctx context.Context, path string) (func(), error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		unlock, err := Lock(path)
+		if !errors.Is(err, syscall.EWOULDBLOCK) {
+			return unlock, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
 func Lock(path string) (func(), error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
 	if err != nil {

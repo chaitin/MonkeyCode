@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -85,13 +84,28 @@ func TestCatalogFailureIsolation(t *testing.T) {
 	if calls.Load() != 0 || logs.Len() != 0 {
 		t.Fatalf("连接列表不应访问远端或产生发现失败日志: calls=%d logs=%s", calls.Load(), logs.String())
 	}
-	catalogRead(t, handler, user, "/experts", "")
+	expertList := func(etag string) (string, resource.Object) {
+		t.Helper()
+		resp := catalogRead(t, handler, user, "/experts", etag)
+		var page struct{ Experts []resource.Object }
+		if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil || len(page.Experts) != 1 {
+			t.Fatalf("专家列表不正确: %s", resp.Body.String())
+		}
+		return resp.Header().Get("ETag"), page.Experts[0]
+	}
+	coldETag, cold := expertList("")
 	manifest := catalogRead(t, handler, user, "/experts/"+expert+"/manifest", "")
 	var view resource.Object
 	if err := json.Unmarshal(manifest.Body.Bytes(), &view); err != nil || !view.Bool("available") {
 		t.Fatalf("故障不应阻断专家清单: %v, %v", view, err)
 	}
 
+	if calls.Load() != 0 || cold.String("version") == "" || cold.String("version") != view.String("version") {
+		t.Fatal("冷快照列表和清单必须具有相同版本且不访问远端")
+	}
+	if cached := catalogRead(t, handler, user, "/experts", coldETag); cached.Code != 304 || calls.Load() != 0 {
+		t.Fatal("条件请求未使用本地摘要")
+	}
 	c, err := r.mcp.Connector(t.Context(), r.store.Pool, connector, user, false)
 	if err != nil {
 		t.Fatal(err)
@@ -100,6 +114,19 @@ func TestCatalogFailureIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolvedBefore := calls.Load()
+	trace := r.store.Pool.Config().ConnConfig.Tracer.(*catalogTrace)
+	trace.reset()
+	warmETag, warm := expertList(coldETag)
+	if counts := trace.counts(); counts["SnapshotToolsVersion"] == 0 || counts["ListSnapshotTools"] != 0 || counts["ListTools"] != 0 {
+		t.Fatalf("列表只应读取工具快照指纹: %v", counts)
+	}
+	if warm.String("version") == cold.String("version") {
+		t.Fatal("快照刷新未更新专家版本")
+	}
+	manifest = catalogRead(t, handler, user, "/experts/"+expert+"/manifest", manifest.Header().Get("ETag"))
+	if err := json.Unmarshal(manifest.Body.Bytes(), &view); err != nil || view.String("version") != warm.String("version") || calls.Load() != resolvedBefore {
+		t.Fatal("热快照列表与详情不一致或访问了远端")
+	}
 	for _, credential := range []string{good, bad} {
 		input := resource.Object{"expert_id": expert, "connector_bindings": map[string]any{connector: credential}}
 		body, _ := json.Marshal(input)
@@ -126,10 +153,11 @@ func TestCatalogFailureIsolation(t *testing.T) {
 	if calls.Load() != resolvedBefore {
 		t.Fatal("解析绑定不应查询远端")
 	}
-	for _, value := range []string{"mcp.catalog.tools.failed", "WARN", connector, bad, "mcp_upstream_unavailable"} {
-		if !strings.Contains(logs.String(), value) {
-			t.Fatalf("降级日志缺少 %s: %s", value, logs.String())
-		}
+	if _, err := r.mcp.Tools(t.Context(), r.store.Pool, c, user, good, false); err != nil {
+		t.Fatal(err)
+	}
+	if resp := catalogRead(t, handler, user, "/experts", warmETag); resp.Code != 304 {
+		t.Fatal("重复同步相同工具不应改变版本")
 	}
 
 	catalogExec(t, r, "UPDATE connector_credentials SET http_headers='{\"X-Account\":\"good\"}' WHERE id=$1", bad)
@@ -137,5 +165,10 @@ func TestCatalogFailureIsolation(t *testing.T) {
 	unchanged := catalogRead(t, handler, user, "/connectors", list.Header().Get("ETag"))
 	if unchanged.Code != http.StatusNotModified || calls.Load() != before {
 		t.Fatal("远端状态变化不应影响连接列表 ETag 或触发远端查询")
+	}
+	catalogExec(t, r, "UPDATE connector_credentials SET revoked_at=now() WHERE connector_id=$1", connector)
+	_, revoked := expertList(warmETag)
+	if revoked.Bool("available") || revoked.String("version") == warm.String("version") || len(revoked["issues"].([]any)) != 1 || calls.Load() != before {
+		t.Fatalf("撤销授权后应立即更新专家状态且不访问远端: %v", revoked)
 	}
 }

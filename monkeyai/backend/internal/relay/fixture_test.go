@@ -1,3 +1,7 @@
+// [INPUT]: 隔离 PostgreSQL schema 和真实 WebSocket 握手。
+// [OUTPUT]: 提供两类通道、运行端替身、访问票据及代理请求测试夹具。
+// [POS]: relay 集成测试入口，按通道选择与服务端一致的配置。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
@@ -192,7 +196,7 @@ func (f *fixture) runtimeHandler(t *testing.T, handler func(http.ResponseWriter,
 	}
 	hello := Hello{Type: "hello", TunnelVersion: Version, ChannelKind: "control", MachineID: uuid.New().String(), BootID: uuid.New().String(), ExecutionPublicKey: base64.RawURLEncoding.EncodeToString(public), DisplayName: "测试 runtime", Platform: "macos", Arch: "arm64", DeploymentMode: "desktop_managed", Intent: "publish", Protocols: map[string][]int{"acp": {1}, "runtime_api": {1}}}
 	ws, ready := f.handshake(t, hello, private, "control", f.token)
-	mux, err := yamux.Client(websocket.NetConn(t.Context(), ws, websocket.MessageBinary), muxConfig())
+	mux, err := yamux.Client(websocket.NetConn(t.Context(), ws, websocket.MessageBinary), muxConfig("control"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +251,7 @@ func (f *fixture) runtimeHandler(t *testing.T, handler func(http.ResponseWriter,
 	}()
 	dhello := Hello{Type: "hello", TunnelVersion: Version, ChannelKind: "data", MachineID: hello.MachineID, ExecutionPublicKey: hello.ExecutionPublicKey, BootID: hello.BootID, DisplayName: hello.DisplayName, Platform: hello.Platform, Arch: hello.Arch, DeploymentMode: hello.DeploymentMode, Intent: "attach", LeaseEpoch: ready.LeaseEpoch, Protocols: hello.Protocols}
 	dws, _ := f.handshake(t, dhello, private, "data", f.token)
-	data, err := yamux.Client(websocket.NetConn(t.Context(), dws, websocket.MessageBinary), muxConfig())
+	data, err := yamux.Client(websocket.NetConn(t.Context(), dws, websocket.MessageBinary), muxConfig("data"))
 	if err != nil {
 		t.Fatal(err)
 	}

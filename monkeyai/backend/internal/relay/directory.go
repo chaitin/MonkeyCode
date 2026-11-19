@@ -1,3 +1,7 @@
+// [INPUT]: 设备登记与当前执行路由的存活窗口。
+// [OUTPUT]: 返回运行状态和分页设备快照。
+// [POS]: 设备目录的投影，按与代理一致的期限决定设备是否在线。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
@@ -29,7 +33,7 @@ func (s *Service) directoryRoutes(user string) map[string]directoryRoute {
 	out := make(map[string]directoryRoute)
 	now := time.Now()
 	for key, r := range s.routes {
-		if key.user == user && r.ready && now.Sub(r.seen) < 45*time.Second && r.control != nil && !r.control.IsClosed() {
+		if key.user == user && r.ready && now.Sub(r.seen) < controlSilenceLimit && r.control != nil && !r.control.IsClosed() {
 			out[key.machine] = directoryRoute{principal: r.principal, hello: r.hello, seen: r.seen, status: r.runtimeStatus, health: r.engineHealth, grantVersion: r.state.GrantVersion, epoch: r.state.LeaseEpoch}
 		}
 	}

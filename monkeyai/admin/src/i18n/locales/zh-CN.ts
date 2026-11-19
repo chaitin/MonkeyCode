@@ -260,6 +260,7 @@ export const zhCN = {
     states: {
       pending_running: "等待启动",
       pending_stopped: "等待停止",
+      archived: "已移除，清理未确认",
       pending_deleted: "等待删除",
       pending: "待处理",
       preparing: "准备中",
@@ -771,7 +772,7 @@ export const zhCN = {
       cpuCapacityBadge: "{{count}} 核 CPU",
       memoryCapacityBadge: "{{size}} GB 内存",
       diskCapacityBadge: "{{size}} GB 磁盘",
-      environmentCountHint: "尚未确认删除的环境，包括停止、失败和删除中的环境",
+      environmentCountHint: "未移除的环境，包括已停止、删除中和清理失败的环境",
       viewEnvironments: "查看宿主「{{name}}」的 {{count}} 个云电脑",
       upgrade: {
         title: "Engine 升级",
@@ -828,7 +829,7 @@ export const zhCN = {
       },
       delete: "删除宿主",
       deleteHint:
-        "删除后将从列表移除，并撤销接入、停用调度。请先删除关联云环境并等待清理完成；此操作不会卸载 engine 或清除宿主数据。",
+        "删除后将从列表移除，并撤销接入、停用调度。请先删除关联环境。若宿主已卸载，环境离线归档后即可移除宿主；移除后无法再下发清理指令，本机残留数据需自行处理。",
       deleteFailed: "删除宿主失败",
       deleteSuccess: "宿主已删除",
       revokeSuccess: "宿主接入已撤销",

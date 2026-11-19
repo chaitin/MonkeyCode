@@ -2,6 +2,10 @@
 
 package control
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
-func Lock(string) (func(), error) { return nil, errors.New("宿主服务仅支持 Linux") }
+func WaitLock(_ context.Context, path string) (func(), error) { return Lock(path) }
+func Lock(string) (func(), error)                             { return nil, errors.New("宿主服务仅支持 Linux") }

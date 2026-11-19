@@ -182,22 +182,23 @@ SELECT jsonb_build_object(
     'description', t.description,
     'name_i18n', t.name_i18n,
     'description_i18n', t.description_i18n,
-    'prompt', t.prompt,
+    'prompt', CASE WHEN NOT $1::boolean THEN t.prompt END,
     'avatar_s3_key', t.avatar_s3_key
 )
 FROM experts t
 WHERE t.deleted_at IS NULL
-    AND ($1::boolean
-        OR t.id::text = ANY($2::text[]))
+    AND ($2::boolean
+        OR t.id::text = ANY($3::text[]))
 `
 
 type CatalogExpertsParams struct {
+	SummaryOnly  bool
 	AllResources bool
 	ResourceIds  []string
 }
 
 func (q *Queries) CatalogExperts(ctx context.Context, arg CatalogExpertsParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogExperts, arg.AllResources, arg.ResourceIds)
+	rows, err := q.db.Query(ctx, catalogExperts, arg.SummaryOnly, arg.AllResources, arg.ResourceIds)
 	if err != nil {
 		return nil, err
 	}
@@ -332,21 +333,22 @@ SELECT jsonb_build_object(
     'description', t.description,
     'name_i18n', t.name_i18n,
     'description_i18n', t.description_i18n,
-    'content', t.content
+    'content', CASE WHEN NOT $1::boolean THEN t.content END
 )
 FROM rules t
 WHERE t.deleted_at IS NULL
-    AND ($1::boolean
-        OR t.id::text = ANY($2::text[]))
+    AND ($2::boolean
+        OR t.id::text = ANY($3::text[]))
 `
 
 type CatalogRulesParams struct {
+	SummaryOnly  bool
 	AllResources bool
 	ResourceIds  []string
 }
 
 func (q *Queries) CatalogRules(ctx context.Context, arg CatalogRulesParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogRules, arg.AllResources, arg.ResourceIds)
+	rows, err := q.db.Query(ctx, catalogRules, arg.SummaryOnly, arg.AllResources, arg.ResourceIds)
 	if err != nil {
 		return nil, err
 	}

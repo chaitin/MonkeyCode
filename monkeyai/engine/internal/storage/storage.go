@@ -48,14 +48,14 @@ func PrivateDir(path string) error {
 	}
 	return nil
 }
-func (m *Manager) Ensure(_ context.Context, s lifecycle.Spec) ([]Mount, error) {
+func (m *Manager) Ensure(ctx context.Context, s lifecycle.Spec) ([]Mount, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
 	if err := PrivateDir(m.root); err != nil {
 		return nil, err
 	}
-	unlock, err := control.Lock(filepath.Join(m.root, "volumes.lock"))
+	unlock, err := control.WaitLock(ctx, filepath.Join(m.root, "volumes.lock"))
 	if err != nil {
 		return nil, err
 	}

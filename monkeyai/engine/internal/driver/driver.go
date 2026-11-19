@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -33,14 +34,15 @@ type Volumes interface {
 	Ensure(context.Context, lifecycle.Spec) ([]storage.Mount, error)
 }
 type Driver struct {
-	privateCIDRs   []netip.Prefix
-	proxyEnv       []string
-	runtimeUpdater func(context.Context, lifecycle.Spec) error
-	runtimeSource  func(context.Context, lifecycle.Spec) (standalone.Files, error)
-	registryAuth   func(string) (string, error)
-	client         *dockerapi.Client
-	volumes        Volumes
-	root           string
+	rawLogEnvironments []string
+	privateCIDRs       []netip.Prefix
+	proxyEnv           []string
+	runtimeUpdater     func(context.Context, lifecycle.Spec) error
+	runtimeSource      func(context.Context, lifecycle.Spec) (standalone.Files, error)
+	registryAuth       func(string) (string, error)
+	client             *dockerapi.Client
+	volumes            Volumes
+	root               string
 }
 
 func New(socket, root string, volumes Volumes) (*Driver, error) {
@@ -51,6 +53,10 @@ func New(socket, root string, volumes Volumes) (*Driver, error) {
 		return nil, err
 	}
 	return &Driver{client: dockerapi.New(socket), volumes: volumes, root: root}, nil
+}
+func (d *Driver) WithRawLogs(ids []string) *Driver {
+	d.rawLogEnvironments = slices.Clone(ids)
+	return d
 }
 func (d *Driver) WithNetwork(cfg control.NetworkConfig) *Driver {
 	d.privateCIDRs = cfg.AllowPrivateCIDRs
@@ -207,7 +213,7 @@ func (d *Driver) Prepare(ctx context.Context, s lifecycle.Spec) error {
 	if _, err = d.volumes.Ensure(ctx, s); err != nil {
 		return err
 	}
-	unlock, err := d.cacheLock()
+	unlock, err := d.cacheLock(ctx)
 	if err != nil {
 		return err
 	}
@@ -516,6 +522,7 @@ func (d *Driver) Start(ctx context.Context, s lifecycle.Spec, ref string) error 
 		missing := files.Binary == standalone.Binary
 		canInstall := c.State.Status == "created" || s.PersistentContainer && c.State.Status == "exited" && missing
 		if (files.Version != s.RuntimePackage.Version || missing) && canInstall && d.runtimeUpdater != nil {
+			slog.Info("准备环境 runtime 包", "environment_id", s.EnvironmentID, "generation", s.Generation, "version", s.RuntimePackage.Version)
 			if err := d.runtimeUpdater(ctx, s); err != nil {
 				return err
 			}

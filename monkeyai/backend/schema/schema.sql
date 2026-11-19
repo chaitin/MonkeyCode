@@ -2124,6 +2124,9 @@ ALTER TABLE host_environment_configs DROP COLUMN user_max_environments;
 
 ALTER TABLE hosts DROP COLUMN max_environments;
 
+ALTER TABLE environments ADD COLUMN archived_at timestamptz
+ CHECK (archived_at IS NULL OR (desired='deleted' AND generation<>observed_generation));
+
 ALTER TABLE group_users ADD COLUMN is_supervisor boolean NOT NULL DEFAULT false;
 
 ALTER TABLE hosts DROP CONSTRAINT hosts_name_check;

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -48,7 +49,7 @@ func (d *Driver) runtimeContainer(ctx context.Context, s lifecycle.Spec) (contai
 	}
 	return c, d.guard(ctx, s, strings.TrimPrefix(c.Name, "/"))
 }
-func (d *Driver) execCreate(ctx context.Context, c container, spec lifecycle.Spec, binary string, args []string) (string, error) {
+func (d *Driver) execCreate(ctx context.Context, c container, spec lifecycle.Spec, binary string, command []string) (string, error) {
 	image, err := d.image(ctx, spec)
 	if err != nil {
 		return "", err
@@ -57,7 +58,7 @@ func (d *Driver) execCreate(ctx context.Context, c container, spec lifecycle.Spe
 	var out struct {
 		ID string `json:"Id"`
 	}
-	err = d.client.Do(ctx, "POST", "/containers/"+c.ID+"/exec", map[string]any{"User": "1000:1000", "Privileged": false, "AttachStdout": true, "AttachStderr": true, "Tty": false, "WorkingDir": "/workspace", "Env": environment, "Cmd": append([]string{binary}, args...)}, &out)
+	err = d.client.Do(ctx, "POST", "/containers/"+c.ID+"/exec", map[string]any{"User": "1000:1000", "Privileged": false, "AttachStdout": true, "AttachStderr": true, "Tty": false, "WorkingDir": "/workspace", "Env": environment, "Cmd": command}, &out)
 	return out.ID, err
 }
 
@@ -120,7 +121,7 @@ func (d *Driver) runRuntime(ctx context.Context, s lifecycle.Spec, _ string, arg
 	if err != nil {
 		return 0, err
 	}
-	id, err := d.execCreate(ctx, c, s, files.Binary, args)
+	id, err := d.execCreate(ctx, c, s, files.Binary, append([]string{files.Binary}, args...))
 	if err != nil {
 		return 0, err
 	}
@@ -209,7 +210,14 @@ func (d *Driver) Login(ctx context.Context, s lifecycle.Spec, authorize func(str
 	ctx, cancel := context.WithTimeout(ctx, 11*time.Minute)
 	defer cancel()
 	authorized := false
+	reason := "unknown"
 	code, err := d.runRuntime(ctx, s, "monkeyai-login", []string{"login", "--device-code", "--state-dir", standalone.StateDir, "--server", s.Runtime.Server, "--server-id", s.Runtime.ServerID, "--user", s.Runtime.UserID, "--name", "MonkeyAI Cloud"}, func(event runtimeEvent) error {
+		if event.Event == "error" {
+			switch event.Reason {
+			case "network_error", "access_denied", "expired_token", "invalid_client", "invalid_request", "authorization_pending", "server_error":
+				reason = event.Reason
+			}
+		}
 		if event.Event == "authorize" {
 			if authorized || event.UserCode == "" || len(event.UserCode) > 16 {
 				return errors.New("运行时设备申请无效")
@@ -223,9 +231,22 @@ func (d *Driver) Login(ctx context.Context, s lifecycle.Spec, authorize func(str
 		return err
 	}
 	if code != 0 || !authorized {
-		return errors.New("运行时登录失败")
+		return fmt.Errorf("运行时登录失败: reason=%s exit=%d authorize=%t", reason, code, authorized)
 	}
 	return nil
+}
+
+type serveRecord struct {
+	ID, Fingerprint string
+	ContainerLogs   bool `json:"container_logs,omitempty"`
+}
+
+func serveCommand(files standalone.Files, logs bool) []string {
+	command := []string{files.Binary, "serve", "--state-dir", standalone.StateDir, "--engine-bin", files.Engine}
+	if !logs {
+		return command
+	}
+	return append([]string{"/bin/sh", "-c", `exec "$@" >>/proc/1/fd/1 2>>/proc/1/fd/2`, "monkeyai-serve"}, command...)
 }
 func (d *Driver) Serve(ctx context.Context, s lifecycle.Spec, observe bool) error {
 	c, err := d.runtimeContainer(ctx, s)
@@ -237,21 +258,21 @@ func (d *Driver) Serve(ctx context.Context, s lifecycle.Spec, observe bool) erro
 		return err
 	}
 	path := filepath.Join(d.instanceDir(s), "serve.json")
-	args := []string{"serve", "--state-dir", standalone.StateDir, "--engine-bin", files.Engine}
 	raw, err := os.ReadFile(path)
 	if err == nil {
-		var saved struct{ ID, Fingerprint string }
+		var saved serveRecord
 		if json.Unmarshal(raw, &saved) != nil || saved.Fingerprint != fingerprint(s) {
 			return errors.New("运行时进程记录无效")
 		}
-		e, err := d.execInfo(ctx, saved.ID, c.ID, files.Binary)
+		command := serveCommand(files, saved.ContainerLogs)
+		e, err := d.execInfo(ctx, saved.ID, c.ID, command[0])
 		if err != nil {
 			return err
 		}
 		if !e.Running {
-			return errors.New("运行时进程已退出或启动结果不确定，不自动重复执行")
+			return fmt.Errorf("运行时进程已退出或启动结果不确定，不自动重复执行: exit=%d container_logs=%t", e.ExitCode, saved.ContainerLogs)
 		}
-		if !equivalent(e.ProcessConfig.Arguments, args) {
+		if !equivalent(e.ProcessConfig.Arguments, command[1:]) {
 			return errors.New("运行时服务参数不一致")
 		}
 		return nil
@@ -262,11 +283,12 @@ func (d *Driver) Serve(ctx context.Context, s lifecycle.Spec, observe bool) erro
 	if observe {
 		return errors.New("运行时进程记录消失，不自动重新执行")
 	}
-	id, err := d.execCreate(ctx, c, s, files.Binary, args)
+	logs := slices.Contains(d.rawLogEnvironments, s.EnvironmentID)
+	id, err := d.execCreate(ctx, c, s, files.Binary, serveCommand(files, logs))
 	if err != nil {
 		return err
 	}
-	raw, _ = json.Marshal(struct{ ID, Fingerprint string }{id, fingerprint(s)})
+	raw, _ = json.Marshal(serveRecord{ID: id, Fingerprint: fingerprint(s), ContainerLogs: logs})
 	if err = control.Write(path, raw, 0600); err != nil {
 		return err
 	}

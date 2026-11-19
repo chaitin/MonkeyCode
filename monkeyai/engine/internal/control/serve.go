@@ -25,6 +25,7 @@ type Health struct {
 }
 
 type CommandLoop interface {
+	SetConcurrency(operations, inspections int) error
 	Tick(context.Context, *Client, Config) error
 	Close()
 	NetworkPolicies(context.Context) []string
@@ -36,15 +37,22 @@ func ServeWithCommands(ctx context.Context, log io.Writer, commands CommandLoop)
 }
 
 func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, version string) error {
-	if commands != nil {
-		defer commands.Close()
-	}
 
 	unlock, err := Lock("/var/lib/monkeyai-engine/control/service.lock")
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	if commands != nil {
+		defer commands.Close()
+	}
+	if d, ok := commands.(interface{ Diagnostics() (func(), error) }); ok {
+		closeDiagnostics, e := d.Diagnostics()
+		if e != nil {
+			return e
+		}
+		defer closeDiagnostics()
+	}
 	raw, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		return err
@@ -52,6 +60,11 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 	var cfg Config
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return err
+	}
+	if commands != nil {
+		if err := commands.SetConcurrency(cfg.OperationWorkers, cfg.InspectionWorkers); err != nil {
+			return err
+		}
 	}
 	if version != "" && version != cfg.Version {
 		return errors.New("engine 二进制版本与宿主配置不一致")
@@ -96,7 +109,7 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 				return err
 			}
 			if err != nil {
-				fmt.Fprintln(log, "宿主状态上报失败，将重试")
+				fmt.Fprintln(log, "宿主状态上报失败，将重试：", err)
 			} else if report.Prerequisites {
 				raw, _ := json.Marshal(Health{Version: version, HostID: cfg.HostID, PID: os.Getpid(), At: time.Now().UTC()})
 				if err := Write(HealthPath, raw, 0600); err != nil {
@@ -119,7 +132,7 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 			if err := commands.Tick(ctx, c, cfg); errors.Is(err, ErrUnauthorized) {
 				return err
 			} else if err != nil {
-				fmt.Fprintln(log, "环境命令同步失败，将保留本地状态并重试")
+				fmt.Fprintln(log, "环境命令同步失败，将保留本地状态并重试：", err)
 			}
 		}
 		select {

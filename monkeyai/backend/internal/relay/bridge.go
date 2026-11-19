@@ -1,3 +1,7 @@
+// [INPUT]: 设备身份、签名握手、WebSocket 与对应通道的 yamux 配置。
+// [OUTPUT]: 验证设备证明，发布控制路由，按代次附着数据通道。
+// [POS]: 设备隧道入口，与 lease 的存活探测共用进程接管窗口。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
@@ -155,7 +159,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	gate.Lock()
 	s.mu.Lock()
 	old := s.routes[key]
-	conflict := channel == "control" && hello.Intent == "publish" && old != nil && time.Since(old.seen) < 45*time.Second && old.hello.BootID != hello.BootID
+	conflict := channel == "control" && hello.Intent == "publish" && old != nil && time.Since(old.seen) < controlSilenceLimit && old.hello.BootID != hello.BootID
 	s.mu.Unlock()
 	if conflict {
 		gate.Unlock()
@@ -192,9 +196,10 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 	}
 	gate.Unlock()
+	closeReason := "control_handshake_incomplete"
 	if current != nil {
-		s.closeRoute(old)
-		defer s.closeRoute(current)
+		s.closeRoute(old, "epoch_replaced")
+		defer func() { s.closeRoute(current, closeReason) }()
 	}
 	identityOnly := channel == "control" && hello.Intent == "bind_identity"
 	ready := Ready{Type: "ready", ServerID: s.config.ServerID, MachineID: hello.MachineID, RegistrationVersion: state.RegistrationVersion, GrantVersion: state.GrantVersion, Bound: true}
@@ -219,7 +224,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	// NetConn 使用整个连接生命周期，握手超时不传入二进制阶段。
 	conn := websocket.NetConn(r.Context(), ws, websocket.MessageBinary)
 	ws.SetReadLimit(1 << 20)
-	mux, err := yamux.Server(conn, muxConfig())
+	mux, err := yamux.Server(conn, muxConfig(channel))
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
 		return
@@ -270,6 +275,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	current.control = mux
 	s.mu.Unlock()
+	closeReason = "control_transport_closed"
 	s.control(r.Context(), current)
 }
 

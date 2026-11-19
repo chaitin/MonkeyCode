@@ -1,3 +1,7 @@
+// [INPUT]: 真实中转路由、数据库授权状态与运行端替身。
+// [OUTPUT]: 验证票据、代理、撤销、数据重连与旧代次清理。
+// [POS]: 跨设备访问的服务集成测试。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
@@ -313,7 +317,7 @@ func TestRelayDataFailureAndOldEpochCleanup(t *testing.T) {
 	if ready.LeaseEpoch <= runtime.ready.LeaseEpoch || ready.GrantVersion != runtime.ready.GrantVersion {
 		t.Fatal("同 boot 重连只应切换 epoch")
 	}
-	f.s.closeRoute(old)
+	f.s.closeRoute(old, "epoch_replaced")
 	f.s.mu.Lock()
 	current := f.s.routes[key]
 	f.s.mu.Unlock()

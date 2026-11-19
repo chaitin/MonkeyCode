@@ -73,6 +73,41 @@ engine 检查数据目录路径和权限，卷目录使用工作负载 UID/GID 1
 
 如果旧版已生成带 project ID 的卷映射，新版不会清除配额或修改已有数据，启动会提示先迁移到普通目录；该迁移需要单独安排。仅安装接入、尚未创建卷的宿主不受影响。
 
+## 宿主环境调度与排障
+
+每台宿主默认同时执行 10 个环境操作和 2 个周期巡检，两类任务各用自己的名额。在 `/etc/monkeyai-engine/config.json` 中可分别设置顶层整数 `operation_workers` 和 `inspection_workers`，例如配置片段 `{"operation_workers": 16, "inspection_workers": 3}`。每项取值 1～64，省略或填 0 使用该项默认值。修改后在没有进行中操作时重启 `monkeyai-engine` 生效；服务日志会输出实际值。
+
+每个环境只允许一个任务执行，新代次取消旧任务并等待它退出。同类任务轮转选择；巡检间隔从任务结束起算。镜像缓存、卷映射等共享资源仍需互斥，增加并发不意味着并行拉取所有镜像。
+
+操作的执行总超时为 35 分钟，巡检为 2 分钟（从取得名额起算，不含排队）。总超时与任务类型、环境 ID、代次一起写入服务日志；新代次取代旧任务或关闭服务导致的取消不会作为失败上报。超时通过 context 通知执行器；不能强制打断内核中阻塞的文件 I/O，也不会为尚未退出的同环境任务再开一个执行槽。
+
+命令目标、结果及后台确认均先按环境落盘再对查询及上报可见，刷盘期间不占用全局调度锁。内存查询不会因为另一环境结果写盘而等待，但整块数据盘异常仍会影响需要读写磁盘的操作。
+
+在宿主执行（默认需要 root）：
+
+~~~bash
+engine=/opt/monkeyai-engine/current/bin/monkeyai-engine
+sudo "$engine" environment list
+sudo "$engine" environment list --json
+sudo "$engine" environment status --id "$id"
+sudo "$engine" environment history --id "$id" --follow
+sudo journalctl -u monkeyai-engine.service --since '-10 min'
+~~~
+
+列表和状态通过仅本机可访问的 Unix socket 读取当前调度，不获取环境操作锁。尚未创建容器的已接单环境也会出现。调度状态分别是 queued（排队）、applying（执行变更）、inspecting（巡检）、idle（无任务）。目标代次是当前期望值，active_generation 是实际在执行的代次；local_phase 是已写入宿主检查点的阶段，不等于后台已确认结果。核对真实容器可继续使用 environment inspect --id。
+
+history 按环境 ID 从本机 systemd journal 读取接单、执行/巡检、生命周期阶段、失败、结果和后台确认，省略 --follow 可查询已有记录。只包含升级后本宿主实际记录且未被 journal 清理的事件，不能追溯未下发给宿主的请求。宿主级故障（如心跳或命令同步失败）请看整个服务日志。CLI 不自行签发运行目标或覆盖控制面代次。
+
+### 用 docker logs 查看环境与 runtime 输出
+
+主进程输出已经进入容器的 stdout/stderr。要将 runtime serve 的原文也写入**同一容器**，在宿主 `/etc/monkeyai-engine/config.json` 的顶层配置 `"raw_log_environments": ["目标环境ID"]`。精确匹配环境 ID，不是实例 ID；默认不启用。配置在下一次启动该环境的 runtime serve 时生效，已有运行进程不会因为配置变更被重启。可在维护窗口从平台停止并启动目标环境，不用重启 Docker。
+
+~~~bash
+sudo docker logs --timestamps --tail 100 -f <容器名或ID>
+~~~
+
+输出保留 stdout 和 stderr 的区分，沿用容器日志轮转策略；旧容器若使用 none 日志驱动，不能用 docker logs 回看。原文不复制到宿主 service journal。排队、容器创建失败、设备授权等诊断仍用 environment history 或 journalctl 查看；设备码、login/status 协议输出不做重定向。原文可能含用户数据或凭据，请限制 Docker 访问权限；移除 ID 后需重新启动对应环境才能停止重定向，不会抹除历史日志。
+
 ## 失败恢复与撤销
 
 - 下载／校验失败时不执行该文件，清理暂存下载；已创建的身份和配置保留。

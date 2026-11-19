@@ -700,6 +700,37 @@ func (q *Queries) SetCredentialToolsSynced(ctx context.Context, arg SetCredentia
 	return err
 }
 
+const snapshotToolsVersion = `-- name: SnapshotToolsVersion :one
+SELECT encode(sha256(convert_to(COALESCE(jsonb_agg(jsonb_build_array(id, name, description, input_schema,
+    CASE WHEN $1::boolean THEN 0 ELSE credits_per_call END) ORDER BY name)::text, '[]'), 'UTF8')), 'hex')::text
+FROM mcp_tools
+WHERE connector_id = $2
+    AND credential_id IS NOT DISTINCT FROM NULLIF($3::text, '')::uuid
+    AND config_revision = $4 AND discovered_at = $5
+    AND deleted_at IS NULL AND enabled
+`
+
+type SnapshotToolsVersionParams struct {
+	Independent    bool
+	ConnectorID    string
+	CredentialID   string
+	ConfigRevision int64
+	SyncedAt       time.Time
+}
+
+func (q *Queries) SnapshotToolsVersion(ctx context.Context, arg SnapshotToolsVersionParams) (string, error) {
+	row := q.db.QueryRow(ctx, snapshotToolsVersion,
+		arg.Independent,
+		arg.ConnectorID,
+		arg.CredentialID,
+		arg.ConfigRevision,
+		arg.SyncedAt,
+	)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const tryToolRefreshLock = `-- name: TryToolRefreshLock :one
 SELECT pg_try_advisory_lock(hashtextextended('monkeyai.mcp.tools.refresh', 0))
 `

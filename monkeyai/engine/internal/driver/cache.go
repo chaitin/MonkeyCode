@@ -19,8 +19,8 @@ type cached struct {
 	Managed bool
 }
 
-func (d *Driver) cacheLock() (func(), error) {
-	return control.Lock(filepath.Join(d.root, "images.lock"))
+func (d *Driver) cacheLock(ctx context.Context) (func(), error) {
+	return control.WaitLock(ctx, filepath.Join(d.root, "images.lock"))
 }
 func (d *Driver) imageRecords() (map[string]cached, error) {
 	out := map[string]cached{}
@@ -147,7 +147,7 @@ func (d *Driver) prepareCache(ctx context.Context, keep string) error {
 func (d *Driver) Cache(ctx context.Context, prune bool) (cache.Report, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	unlock, err := d.cacheLock()
+	unlock, err := d.cacheLock(ctx)
 	if err != nil {
 		return cache.Report{}, err
 	}
