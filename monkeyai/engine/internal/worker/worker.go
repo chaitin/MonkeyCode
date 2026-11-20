@@ -320,10 +320,13 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 		}
 	}
 	advance := true
-	for _, s := range targets {
+	for i, s := range targets {
 		old, ok := w.entries[s.EnvironmentID]
 		if ok && old.Target.Generation > s.Generation {
 			continue
+		}
+		if err := resolveSandboxRoot(&s, out.Targets[i], old.Target); err != nil {
+			return err
 		}
 		if ok && old.Target.Generation == s.Generation {
 			a, _ := json.Marshal(old.Target)
@@ -358,6 +361,31 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 	w.start(ctx)
 	return nil
 }
+// 旧后台不发送身份字段；只在首次创建时取默认值，重放和停启沿用已落盘的选择。
+func resolveSandboxRoot(s *lifecycle.Spec, raw json.RawMessage, previous lifecycle.Spec) error {
+	var identity struct {
+		Root json.RawMessage `json:"sandbox_root"`
+	}
+	if err := json.Unmarshal(raw, &identity); err != nil {
+		return err
+	}
+	switch string(identity.Root) {
+	case "":
+		if previous.EnvironmentID != "" {
+			s.SandboxRoot = previous.SandboxRoot
+		} else {
+			s.SandboxRoot = s.PersistentContainer && s.Generation == 1 && s.DesiredState == lifecycle.DesiredRunning
+		}
+	case "true", "false": // 已由规格解码器读取。
+	default:
+		return errors.New("sandbox_root 必须为布尔值")
+	}
+	if previous.EnvironmentID != "" && s.SandboxRoot != previous.SandboxRoot {
+		return errors.New("不能更改已有环境的沙箱身份")
+	}
+	return s.Validate()
+}
+
 func (w *Worker) ids() []string {
 	ids := make([]string, 0, len(w.entries))
 	for id := range w.entries {
