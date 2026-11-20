@@ -101,6 +101,11 @@ func IsDeleted(v bool) predicate.AgentRule {
 	return predicate.AgentRule(sql.FieldEQ(FieldIsDeleted, v))
 }
 
+// Enabled applies equality check predicate on the "enabled" field. It's identical to EnabledEQ.
+func Enabled(v bool) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEQ(FieldEnabled, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.AgentRule {
 	return predicate.AgentRule(sql.FieldEQ(FieldCreatedAt, v))
@@ -659,6 +664,16 @@ func IsDeletedEQ(v bool) predicate.AgentRule {
 // IsDeletedNEQ applies the NEQ predicate on the "is_deleted" field.
 func IsDeletedNEQ(v bool) predicate.AgentRule {
 	return predicate.AgentRule(sql.FieldNEQ(FieldIsDeleted, v))
+}
+
+// EnabledEQ applies the EQ predicate on the "enabled" field.
+func EnabledEQ(v bool) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEQ(FieldEnabled, v))
+}
+
+// EnabledNEQ applies the NEQ predicate on the "enabled" field.
+func EnabledNEQ(v bool) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNEQ(FieldEnabled, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -43,7 +43,11 @@ func (i *extensionRuleImporter) ImportRules(ctx context.Context, userID uuid.UUI
 func (i *extensionRuleImporter) replaceRules(ctx context.Context, tx *db.Tx, userID uuid.UUID, pkg *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error) {
 	var result domain.ExtensionRuleImportResult
 	source := agentrule.ExtensionPackageIDEQ(pkg.PackageID)
-	rules, err := tx.AgentRule.Query().Where(source).WithVersions().All(ctx)
+	rules, err := tx.AgentRule.Query().
+		Where(source).
+		Where(globalRulePredicates()...).
+		WithVersions().
+		All(ctx)
 	if err != nil {
 		return domain.ExtensionRuleImportResult{}, err
 	}
@@ -58,13 +62,23 @@ func (i *extensionRuleImporter) replaceRules(ctx context.Context, tx *db.Tx, use
 	}
 
 	// 生效版本与规则互相引用，先解除引用再清理历史版本。
-	if err := tx.AgentRule.Update().Where(source).ClearActiveVersionID().Exec(ctx); err != nil {
+	if err := tx.AgentRule.Update().
+		Where(source).
+		Where(globalRulePredicates()...).
+		ClearActiveVersionID().
+		Exec(ctx); err != nil {
 		return domain.ExtensionRuleImportResult{}, err
 	}
-	if _, err := tx.AgentRuleVersion.Delete().Where(agentruleversion.HasRuleWith(source)).Exec(ctx); err != nil {
+	if _, err := tx.AgentRuleVersion.Delete().
+		Where(agentruleversion.HasRuleWith(source)).
+		Where(agentruleversion.HasRuleWith(globalRulePredicates()...)).
+		Exec(ctx); err != nil {
 		return domain.ExtensionRuleImportResult{}, err
 	}
-	if _, err := tx.AgentRule.Delete().Where(source).Exec(ctx); err != nil {
+	if _, err := tx.AgentRule.Delete().
+		Where(source).
+		Where(globalRulePredicates()...).
+		Exec(ctx); err != nil {
 		return domain.ExtensionRuleImportResult{}, err
 	}
 	for _, item := range pkg.Rules {
@@ -90,7 +104,7 @@ func extensionRulesMatch(existing map[string]*db.AgentRule, pkg *parsedExtension
 		if rule == nil || rule.Name != item.Name || rule.Description != item.Description {
 			return false
 		}
-		if rule.ScopeType != "global" || rule.ScopeID != "global" || rule.ExtensionVersion == nil || *rule.ExtensionVersion != pkg.Version {
+		if rule.ScopeType != agentrule.ScopeTypeGlobal || rule.ScopeID != globalRuleScopeID || rule.ExtensionVersion == nil || *rule.ExtensionVersion != pkg.Version {
 			return false
 		}
 		versions := rule.Edges.Versions
@@ -105,10 +119,9 @@ func (i *extensionRuleImporter) importRule(ctx context.Context, tx *db.Tx, userI
 	conflict, err := tx.AgentRule.Query().
 		Where(
 			agentrule.NameEQ(item.Name),
-			agentrule.ScopeTypeEQ("global"),
-			agentrule.ScopeIDEQ("global"),
 			agentrule.IsDeletedEQ(false),
 		).
+		Where(globalRulePredicates()...).
 		Exist(ctx)
 	if err != nil {
 		return err
@@ -121,8 +134,8 @@ func (i *extensionRuleImporter) importRule(ctx context.Context, tx *db.Tx, userI
 		SetID(uuid.New()).
 		SetName(item.Name).
 		SetDescription(item.Description).
-		SetScopeType("global").
-		SetScopeID("global").
+		SetScopeType(agentrule.ScopeTypeGlobal).
+		SetScopeID(globalRuleScopeID).
 		SetCreatedBy(userID).
 		SetExtensionPackageID(pkg.PackageID).
 		SetExtensionRuleID(item.RuleID).
@@ -138,7 +151,10 @@ func (i *extensionRuleImporter) importRule(ctx context.Context, tx *db.Tx, userI
 	if err != nil {
 		return err
 	}
-	return tx.AgentRule.UpdateOneID(rule.ID).SetActiveVersionID(version.ID).Exec(ctx)
+	return tx.AgentRule.UpdateOneID(rule.ID).
+		Where(aliveGlobalRulePredicates(rule.ID)...).
+		SetActiveVersionID(version.ID).
+		Exec(ctx)
 }
 
 func (i *extensionRuleImporter) createRuleVersion(ctx context.Context, tx *db.Tx, ruleID uuid.UUID, content string) (*db.AgentRuleVersion, error) {

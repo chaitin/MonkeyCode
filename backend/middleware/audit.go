@@ -173,9 +173,44 @@ func maskSensitiveData(operation, reqBody, respBody string) (string, string, err
 		if err != nil {
 			return "", "", err
 		}
+	case "add_team_rule", "update_team_rule", "enable_team_rule", "delete_team_rule", "restore_team_rule":
+		reqBody = redactJSONContent(reqBody)
+		respBody = redactJSONContent(respBody)
 	}
 
 	return reqBody, respBody, nil
+}
+
+func redactJSONContent(body string) string {
+	if body == "" {
+		return body
+	}
+	var obj any
+	if err := json.Unmarshal([]byte(body), &obj); err != nil {
+		return body
+	}
+	redactContentFields(obj)
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return body
+	}
+	return string(out)
+}
+
+func redactContentFields(v any) {
+	switch t := v.(type) {
+	case map[string]any:
+		if _, ok := t["content"]; ok {
+			t["content"] = "[redacted]"
+		}
+		for _, child := range t {
+			redactContentFields(child)
+		}
+	case []any:
+		for _, child := range t {
+			redactContentFields(child)
+		}
+	}
 }
 
 func maskMCPHeaders(headers []domain.MCPHeader) {
