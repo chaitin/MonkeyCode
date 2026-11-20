@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
-import { useTranslation } from "react-i18next"
+import { useEffect, useId, useRef, useState, type FormEvent } from "react"
+import { Trans, useTranslation } from "react-i18next"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons"
 import {
   ArrowDownToLine,
   Box,
   FileArchive,
-  RefreshCw,
+  Pencil,
   Trash2,
   Upload,
   X,
@@ -56,7 +56,6 @@ import {
 } from "@/components/ui/alert-dialog"
 
 type ImportMethod = "pull" | "upload"
-type Confirmation = { kind: "delete" | "update"; image: SystemImage }
 const invalidReference = (value: string) =>
   !/^[a-zA-Z0-9][a-zA-Z0-9._:/@-]*$/.test(value) || value.includes("://")
 
@@ -68,7 +67,11 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true)
   const [revision, setRevision] = useState(0)
   const [adding, setAdding] = useState<ImportMethod | null>(null)
-  const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
+  const [renaming, setRenaming] = useState<{
+    image: SystemImage
+    name: string
+  } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SystemImage | null>(null)
   const [confirmationOpen, setConfirmationOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -94,28 +97,40 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
     }
   }, [revision, t])
 
-  function request(kind: Confirmation["kind"], image: SystemImage) {
+  function requestDelete(image: SystemImage) {
     setError("")
-    setConfirmation({ kind, image })
+    setDeleteTarget(image)
     setConfirmationOpen(true)
   }
 
-  async function confirm(event: FormEvent) {
+  async function saveDisplayName(event: FormEvent) {
     event.preventDefault()
-    if (!confirmationOpen || !confirmation || busy) return
+    if (!renaming?.name.trim() || busy) return
+    setBusy(true)
+    try {
+      setImages(
+        await systemImagesPreview.rename(renaming.image.id, renaming.name)
+      )
+      setRenaming(null)
+      showToast({ status: "success", title: text("renamed") })
+    } catch {
+      showToast({ status: "error", title: text("operationFailed") })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function confirmDelete(event: FormEvent) {
+    event.preventDefault()
+    if (!confirmationOpen || !deleteTarget || busy) return
     setBusy(true)
     setError("")
-    const { kind, image } = confirmation
     try {
-      const items =
-        kind === "delete"
-          ? await systemImagesPreview.remove(image.id)
-          : await systemImagesPreview.repull(image.id)
-      setImages(items)
+      setImages(await systemImagesPreview.remove(deleteTarget.id))
       setConfirmationOpen(false)
       showToast({
         status: "success",
-        title: text(kind === "delete" ? "deleted" : "updated"),
+        title: text("deleted"),
       })
     } catch {
       setError(text("operationFailed"))
@@ -140,7 +155,7 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
           <DialogDescription>{text("description")}</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 min-w-0 flex-col gap-4">
-          {error && !confirmation && (
+          {error && !deleteTarget && (
             <p role="alert" className="text-sm text-destructive">
               {error}
             </p>
@@ -152,8 +167,8 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="ps-4">{text("reference")}</TableHead>
-                  <TableHead>{text("updatedAt")}</TableHead>
+                  <TableHead className="ps-4">{text("imageName")}</TableHead>
+                  <TableHead>{text("addedAt")}</TableHead>
                   <TableHead className="pe-4 text-end">
                     {t("environmentAdmin.actions")}
                   </TableHead>
@@ -184,14 +199,14 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                     <TableRow key={image.id}>
                       <TableCell className="ps-4">
                         <span
-                          className="block max-w-72 truncate font-mono text-sm font-medium"
-                          title={image.reference}
+                          className="block max-w-72 truncate text-sm font-medium"
+                          title={image.displayName}
                         >
-                          {image.reference}
+                          {image.displayName}
                         </span>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(image.updatedAt).toLocaleString(
+                        {new Date(image.addedAt).toLocaleString(
                           i18n.resolvedLanguage ?? i18n.language,
                           {
                             year: "numeric",
@@ -207,7 +222,7 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                           <DropdownMenuTrigger
                             disabled={busy}
                             aria-label={
-                              t("common.more") + " · " + image.reference
+                              t("common.more") + " · " + image.displayName
                             }
                             render={
                               <Button
@@ -226,14 +241,19 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                           <DropdownMenuContent align="end">
                             <DropdownMenuGroup>
                               <DropdownMenuItem
-                                onClick={() => request("update", image)}
+                                onClick={() =>
+                                  setRenaming({
+                                    image,
+                                    name: image.displayName,
+                                  })
+                                }
                               >
-                                <RefreshCw aria-hidden="true" />
-                                {text("update")}
+                                <Pencil aria-hidden="true" />
+                                {text("rename")}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 variant="destructive"
-                                onClick={() => request("delete", image)}
+                                onClick={() => requestDelete(image)}
                               >
                                 <Trash2 aria-hidden="true" />
                                 {text("delete")}
@@ -296,6 +316,50 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
             </Button>
           </div>
         </DialogFooter>
+        {renaming && (
+          <Dialog
+            open
+            onOpenChange={(open) => {
+              if (!open && !busy) setRenaming(null)
+            }}
+          >
+            <DialogContent
+              closeLabel={t("environmentAdmin.close")}
+              showCloseButton={!busy}
+            >
+              <DialogHeader>
+                <DialogTitle>{text("rename")}</DialogTitle>
+              </DialogHeader>
+              <form className="space-y-5" onSubmit={saveDisplayName}>
+                <DisplayNameField
+                  value={renaming.name}
+                  onChange={(name) => setRenaming({ ...renaming, name })}
+                  disabled={busy}
+                />
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => setRenaming(null)}
+                  >
+                    {t("environmentAdmin.cancel")}
+                  </Button>
+                  <Button
+                    type="submit"
+                    loading={busy}
+                    disabled={
+                      !renaming.name.trim() ||
+                      renaming.name.trim() === renaming.image.displayName
+                    }
+                  >
+                    {t("environmentAdmin.save")}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
         {adding && (
           <AddImageDialog
             key={adding}
@@ -319,36 +383,27 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
           }}
           onOpenChangeComplete={(open) => {
             if (!open) {
-              setConfirmation(null)
+              setDeleteTarget(null)
               setBusy(false)
               setError("")
             }
           }}
         >
           <AlertDialogContent>
-            <form onSubmit={confirm} className="space-y-5">
+            <form onSubmit={confirmDelete} className="space-y-5">
               <AlertDialogHeader>
                 <AlertDialogTitle>
-                  {text(
-                    confirmation?.kind === "delete"
-                      ? "deleteTitle"
-                      : "updateTitle"
-                  )}
+                  {text("deleteTitle")}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {text(
-                    confirmation?.kind === "delete"
-                      ? "deleteHint"
-                      : "updateHint"
-                  )}
+                  <Trans
+                    i18nKey="environmentAdmin.systemImages.deleteHint"
+                    components={{
+                      imageName: <strong className="break-all">{deleteTarget?.displayName}</strong>,
+                    }}
+                  />
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              <p className="break-all rounded-lg border bg-muted/40 p-3 font-mono text-xs">
-                {confirmation?.image.reference}
-              </p>
-              {confirmation?.kind === "update" && busy && (
-                <Progress value={null} aria-label={text("pulling")} />
-              )}
               {error && (
                 <p role="alert" className="text-sm text-destructive">
                   {error}
@@ -360,20 +415,10 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                 </AlertDialogCancel>
                 <AlertDialogAction
                   type="submit"
-                  variant={
-                    confirmation?.kind === "delete" ? "destructive" : "default"
-                  }
+                  variant="destructive"
                   loading={busy}
                 >
-                  {text(
-                    busy
-                      ? confirmation?.kind === "delete"
-                        ? "deleting"
-                        : "updating"
-                      : confirmation?.kind === "delete"
-                        ? "confirmDelete"
-                        : "confirmUpdate"
-                  )}
+                  {text(busy ? "deleting" : "confirmDelete")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </form>
@@ -381,6 +426,34 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
         </AlertDialog>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function DisplayNameField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string
+  onChange: (value: string) => void
+  disabled: boolean
+}) {
+  const id = useId()
+  const { t } = useTranslation()
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>
+        {t("environmentAdmin.systemImages.imageName")}
+      </FieldLabel>
+      <Input
+        id={id}
+        value={value}
+        placeholder={t("environmentAdmin.systemImages.imageNameExample")}
+        required
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </Field>
   )
 }
 
@@ -399,6 +472,7 @@ function AddImageDialog({
   const { showToast } = useAppToast()
   const text = (key: string) => t("environmentAdmin.systemImages." + key)
   const [upstream, setUpstream] = useState("")
+  const [displayName, setDisplayName] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -423,7 +497,7 @@ function AddImageDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (busy) return
+    if (busy || !displayName.trim()) return
     const source = upstream.trim()
     if (method === "pull" && invalidReference(source)) {
       setError(text("invalidReference"))
@@ -446,8 +520,18 @@ function AddImageDialog({
       onAdded(
         await systemImagesPreview.add(
           method === "pull"
-            ? { source: "pull", reference: source, upstream: source }
-            : { source: "upload", reference: file!.name, file: file! }
+            ? {
+                source: "pull",
+                reference: source,
+                upstream: source,
+                displayName,
+              }
+            : {
+                source: "upload",
+                reference: file!.name,
+                file: file!,
+                displayName,
+              }
         )
       )
     } catch {
@@ -479,7 +563,7 @@ function AddImageDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex min-h-0 flex-col gap-5">
-          {method === "pull" ? (
+          {method === "pull" && (
             <Field>
               <FieldLabel htmlFor="image-upstream">
                 {text("upstream")}
@@ -499,7 +583,13 @@ function AddImageDialog({
               />
               {busy && <Progress value={null} aria-label={text("pulling")} />}
             </Field>
-          ) : (
+          )}
+          <DisplayNameField
+            value={displayName}
+            onChange={setDisplayName}
+            disabled={busy}
+          />
+          {method === "upload" && (
             <ScrollArea className="-me-6 min-h-0 flex-1">
               <div className="space-y-5 pe-6">
                 <Field>
@@ -592,7 +682,10 @@ function AddImageDialog({
             <Button
               type="submit"
               loading={busy}
-              disabled={method === "upload" ? !file : !upstream.trim()}
+              disabled={
+                !displayName.trim() ||
+                (method === "upload" ? !file : !upstream.trim())
+              }
             >
               {text(
                 method === "upload"
