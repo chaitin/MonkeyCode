@@ -94,6 +94,12 @@ AND (sqlc.arg(include_deleted)::boolean OR (e.deleted_at IS NULL AND e.archived_
 AND (sqlc.arg(status)::text='all'
  OR (sqlc.arg(status)::text='active' AND metrics.state<>'deleted')
  OR metrics.state=sqlc.arg(status)::text)
+AND (sqlc.arg(name_query)::text='' OR strpos(lower(e.name), lower(sqlc.arg(name_query)::text)) > 0)
+AND (sqlc.arg(creator_query)::text='' OR EXISTS (
+ SELECT 1 FROM users u WHERE u.id=e.user_id AND (
+  strpos(lower(u.name), lower(sqlc.arg(creator_query)::text)) > 0 OR
+  strpos(lower(u.email), lower(sqlc.arg(creator_query)::text)) > 0 OR
+  u.id::text = lower(sqlc.arg(creator_query)::text))))
 ORDER BY
  CASE WHEN sqlc.arg(sort)::text='cpu_desc' THEN metrics.cpu_usage END DESC NULLS LAST,
  CASE WHEN sqlc.arg(sort)::text='cpu_asc' THEN metrics.cpu_usage END ASC NULLS LAST,

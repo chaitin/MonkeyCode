@@ -407,12 +407,12 @@ const server = createServer(async (req, res) => {
         }
         return send({...setup,host_id:id,host_name:hosts.find(h=>h.id===id)?.name ?? id,image_ready:true,capacity})
       }
-      const paginate = (items) => {
+      const paginate = (items, pageSize = 20) => {
         const page = Number(url.searchParams.get("page") || 1)
         return {
-          items: items.slice((page - 1) * 20, page * 20),
+          items: items.slice((page - 1) * pageSize, page * pageSize),
           page,
-          page_size: 20,
+          page_size: pageSize,
         }
       }
       if (route === "environment-hosts")
@@ -442,14 +442,22 @@ const server = createServer(async (req, res) => {
           return env.usage[sort.startsWith("cpu") ? "cpu_cores" : "memory_bytes"] ?? null
         }
         const host = url.searchParams.get("host_id")
-        const rows = environments.filter(env => (!host || env.host_id === host) && (status === "all" || (status === "active" ? state(env) !== "deleted" : state(env) === status)))
+        const creatorID = url.searchParams.get("user_id")
+        const creator = (url.searchParams.get("user") || "").trim().toLowerCase()
+        const name = (url.searchParams.get("name") || "").trim().toLowerCase()
+        const rows = environments.filter(env =>
+          (!host || env.host_id === host) &&
+          (creatorID ? env.user_id === creatorID : !creator || env.user_id === creator || [env.user?.name, env.user?.email].some(value => value?.toLowerCase().includes(creator))) &&
+          (!name || env.name.toLowerCase().includes(name)) &&
+          (status === "all" || (status === "active" ? state(env) !== "deleted" : state(env) === status))
+        )
         if (sort !== "newest") rows.sort((a,b) => {
           const x = metric(a), y = metric(b)
           if (x === null) return y === null ? 0 : 1
           if (y === null) return -1
           return (x-y) * (sort.endsWith("desc") ? -1 : 1)
         })
-        return send(paginate(mode === "list-empty" ? [] : rows.map(withBilling)))
+        return send(paginate(mode === "list-empty" ? [] : rows.map(withBilling), Number(url.searchParams.get("page_size")) || 20))
       }
       if (route.startsWith("environments/")) {
         const [, id, action] = route.split("/"),

@@ -3,19 +3,28 @@ package environment
 import (
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 type listFilter struct {
-	status, sort string
-	hostID       *string
+	status, sort, name, user string
+	hostID, userID           *string
 }
 
 func listFilters(r *http.Request) (listFilter, error) {
 	q, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil || len(q["status"]) > 1 || len(q["sort"]) > 1 || len(q["host_id"]) > 1 {
+	if err != nil || len(q["status"]) > 1 || len(q["sort"]) > 1 || len(q["host_id"]) > 1 || len(q["name"]) > 1 || len(q["user"]) > 1 || len(q["user_id"]) > 1 {
 		return listFilter{}, bad("环境筛选参数格式无效")
 	}
-	filter := listFilter{status: q.Get("status"), sort: q.Get("sort")}
+	filter := listFilter{status: q.Get("status"), sort: q.Get("sort"), name: strings.TrimSpace(q.Get("name")), user: strings.TrimSpace(q.Get("user"))}
+	if q.Has("user_id") {
+		id := q.Get("user_id")
+		if !uuid.MatchString(id) {
+			return listFilter{}, bad("创建者筛选无效")
+		}
+		filter.userID = &id
+		filter.user = ""
+	}
 	if q.Has("host_id") {
 		host := q.Get("host_id")
 		if !uuid.MatchString(host) {

@@ -8,6 +8,7 @@ import {
 import { TablePagination } from "@/components/table-pagination"
 import {
   ArrowRight01Icon,
+  FilterHorizontalIcon,
   Search02Icon,
   Loading03Icon,
   MoreHorizontalIcon,
@@ -35,6 +36,8 @@ import {
 import { EnvironmentStatus } from "@/components/environments/status-badge"
 import { OSIcon } from "@/components/environments/os-icon"
 import { UserAvatar } from "@/components/user-avatar"
+import { UserSearch } from "@/components/user-search"
+import { Input } from "@/components/ui/input"
 import { AccountDialog } from "@/components/billing/account-dialog"
 import {
   AlertDialog,
@@ -86,9 +89,10 @@ type Action = {
   desired: "stopped" | "deleted"
   key: string
 }
+const defaultStatus = "all"
 const statuses = [
+  defaultStatus,
   "active",
-  "all",
   "running",
   "stopped",
   "failed",
@@ -166,13 +170,29 @@ export function EnvironmentsPage({
   }
   const status = statuses.includes(params.get("status") || "")
     ? params.get("status")!
-    : "active"
-  const filterKey = JSON.stringify([status, hostID, params.get("host_name")])
+    : defaultStatus
+  const userID = params.get("user_id") || ""
+  const user = userID ? "" : (params.get("user") || "").trim()
+  const name = (params.get("name") || "").trim()
+  const applied = { status, hostID, userID, user, name }
+  const filterKey = JSON.stringify(applied)
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey)
-  const [draft, setDraft] = useState({ status, hostID })
+  const [draft, setDraft] = useState(applied)
+  const [visibleFields, setVisibleFields] = useState({
+    creator: true,
+    name: true,
+    host: !!hostID,
+    status: status !== defaultStatus,
+  })
   if (previousFilterKey !== filterKey) {
     setPreviousFilterKey(filterKey)
-    setDraft({ status, hostID })
+    setDraft(applied)
+    setVisibleFields((fields) => ({
+      creator: fields.creator || !!(userID || user),
+      name: fields.name || !!name,
+      host: fields.host || !!hostID,
+      status: fields.status || status !== defaultStatus,
+    }))
   }
   const statusOptions = statuses.map((value) => ({
     value,
@@ -180,8 +200,18 @@ export function EnvironmentsPage({
       `environmentAdmin.${value === "active" || value === "all" ? `filters.${value}` : `states.${value}`}`
     ),
   }))
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+    status,
+    sort: "newest",
+  })
+  if (hostID) query.set("host_id", hostID)
+  if (userID) query.set("user_id", userID)
+  if (user) query.set("user", user)
+  if (name) query.set("name", name)
   const result = useEnvironmentData<Page<Environment>>(
-    `/api/admin/v1/environments?page=${page}&page_size=${pageSize}&status=${status}&sort=newest${hostID ? `&host_id=${encodeURIComponent(hostID)}` : ""}`,
+    `/api/admin/v1/environments?${query}`,
     true
   )
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
@@ -257,6 +287,14 @@ export function EnvironmentsPage({
                 next.delete("host_id")
                 next.delete("host_name")
               }
+              for (const [key, value] of Object.entries({
+                user_id: draft.userID,
+                user: draft.userID ? "" : draft.user.trim(),
+                name: draft.name.trim(),
+              })) {
+                if (value) next.set(key, value)
+                else next.delete(key)
+              }
               next.delete("sort")
               next.delete("page")
               next.delete("environment")
@@ -264,57 +302,123 @@ export function EnvironmentsPage({
               if (
                 draft.status === status &&
                 draft.hostID === hostID &&
+                draft.userID === userID &&
+                draft.user.trim() === user &&
+                draft.name.trim() === name &&
                 page === 1
               )
                 result.refresh()
             }}
           >
-            <Select
-              items={statusOptions}
-              value={draft.status}
-              onValueChange={(value) => {
-                if (value) setDraft((old) => ({ ...old, status: value }))
-              }}
-            >
-              <SelectTrigger
-                aria-label={t("environmentAdmin.statusFilter")}
-                className="min-w-32"
+            {visibleFields.creator && (
+              <UserSearch
+                id="environment-creator"
+                placeholder={t("environmentAdmin.creator")}
+                userID={draft.userID}
+                query={draft.user}
+                onChange={({ userID, query }) =>
+                  setDraft((old) => ({ ...old, userID, user: query }))
+                }
+              />
+            )}
+            {visibleFields.name && (
+              <Input
+                id="environment-name-filter"
+                className="w-32"
+                aria-label={t("environmentAdmin.name")}
+                placeholder={t("environmentAdmin.name")}
+                value={draft.name}
+                onChange={(event) => {
+                  const name = event.target.value
+                  setDraft((old) => ({ ...old, name }))
+                }}
+              />
+            )}
+            {visibleFields.host && (
+              <Select
+                items={hostOptions}
+                value={draft.hostID || "all"}
+                onValueChange={(value) => {
+                  if (value)
+                    setDraft((old) => ({
+                      ...old,
+                      hostID: value === "all" ? "" : value,
+                    }))
+                }}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              items={hostOptions}
-              value={draft.hostID || "all"}
-              onValueChange={(value) => {
-                if (value)
-                  setDraft((old) => ({
-                    ...old,
-                    hostID: value === "all" ? "" : value,
-                  }))
-              }}
-            >
-              <SelectTrigger
-                aria-label={t("environmentAdmin.host")}
-                className="min-w-32 max-w-64"
+                <SelectTrigger
+                  aria-label={t("environmentAdmin.host")}
+                  className="min-w-32 max-w-64"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {hostOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {visibleFields.status && (
+              <Select
+                items={statusOptions}
+                value={draft.status}
+                onValueChange={(value) => {
+                  if (value) setDraft((old) => ({ ...old, status: value }))
+                }}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {hostOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  aria-label={t("environmentAdmin.statusFilter")}
+                  className="min-w-32"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button type="button" variant="outline" />}
+              >
+                <HugeiconsIcon
+                  icon={FilterHorizontalIcon}
+                  data-icon="inline-start"
+                />
+                {t("common.more")}
+              </DropdownMenuTrigger>
+              <DropdownMenuOptionsContent align="start">
+                <DropdownMenuGroup>
+                  {(["creator", "name", "host", "status"] as const).map((key) => (
+                    <DropdownMenuCheckboxItem
+                      key={key}
+                      checked={visibleFields[key]}
+                      onCheckedChange={(checked) => {
+                        setVisibleFields((old) => ({ ...old, [key]: checked }))
+                        if (!checked) {
+                          const reset = {
+                            creator: { user: "", userID: "" },
+                            name: { name: "" },
+                            host: { hostID: "" },
+                            status: { status: defaultStatus },
+                          }
+                          setDraft((old) => ({ ...old, ...reset[key] }))
+                        }
+                      }}
+                    >
+                      {t("environmentAdmin." + key)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuOptionsContent>
+            </DropdownMenu>
             <Button type="submit" disabled={result.loading}>
               <HugeiconsIcon
                 icon={result.loading ? Loading03Icon : Search02Icon}

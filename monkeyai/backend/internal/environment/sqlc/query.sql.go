@@ -997,11 +997,17 @@ AND ($5::boolean OR (e.deleted_at IS NULL AND e.archived_at IS NULL))
 AND ($6::text='all'
  OR ($6::text='active' AND metrics.state<>'deleted')
  OR metrics.state=$6::text)
+AND ($7::text='' OR strpos(lower(e.name), lower($7::text)) > 0)
+AND ($8::text='' OR EXISTS (
+ SELECT 1 FROM users u WHERE u.id=e.user_id AND (
+  strpos(lower(u.name), lower($8::text)) > 0 OR
+  strpos(lower(u.email), lower($8::text)) > 0 OR
+  u.id::text = lower($8::text))))
 ORDER BY
- CASE WHEN $7::text='cpu_desc' THEN metrics.cpu_usage END DESC NULLS LAST,
- CASE WHEN $7::text='cpu_asc' THEN metrics.cpu_usage END ASC NULLS LAST,
- CASE WHEN $7::text='memory_desc' THEN metrics.memory_usage END DESC NULLS LAST,
- CASE WHEN $7::text='memory_asc' THEN metrics.memory_usage END ASC NULLS LAST,
+ CASE WHEN $9::text='cpu_desc' THEN metrics.cpu_usage END DESC NULLS LAST,
+ CASE WHEN $9::text='cpu_asc' THEN metrics.cpu_usage END ASC NULLS LAST,
+ CASE WHEN $9::text='memory_desc' THEN metrics.memory_usage END DESC NULLS LAST,
+ CASE WHEN $9::text='memory_asc' THEN metrics.memory_usage END ASC NULLS LAST,
  e.created_at DESC,e.id DESC LIMIT $1 OFFSET $2
 `
 
@@ -1012,6 +1018,8 @@ type ListEnvironmentsParams struct {
 	HostID         *string `json:"host_id"`
 	IncludeDeleted bool    `json:"include_deleted"`
 	Status         string  `json:"status"`
+	NameQuery      string  `json:"name_query"`
+	CreatorQuery   string  `json:"creator_query"`
 	Sort           string  `json:"sort"`
 }
 
@@ -1023,6 +1031,8 @@ func (q *Queries) ListEnvironments(ctx context.Context, arg ListEnvironmentsPara
 		arg.HostID,
 		arg.IncludeDeleted,
 		arg.Status,
+		arg.NameQuery,
+		arg.CreatorQuery,
 		arg.Sort,
 	)
 	if err != nil {
