@@ -40,6 +40,9 @@ export const enUS = {
   },
   environmentAdmin: {
     systemImages: {
+      accepted: "Image import accepted.",
+      defaultImage: "Default image · ready",
+      stages: {queued:"Queued",resolving:"Resolving image",pulling:"Pulling image",reading_archive:"Reading archive",importing:"Importing image",verifying:"Verifying image",uploading:"Uploading archive",awaiting:"File sent, waiting for confirmation"},
       title: "System images",
       description:
         "Browse and manage Docker images in the built-in server Registry.",
@@ -73,7 +76,7 @@ export const enUS = {
       deleting: "Deleting",
       upstream: "Image address",
       added: "Image import simulated. No real upload or pull took place.",
-      deleted: "Removed from the demo list. The real Registry is unchanged.",
+      deleted: "Image removed from the catalog. Existing environments are unchanged.",
       loadFailed: "Could not load images. Please refresh.",
       operationFailed: "The operation failed. Please try again.",
       addDescription:
@@ -460,6 +463,7 @@ export const enUS = {
       sign_out: "Sign out",
     },
     targets: {
+      "system-images": "System images",
       accounts: "Credit account",
       transactions: "Billing transaction",
       quotas: "Quota",
