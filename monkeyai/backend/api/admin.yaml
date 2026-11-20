@@ -463,10 +463,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EmailAuthError"
+  /api/auth/v1/capabilities:
+    get:
+      summary: 读取当前可用功能
+      description: 无需登录。返回可用功能的布尔值，响应使用 Cache-Control no-store。
+      security: []
+      responses:
+        "200":
+          description: 当前生效的能力
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [allow_cloud_computer, allow_custom_branding]
+                properties:
+                  allow_cloud_computer:
+                    type: boolean
+                    description: 是否支持新建云电脑。
+                  allow_custom_branding:
+                    type: boolean
+                    description: 是否允许修改和使用团队名称、产品名称及自定义 Logo。
   /api/auth/v1/branding:
     get:
       summary: 读取公开品牌信息
-      description: 公开返回团队名称、产品名称、授权机器码及有效商业授权标记。仅宿主确认合法且当前有效的付费授权时标记为 true；未配置校验器或读取失败时为 false。不会返回授权文件、客户信息、席位、有效期或密钥。
+      description: 返回团队名称、产品名称及展示信息。未启用自定义品牌时使用默认名称和空 Logo。
       security: []
       responses:
         "200":
@@ -1546,6 +1567,7 @@ paths:
   /api/admin/v1/billing/settings:
     get:
       summary: 读取计费策略与远程连接状态（不返回证书或私钥）
+      description: policy.environment 为可选字段，仅在支持环境定价时返回。
       responses:
         '200':
           description: 请求成功
@@ -1597,7 +1619,7 @@ paths:
       required: true
     patch:
       summary: 独立保存计价、周期、模式、云电脑全局计费或百智云连接配置
-      description: wallet 配置保存后无需重启，各实例在下次使用时读取。证书和私钥省略或留空时保留原值。首次保存必须提供全部证书。客户端证书与私钥须匹配且处于有效期，私钥须为 PKCS#8 ECDSA 格式。CA 须为有效的 CA 证书。服务 URL 或应用 ID 变更不能影响未完成的远程交易。校验仅在本地执行，不代表远程网络或账户权限验证成功。
+      description: environment 节未装配时返回 404，未授权时禁止修改。wallet 配置保存后无需重启，各实例在下次使用时读取。证书和私钥省略或留空时保留原值。首次保存必须提供全部证书。客户端证书与私钥须匹配且处于有效期，私钥须为 PKCS#8 ECDSA 格式。CA 须为有效的 CA 证书。服务 URL 或应用 ID 变更不能影响未完成的远程交易。校验仅在本地执行，不代表远程网络或账户权限验证成功。
       responses:
         '200':
           description: 请求成功
@@ -11068,7 +11090,6 @@ components:
       type: object
       required:
       - grants
-      - environment_count
       - id
       - name
       - architecture
@@ -11091,7 +11112,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: 该宿主尚未移除的环境数，包含停止、失败和在线等待删除的环境，与默认环境列表一致；不含离线归档记录。
+          description: 仅装配云电脑模块时返回。该宿主尚未移除的环境数，包含停止、失败和在线等待删除的环境，与默认环境列表一致；不含离线归档记录。
         user_id: {type: string, format: uuid, description: 创建宿主记录的用户}
         enabled:
           type: boolean

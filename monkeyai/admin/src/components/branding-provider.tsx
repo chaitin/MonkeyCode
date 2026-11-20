@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { api } from "@/lib/api"
+import { LICENSE_STATUS_CHANGED } from "@/lib/license"
 import {
   BrandingContext,
   DEFAULT_BRANDING,
@@ -27,15 +28,35 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
         has_commercial_license: value.has_commercial_license === true,
       })
     } catch {
-      /* Keep working defaults when public branding is unavailable. */
+      if (!signal?.aborted && current === generation.current)
+        setBranding(DEFAULT_BRANDING)
     }
   }, [])
   useEffect(() => {
-    const controller = new AbortController()
-    void Promise.resolve().then(() => {
-      if (!controller.signal.aborted) return refreshBranding(controller.signal)
-    })
-    return () => controller.abort()
+    let controller: AbortController | undefined
+    let disposed = false
+    const load = () => {
+      if (disposed) return
+      controller?.abort()
+      controller = new AbortController()
+      void refreshBranding(controller.signal)
+    }
+    const refresh = () => {
+      if (document.visibilityState === "visible") load()
+    }
+    void Promise.resolve().then(load)
+    const timer = window.setInterval(refresh, 30_000)
+    document.addEventListener("visibilitychange", refresh)
+    window.addEventListener(LICENSE_STATUS_CHANGED, load)
+    window.addEventListener("monkeyai-license-changed", load)
+    return () => {
+      disposed = true
+      controller?.abort()
+      window.clearInterval(timer)
+      document.removeEventListener("visibilitychange", refresh)
+      window.removeEventListener(LICENSE_STATUS_CHANGED, load)
+      window.removeEventListener("monkeyai-license-changed", load)
+    }
   }, [refreshBranding])
   const logoURL = branding.logo_url !== failedURL ? branding.logo_url : ""
   const failLogo = useCallback(

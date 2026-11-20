@@ -255,7 +255,7 @@ DELETE FROM resource_access_grants
 WHERE group_id = $1;
 
 -- name: RootName :one
-SELECT COALESCE((SELECT NULLIF(value ->> 'workspace_name', '') FROM settings WHERE key = 'branding'), 'Monkey AI')::text;
+SELECT 'Monkey AI'::text;
 
 -- name: RootDirectMemberIDs :many
 SELECT u.id::text FROM users u

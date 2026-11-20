@@ -225,6 +225,17 @@ func (q *Queries) DeviceRequestByID(ctx context.Context, id string) (OauthDevice
 	return i, err
 }
 
+const isCloudMachine = `-- name: IsCloudMachine :one
+SELECT EXISTS(SELECT 1 FROM environment_runtimes WHERE machine_id=$1::uuid)
+`
+
+func (q *Queries) IsCloudMachine(ctx context.Context, machineID string) (bool, error) {
+	row := q.db.QueryRow(ctx, isCloudMachine, machineID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const lockDeviceCode = `-- name: LockDeviceCode :one
 SELECT id, client_id, device_code_hash, user_code_hash, machine_id, execution_public_key, key_id, display_name, platform, arch, requested_scopes, approved_scopes, owner_user_id, restore_revoked, status, interval_ms, next_poll_at, created_at, expires_at FROM oauth_device_requests WHERE device_code_hash=$1 AND client_id=$2 FOR UPDATE
 `

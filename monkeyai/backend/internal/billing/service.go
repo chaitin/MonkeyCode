@@ -30,29 +30,29 @@ type Price struct {
 	ImageUnit  Amount `json:"image_unit,omitempty"`
 	VideoUnit  Amount `json:"video_unit,omitempty"`
 }
-type ComputePricing struct {
-	CPU    Amount `json:"cpu_credits_per_core_hour"`
-	Memory Amount `json:"memory_credits_per_gib_hour"`
+type Pricing interface {
+	ViewPricing(context.Context, json.RawMessage) (json.RawMessage, error)
+	UpdatePricing(context.Context, string, map[string]json.RawMessage) (json.RawMessage, error)
 }
 
 type Policy struct {
-	Environment      ComputePricing `json:"environment"`
-	RootCredits      Amount         `json:"root_credits"`
-	Input            Amount         `json:"input_credits_per_million_tokens"`
-	Cached           Amount         `json:"cached_input_credits_per_million_tokens"`
-	Output           Amount         `json:"output_credits_per_million_tokens"`
-	Cycle            string         `json:"quota_refresh_cycle"`
-	Mode             string         `json:"charging_mode"`
-	Enabled          bool           `json:"enabled"`
-	PendingCycle     string         `json:"pending_cycle,omitempty"`
-	CycleEffectiveAt *time.Time     `json:"cycle_effective_at,omitempty"`
-	CycleAnchor      *time.Time     `json:"cycle_anchor,omitempty"`
-	TransitionStart  *time.Time     `json:"cycle_transition_start,omitempty"`
-	Revision         int64          `json:"revision"`
+	Environment      json.RawMessage `json:"environment,omitempty"`
+	RootCredits      Amount          `json:"root_credits"`
+	Input            Amount          `json:"input_credits_per_million_tokens"`
+	Cached           Amount          `json:"cached_input_credits_per_million_tokens"`
+	Output           Amount          `json:"output_credits_per_million_tokens"`
+	Cycle            string          `json:"quota_refresh_cycle"`
+	Mode             string          `json:"charging_mode"`
+	Enabled          bool            `json:"enabled"`
+	PendingCycle     string          `json:"pending_cycle,omitempty"`
+	CycleEffectiveAt *time.Time      `json:"cycle_effective_at,omitempty"`
+	CycleAnchor      *time.Time      `json:"cycle_anchor,omitempty"`
+	TransitionStart  *time.Time      `json:"cycle_transition_start,omitempty"`
+	Revision         int64           `json:"revision"`
 }
 
 func defaultPolicy() Policy {
-	return Policy{Environment: ComputePricing{CPU: 100 * Amount(scale), Memory: 50 * Amount(scale)}, RootCredits: 10000 * Amount(scale), Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "weekly", Mode: "local", Enabled: true}
+	return Policy{RootCredits: 10000 * Amount(scale), Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "weekly", Mode: "local", Enabled: true}
 }
 func (p Policy) period(now time.Time) (time.Time, time.Time) {
 	zone, err := time.LoadLocation("Asia/Shanghai")
@@ -117,7 +117,10 @@ func (p *Policy) scheduleCycle(cycle string, now time.Time) {
 	p.TransitionStart = &start
 }
 
+func (s *Service) WithPricing(p Pricing) *Service { s.pricing = p; return s }
+
 type Service struct {
+	pricing      Pricing
 	pool         *pgxpool.Pool
 	now          func() time.Time
 	fallback     *Wallet

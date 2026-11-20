@@ -51,7 +51,10 @@ type Store interface {
 	Touch(context.Context, string, string, time.Time) error
 }
 
+func (p *Postgres) WithNames(r nameReader) { p.names = r }
+
 type Postgres struct {
+	names            nameReader
 	pool             *pgxpool.Pool
 	auth             DeviceAuthorizer
 	executionRevoker func(string, string, int64)
@@ -104,7 +107,7 @@ func (p *Postgres) Active(ctx context.Context, user string) ([]Endpoint, error) 
 	if err != nil {
 		return nil, err
 	}
-	names, err := cloudNames(ctx, q, user, rows)
+	names, err := p.names.lookup(ctx, p.pool, user, rows)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +123,7 @@ func (p *Postgres) Get(ctx context.Context, user, machine string) (Endpoint, err
 		return Endpoint{}, missing(err)
 	}
 	rows := []sqlc.Endpoint{row}
-	names, err := cloudNames(ctx, sqlc.New(p.pool), user, rows)
+	names, err := p.names.lookup(ctx, p.pool, user, rows)
 	if err != nil {
 		return Endpoint{}, err
 	}
@@ -149,7 +152,7 @@ func (p *Postgres) Page(ctx context.Context, user string, page, size int) (Page,
 	if err != nil {
 		return Page{}, err
 	}
-	names, err := cloudNames(ctx, q, user, rows)
+	names, err := p.names.lookup(ctx, tx, user, rows)
 	if err != nil {
 		return Page{}, err
 	}
@@ -175,7 +178,7 @@ func (p *Postgres) transaction(ctx context.Context, user string, fn func(*sqlc.Q
 		return Endpoint{}, err
 	}
 	rows := []sqlc.Endpoint{row}
-	names, err := cloudNames(ctx, q, user, rows)
+	names, err := p.names.lookup(ctx, tx, user, rows)
 	if err != nil {
 		return Endpoint{}, err
 	}

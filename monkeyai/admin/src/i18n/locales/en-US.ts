@@ -1,4 +1,12 @@
 export const enUS = {
+  licenseCapabilities: {
+    cloudComputer: "Cloud computers",
+    customBranding: "Custom branding",
+    granted: "Available",
+    notGranted: "Unavailable",
+    cloudLocked: "Creating cloud computers is currently unavailable.",
+    brandingLocked: "Custom branding is currently unavailable.",
+  },
   kbPermissions: {
     noAccess: "No access",
     readOnly: "Read only",

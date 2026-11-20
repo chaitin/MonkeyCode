@@ -29,9 +29,12 @@ type DeviceAuthorizer interface {
 	AuthorizeDevice(context.Context, pgx.Tx, identity.Principal, string) (bool, error)
 }
 
+func (e *Execution) WithNames(r nameReader) { e.names = r }
+
 type Execution struct {
-	pool *pgxpool.Pool
-	auth DeviceAuthorizer
+	names nameReader
+	pool  *pgxpool.Pool
+	auth  DeviceAuthorizer
 }
 
 func NewExecution(pool *pgxpool.Pool, auth DeviceAuthorizer) *Execution {
@@ -108,7 +111,7 @@ func (e *Execution) Snapshot(ctx context.Context, userID string, executeOnly boo
 	if err != nil {
 		return nil, err
 	}
-	names, err := cloudNames(ctx, sqlc.New(e.pool), userID, rows)
+	names, err := e.names.lookup(ctx, e.pool, userID, rows)
 	if err != nil {
 		return nil, err
 	}

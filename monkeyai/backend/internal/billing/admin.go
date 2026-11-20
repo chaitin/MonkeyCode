@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -58,6 +59,15 @@ func (s *Service) settings(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
+	if s.pricing == nil {
+		p.Environment = nil
+	} else {
+		p.Environment, err = s.pricing.ViewPricing(r.Context(), p.Environment)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+	}
 	wallet, err := s.wallet(r.Context(), s.pool)
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
@@ -67,6 +77,10 @@ func (s *Service) settings(w http.ResponseWriter, r *http.Request) {
 	resource.JSON(r.Context(), w, 200, map[string]any{"policy": p, "wallet": wallet.info(), "timezone": "Asia/Shanghai", "next_refresh_at": end})
 }
 func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
+	if chi.URLParam(r, "section") == "environment" && s.pricing == nil {
+		resource.Fail(r.Context(), w, resource.NotFound)
+		return
+	}
 	var in map[string]json.RawMessage
 	if err := resource.Decode(w, r, &in); err != nil {
 		resource.Fail(r.Context(), w, err)
@@ -76,7 +90,7 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	allowed := []string{"revision"}
 	switch section {
 	case "environment":
-		allowed = append(allowed, "cpu_credits_per_core_hour", "memory_credits_per_gib_hour")
+		allowed = nil // 由扩展校验字段。
 	case "pricing":
 		allowed = append(allowed, "input_credits_per_million_tokens", "cached_input_credits_per_million_tokens", "output_credits_per_million_tokens")
 	case "cycle":
@@ -90,7 +104,7 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for k := range in {
-		if !slices.Contains(allowed, k) {
+		if allowed != nil && !slices.Contains(allowed, k) {
 			resource.Fail(r.Context(), w, resource.Invalid("配置块包含未知字段"))
 			return
 		}
@@ -119,14 +133,9 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	var walletBefore, walletAfter WalletInfo
 	switch section {
 	case "environment":
-		for key, target := range map[string]*Amount{"cpu_credits_per_core_hour": &p.Environment.CPU, "memory_credits_per_gib_hour": &p.Environment.Memory} {
-			if err = json.Unmarshal(in[key], target); err != nil || *target < 0 || *target > Amount(1_000_000*scale) {
-				resource.Fail(r.Context(), w, resource.Invalid("单价须为 0 到 1000000 的积分值，最多六位小数"))
-				return
-			}
-		}
-		if p.Mode != "local" && (p.Environment.CPU > 0 || p.Environment.Memory > 0) {
-			resource.Fail(r.Context(), w, resource.Invalid("云电脑计费仅支持本地积分"))
+		p.Environment, err = s.pricing.UpdatePricing(r.Context(), p.Mode, in)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 	case "pricing":
@@ -225,7 +234,7 @@ func (s *Service) quotas(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var teamName string
-	teamName, err = sqlc.New(s.pool).WorkspaceName(r.Context())
+	teamName, err = rootgroup.Name(r.Context(), s.pool)
 
 	if err != nil {
 		resource.Fail(r.Context(), w, err)

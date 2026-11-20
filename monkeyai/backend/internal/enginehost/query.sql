@@ -5,9 +5,7 @@ INSERT INTO hosts(user_id,name,architecture,version) VALUES($1,$2,$3,$4) RETURNI
 UPDATE hosts SET status='revoked',deleted_at=now(),enabled=false WHERE id=$1 AND status='pending' AND public_key IS NULL AND deleted_at IS NULL;
 
 -- name: ListHosts :many
-SELECT id,user_id,name,architecture,version,status,activated_at,last_seen_at,report,created_at,enabled,
-(SELECT count(*) FROM environments e WHERE e.host_id=hosts.id AND e.archived_at IS NULL
- AND NOT(e.desired='deleted' AND e.phase='deleted' AND e.observed_generation=e.generation)) AS environment_count
+SELECT id,user_id,name,architecture,version,status,activated_at,last_seen_at,report,created_at,enabled
 FROM hosts WHERE deleted_at IS NULL AND status <> 'pending' ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2;
 
 -- name: CountHosts :one
@@ -21,6 +19,10 @@ SELECT pg_advisory_xact_lock(129678,hashtext(current_schema() || ':environments'
 
 -- name: HostExists :one
 SELECT EXISTS(SELECT 1 FROM hosts WHERE id=$1 AND deleted_at IS NULL);
+
+-- name: LegacyHostOccupied :one
+SELECT EXISTS(SELECT 1 FROM environments WHERE host_id=$1 AND archived_at IS NULL
+ AND NOT(desired='deleted' AND phase='deleted' AND observed_generation=generation));
 
 -- name: DeleteHost :execrows
 UPDATE hosts h SET status='revoked',deleted_at=now()

@@ -1,4 +1,6 @@
 {
+  "cloud_computer_not_licensed": {"zh-CN":"当前无法新建云电脑。","en-US":"Creating cloud computers is currently unavailable."},
+  "custom_branding_not_licensed": {"zh-CN":"当前无法编辑自定义品牌。","en-US":"Custom branding is currently unavailable."},
   "api_key_name_required": {"zh-CN":"名称不能为空。","en-US":"A name is required."},
   "group_conflict": {"zh-CN":"分组操作与当前状态冲突。","en-US":"The group operation conflicts with the current state."},
   "invalid_tunnel_message": {"zh-CN":"隧道消息无效。","en-US":"The tunnel message is invalid."},

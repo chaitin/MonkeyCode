@@ -1,6 +1,14 @@
 import { enUS } from "./en-US.ts"
 
 export const ruRU = {
+  licenseCapabilities: {
+    cloudComputer: "Облачные компьютеры",
+    customBranding: "Настройка бренда",
+    granted: "Доступно",
+    notGranted: "Недоступно",
+    cloudLocked: "Создание облачных компьютеров сейчас недоступно.",
+    brandingLocked: "Настройка бренда сейчас недоступна.",
+  },
   accountSettings: {
     loadingProfile: "Загрузка",
     profileLoadFailed:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/license"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -34,6 +35,9 @@ func TestPublicBranding(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service := NewService(nil, test.settings, "")
+			if provider, ok := test.settings.(PublicBrandingReader); ok {
+				service.WithBranding(provider).WithLicense(&capabilitySource{value: license.Capabilities{AllowCustomBranding: true}})
+			}
 			request := httptest.NewRequest(http.MethodGet, "/branding", nil)
 			response := httptest.NewRecorder()
 			service.AuthRouter().ServeHTTP(response, request)
@@ -79,7 +83,7 @@ func TestPublicBrandingLicenseWhitelist(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			settings := authenticationStub{json.RawMessage(`{"workspace_name":"Team","product_name":"Product","machine_code":"forged-code","has_commercial_license":{"secret":"license-secret"},"client_id":"private-client","license":"private-license"}`)}
-			service := NewService(nil, settings, "").WithPublicLicense(test.reader)
+			service := NewService(nil, settings, "").WithPublicLicense(test.reader).WithBranding(settings).WithLicense(&capabilitySource{value: license.Capabilities{AllowCustomBranding: true}})
 			response := httptest.NewRecorder()
 			service.AuthRouter().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/branding", nil))
 			if response.Code != http.StatusOK {

@@ -1,6 +1,14 @@
 import { enUS } from "./en-US.ts"
 
 export const ar = {
+  licenseCapabilities: {
+    cloudComputer: "أجهزة الكمبيوتر السحابية",
+    customBranding: "تخصيص العلامة التجارية",
+    granted: "متاح",
+    notGranted: "غير متاح",
+    cloudLocked: "إنشاء أجهزة كمبيوتر سحابية غير متاح حاليًا.",
+    brandingLocked: "تخصيص العلامة التجارية غير متاح حاليًا.",
+  },
   accountSettings: {
     loadingProfile: "جارٍ التحميل",
     profileLoadFailed: "تعذر تحميل إعدادات الحساب. حاول مجددًا.",

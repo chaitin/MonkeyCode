@@ -199,7 +199,7 @@ type Host = {
   online: boolean
   enabled: boolean
   user_id: string
-  environment_count: number
+  environment_count?: number
   upgrade?: HostUpgradeState
   activated_at: string | null
   last_seen_at: string | null
