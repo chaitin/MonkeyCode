@@ -31,6 +31,9 @@ type ObjectStore interface {
 	// by the team-admin bare-repo upload flow (biz/team/usecase) so a single
 	// abstraction owns all skill/plugin OSS writes,无 oss SDK 直接耦合。
 	PutFile(ctx context.Context, prefix, filename string, body io.Reader) error
+	// DeleteObject removes a temporary staged object after a pending security
+	// scan reaches a terminal decision.
+	DeleteObject(ctx context.Context, key string) error
 }
 
 // ResolverInterface is the abstract surface consumed by the task dispatch

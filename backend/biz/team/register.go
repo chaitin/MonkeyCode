@@ -28,6 +28,7 @@ func ProvideTeam(i *do.Injector) {
 	do.Provide(i, usecase.NewTeamSkillUsecase)
 	do.Provide(i, v1.NewTeamSkillHandler)
 	do.Provide(i, repo.NewTeamExtensionPackageRepo)
+	do.Provide(i, usecase.NewExtensionPackageStageFinalizer)
 	do.Provide(i, usecase.NewTeamExtensionPackageUsecase)
 	do.Provide(i, v1.NewTeamExtensionPackageHandler)
 	do.Provide(i, repo.NewTeamHostRepo)

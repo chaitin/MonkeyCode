@@ -316,6 +316,10 @@ var (
 		{Name: "version", Type: field.TypeString},
 		{Name: "s3_key", Type: field.TypeString},
 		{Name: "parsed_meta", Type: field.TypeJSON, Nullable: true},
+		{Name: "guard_status", Type: field.TypeString, Size: 16, Default: "approved"},
+		{Name: "guard_task_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "guard_deadline", Type: field.TypeTime, Nullable: true},
+		{Name: "guard_error", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "resource_id", Type: field.TypeUUID},
 	}
@@ -327,7 +331,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "agent_skill_versions_agent_skills_versions",
-				Columns:    []*schema.Column{AgentSkillVersionsColumns[5]},
+				Columns:    []*schema.Column{AgentSkillVersionsColumns[9]},
 				RefColumns: []*schema.Column{AgentSkillsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -336,7 +340,12 @@ var (
 			{
 				Name:    "agentskillversion_resource_id",
 				Unique:  false,
-				Columns: []*schema.Column{AgentSkillVersionsColumns[5]},
+				Columns: []*schema.Column{AgentSkillVersionsColumns[9]},
+			},
+			{
+				Name:    "agentskillversion_guard_status_guard_deadline",
+				Unique:  false,
+				Columns: []*schema.Column{AgentSkillVersionsColumns[4], AgentSkillVersionsColumns[6]},
 			},
 		},
 	}
