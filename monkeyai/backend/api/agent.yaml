@@ -25,6 +25,27 @@ paths:
           description: 缺少 environment:read。
         '500':
           description: 内部存储错误。
+  /api/auth/v1/capabilities:
+    get:
+      summary: 读取当前可用功能
+      description: 无需登录。返回可用功能的布尔值，响应使用 Cache-Control no-store。
+      security: []
+      responses:
+        '200':
+          description: 当前生效的能力
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [allow_cloud_computer, allow_custom_branding]
+                properties:
+                  allow_cloud_computer:
+                    type: boolean
+                    description: 是否支持新建云电脑。
+                  allow_custom_branding:
+                    type: boolean
+                    description: 允许修改和使用自定义团队名称、产品名称和 Logo。
   /api/v1/environment-hosts:
     get:
       summary: 查询本人可使用的宿主

@@ -6,6 +6,8 @@ export type LicenseInfo = {
   custom_product_name?: string
   machine_ids?: string[]
   max_members?: number
+  allow_cloud_computer?: boolean
+  allow_custom_branding?: boolean
   not_valid_before?: number
   not_valid_after?: number
 }

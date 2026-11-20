@@ -6,7 +6,7 @@ import (
 	"uuid"
 )
 
-func TestCloudDeviceNames(t *testing.T) {
+func TestStandaloneDeviceNames(t *testing.T) {
 	db := testDatabase(t)
 	ctx := t.Context()
 	user := testUser(t, db, "cloud-owner")
@@ -56,7 +56,7 @@ func TestCloudDeviceNames(t *testing.T) {
 			t.Fatalf("执行设备列表=%+v err=%v", rows, err)
 		}
 	}
-	check("云环境任务验证")
+	check("MonkeyAI Cloud")
 	alias := "我的开发环境"
 	updated, err := store.Update(ctx, user, machine, "rename", &alias)
 	if err != nil || updated.DisplayName != alias {
@@ -67,11 +67,11 @@ func TestCloudDeviceNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	check("云环境任务验证")
+	check("MonkeyAI Cloud")
 	exec(`UPDATE environments SET desired='deleted',phase='deleted' WHERE id=$1`, env)
-	check("云环境任务验证")
+	check("MonkeyAI Cloud")
 	exec(`UPDATE endpoints SET device_name='MonkeyAI Cloud' WHERE user_id=$1 AND machine_id=$2`, user, machine)
-	check("云环境任务验证")
+	check("MonkeyAI Cloud")
 	exec(`UPDATE environments SET user_id=$2 WHERE id=$1`, env, other)
 	check("MonkeyAI Cloud")
 	exec(`UPDATE environments SET user_id=$2 WHERE id=$1`, env, user)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/license"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 )
 
@@ -40,18 +41,21 @@ func (s *Service) branding(w http.ResponseWriter, r *http.Request) {
 		WorkspaceName: defaultWorkspaceName,
 		ProductName:   defaultProductName,
 	}
-	if s.settings != nil {
-		value, err := s.settings.GetValue(r.Context(), "branding")
+	customBranding := license.Read(r.Context(), s.license).AllowCustomBranding
+	if customBranding && s.brandingProvider != nil {
+		value, err := s.brandingProvider.PublicValue(r.Context())
 		if err != nil {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取品牌设置失败，使用默认值", "module", "identity", "operation", "branding", "error", err)
 		} else {
 			var configured struct {
 				WorkspaceName string `json:"workspace_name"`
 				ProductName   string `json:"product_name"`
+				LogoURL       string `json:"logo_url"`
 			}
 			if err := json.Unmarshal(value, &configured); err != nil {
 				logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "解析品牌设置失败，使用默认值", "module", "identity", "operation", "branding", "error", err)
 			} else {
+				branding.LogoURL = strings.TrimSpace(configured.LogoURL)
 				if workspaceName := strings.TrimSpace(configured.WorkspaceName); workspaceName != "" {
 					branding.WorkspaceName = workspaceName
 				}
@@ -59,14 +63,6 @@ func (s *Service) branding(w http.ResponseWriter, r *http.Request) {
 					branding.ProductName = productName
 				}
 			}
-		}
-	}
-	if s.brandingLogo != nil {
-		logoURL, err := s.brandingLogo.BrandingLogoURL(r.Context())
-		if err != nil {
-			slog.ErrorContext(r.Context(), "读取品牌 Logo 失败", "error", err)
-		} else {
-			branding.LogoURL = logoURL
 		}
 	}
 	if s.publicLicense != nil {

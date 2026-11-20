@@ -1,3 +1,6 @@
+-- name: IsCloudMachine :one
+SELECT EXISTS(SELECT 1 FROM environment_runtimes WHERE machine_id=sqlc.arg(machine_id)::uuid);
+
 -- name: CreateDeviceRequest :one
 INSERT INTO oauth_device_requests(client_id,device_code_hash,user_code_hash,machine_id,execution_public_key,key_id,display_name,platform,arch,requested_scopes,expires_at)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *;

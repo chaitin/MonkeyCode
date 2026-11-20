@@ -1,33 +1,32 @@
 package billing
 
 import (
+	"bytes"
 	"encoding/json"
+	"github.com/go-chi/chi/v5"
+	"net/http/httptest"
 	"testing"
 )
 
-func TestLegacyEnvironmentBillingCannotBeDisabled(t *testing.T) {
-	got := defaultPolicy()
-	if err := json.Unmarshal([]byte(`{"enabled":false,"environment":{"enabled":false,"cpu_credits_per_core_hour":"123","memory_credits_per_gib_hour":"45"}}`), &got); err != nil {
+func TestStandalonePolicyPreservesStoredExtension(t *testing.T) {
+	p := defaultPolicy()
+	raw, _ := json.Marshal(p)
+	if bytes.Contains(raw, []byte("environment")) {
+		t.Fatal("开源默认策略不应包含云电脑价格")
+	}
+	if err := json.Unmarshal([]byte(`{"environment":{"cpu_credits_per_core_hour":"123"}}`), &p); err != nil {
 		t.Fatal(err)
 	}
-	if got.Environment.CPU != amountText("123") || got.Environment.Memory != amountText("45") {
-		t.Fatalf("旧开关不应关闭计费或覆盖自定义单价: %+v", got.Environment)
+	p.Revision++
+	raw, err := json.Marshal(p)
+	if err != nil || !bytes.Contains(raw, []byte(`"cpu_credits_per_core_hour":"123"`)) {
+		t.Fatal("普通设置覆盖了扩展定价")
 	}
-}
-
-func TestEnvironmentDefaultPricing(t *testing.T) {
-	p := defaultPolicy()
-	if p.Environment.CPU != amountText("100") || p.Environment.Memory != amountText("50") {
-		t.Fatalf("云电脑默认单价不正确: %+v", p.Environment)
-	}
-}
-
-func TestLegacyPolicyWithoutEnvironmentUsesDefaultPricing(t *testing.T) {
-	p := defaultPolicy()
-	if err := json.Unmarshal([]byte(`{"enabled":true,"charging_mode":"local"}`), &p); err != nil {
-		t.Fatal(err)
-	}
-	if p.Environment.CPU != amountText("100") || p.Environment.Memory != amountText("50") {
-		t.Fatalf("旧计费策略没有补充云电脑默认单价: %+v", p.Environment)
+	r := chi.NewRouter()
+	NewService(nil).RegisterAdmin(r)
+	out := httptest.NewRecorder()
+	r.ServeHTTP(out, httptest.NewRequest("PATCH", "/billing/settings/environment", nil))
+	if out.Code != 404 {
+		t.Fatalf("未装配时返回 %d", out.Code)
 	}
 }

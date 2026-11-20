@@ -22,10 +22,19 @@ func (s *Service) WithRuntimeAccess(access RuntimeAccess) *Service {
 	return s
 }
 func (s *Service) runtimeAllowed(ctx context.Context, tx pgx.Tx, user, machine string) (bool, error) {
-	if s.runtimeAccess == nil || machine == "" {
+	if machine == "" {
 		return true, nil
 	}
-	return s.runtimeAccess.RuntimeAllowed(ctx, tx, user, machine)
+	if s.runtimeAccess != nil {
+		return s.runtimeAccess.RuntimeAllowed(ctx, tx, user, machine)
+	}
+	// 切回开源版后仍可能存在已签发的云电脑凭据。
+	q := sqlc.New(s.db)
+	if tx != nil {
+		q = sqlc.New(tx)
+	}
+	cloud, err := q.IsCloudMachine(ctx, machine)
+	return !cloud && err == nil, err
 }
 
 // 仅由环境控制事务调用；设备码不是独立的宿主授权凭据。

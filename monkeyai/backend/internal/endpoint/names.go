@@ -3,27 +3,20 @@ package endpoint
 import (
 	"context"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
 
-func cloudNames(ctx context.Context, q *sqlc.Queries, user string, rows []sqlc.Endpoint) (map[string]string, error) {
-	if len(rows) == 0 {
+type nameReader func(context.Context, resource.Queryer, string, []string) (map[string]string, error)
+
+func (read nameReader) lookup(ctx context.Context, db resource.Queryer, user string, rows []sqlc.Endpoint) (map[string]string, error) {
+	if read == nil || len(rows) == 0 {
 		return nil, nil
 	}
 	ids := make([]string, len(rows))
-	for i := range rows {
-		ids[i] = rows[i].MachineID
+	for i, row := range rows {
+		ids[i] = row.MachineID
 	}
-	names, err := q.CloudDeviceNames(ctx, sqlc.CloudDeviceNamesParams{UserID: user, MachineIds: ids})
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[string]string, len(names))
-	for _, row := range names {
-		if row.MachineID != nil {
-			byID[*row.MachineID] = row.Name
-		}
-	}
-	return byID, nil
+	return read(ctx, db, user, ids)
 }
 
 func displayName(row sqlc.Endpoint, names map[string]string) string {

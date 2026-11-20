@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/enginehost/sqlc"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/hostname"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/hostname"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
@@ -27,7 +27,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type hostCounts func(context.Context, resource.Queryer, []string) (map[string]int64, error)
+
+func (s *Service) WithHostCounts(read hostCounts) { s.hostCounts = read }
+
 type Service struct {
+	hostCounts                hostCounts
 	pool                      *pgxpool.Pool
 	commands                  Commands
 	server, releases, version string
@@ -59,7 +64,9 @@ func (s *Service) Register(r chi.Router) {
 			r.Post("/enroll", s.enroll)
 			r.Post("/time", s.timestamp)
 			r.Post("/heartbeat", s.heartbeat)
-			r.Post("/exchange", s.exchange)
+			if s.commands != nil {
+				r.Post("/exchange", s.exchange)
+			}
 		})
 	})
 }
@@ -180,6 +187,18 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
+	var counts map[string]int64
+	if s.hostCounts != nil && len(rows) > 0 {
+		ids := make([]string, len(rows))
+		for i, row := range rows {
+			ids[i] = row.ID
+		}
+		counts, err = s.hostCounts(r.Context(), s.pool, ids)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+	}
 	items := []map[string]any{}
 	for _, row := range rows {
 		online := row.Status == "active" && row.LastSeenAt != nil && time.Since(*row.LastSeenAt) < 90*time.Second
@@ -193,7 +212,11 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		items = append(items, map[string]any{"grants": grants, "environment_count": row.EnvironmentCount, "enabled": row.Enabled, "user_id": row.UserID, "upgrade": upgrade, "id": row.ID, "name": row.Name, "architecture": row.Architecture, "version": row.Version, "status": row.Status, "online": online, "activated_at": row.ActivatedAt, "last_seen_at": row.LastSeenAt, "report": json.RawMessage(row.Report), "created_at": row.CreatedAt})
+		item := map[string]any{"grants": grants, "enabled": row.Enabled, "user_id": row.UserID, "upgrade": upgrade, "id": row.ID, "name": row.Name, "architecture": row.Architecture, "version": row.Version, "status": row.Status, "online": online, "activated_at": row.ActivatedAt, "last_seen_at": row.LastSeenAt, "report": json.RawMessage(row.Report), "created_at": row.CreatedAt}
+		if s.hostCounts != nil {
+			item["environment_count"] = counts[row.ID]
+		}
+		items = append(items, item)
 	}
 	total, err := q.CountHosts(r.Context())
 	if err != nil {
@@ -247,6 +270,22 @@ func (s *Service) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	if !exists {
 		w.WriteHeader(204)
+		return
+	}
+	var occupied bool
+	if s.hostCounts == nil { // 未装配扩展也不能删除历史实例仍在使用的宿主。
+		occupied, err = q.LegacyHostOccupied(r.Context(), id)
+	} else {
+		var counts map[string]int64
+		counts, err = s.hostCounts(r.Context(), tx, []string{id})
+		occupied = counts[id] > 0
+	}
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
+	if occupied {
+		fail(w, r, 409, "宿主仍有关联云环境或未完成升级，请等待清理或升级完成")
 		return
 	}
 	if err := q.ExpireUpgrade(r.Context(), id); err != nil {

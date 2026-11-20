@@ -202,6 +202,40 @@ export function PaidLicenseCard({ className }: { className?: string }) {
           </p>
         )}
         <ItemGroup>
+          {info !== null && (
+            <>
+              <Item variant="outline">
+                <ItemContent>
+                  <ItemTitle>
+                    {t("licenseCapabilities.cloudComputer")}
+                  </ItemTitle>
+                  <ItemDescription>
+                    {t(
+                      info.state === "valid" &&
+                        info.allow_cloud_computer === true
+                        ? "licenseCapabilities.granted"
+                        : "licenseCapabilities.notGranted"
+                    )}
+                  </ItemDescription>
+                </ItemContent>
+              </Item>
+              <Item variant="outline">
+                <ItemContent>
+                  <ItemTitle>
+                    {t("licenseCapabilities.customBranding")}
+                  </ItemTitle>
+                  <ItemDescription>
+                    {t(
+                      info.state === "valid" &&
+                        info.allow_custom_branding === true
+                        ? "licenseCapabilities.granted"
+                        : "licenseCapabilities.notGranted"
+                    )}
+                  </ItemDescription>
+                </ItemContent>
+              </Item>
+            </>
+          )}
           {info !== null && info.state !== "missing" && (
             <>
               <Item variant="outline">
@@ -255,7 +289,7 @@ export function PaidLicenseCard({ className }: { className?: string }) {
           <Item variant="outline">
             <ItemContent className="min-w-0">
               <ItemTitle>{t("pages.license.machineTitle")}</ItemTitle>
-              <ItemDescription className="line-clamp-none font-mono break-all">
+              <ItemDescription className="line-clamp-none break-all font-mono">
                 <bdi dir="ltr">{machineCode || "—"}</bdi>
               </ItemDescription>
             </ItemContent>

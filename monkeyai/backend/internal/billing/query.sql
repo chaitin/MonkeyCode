@@ -106,13 +106,7 @@ ORDER BY
     u.id;
 
 -- name: WorkspaceName :one
-SELECT
-    COALESCE((
-        SELECT
-            NULLIF (value ->> 'workspace_name', '')
-        FROM settings
-        WHERE
-            KEY = 'branding'), 'Monkey AI')::text;
+SELECT 'Monkey AI'::text;
 
 -- name: SetRootQuota :execresult
 UPDATE
