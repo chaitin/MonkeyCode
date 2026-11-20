@@ -74,6 +74,7 @@ type Runtime struct {
 type Spec struct {
 	bootstrapPackage    *RuntimePackage
 	RuntimePackage      *RuntimePackage `json:"runtime_package,omitempty"`
+	SandboxRoot         bool            `json:"sandbox_root,omitempty"`
 	PersistentContainer bool            `json:"persistent_container,omitempty"`
 	Runtime             *Runtime        `json:"runtime,omitempty"`
 	EnvironmentID       string          `json:"environment_id"`

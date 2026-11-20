@@ -56,7 +56,7 @@ func TestEnvironmentRuntimeClientAPI(t *testing.T) {
 	foreign := token(other, []string{"environment:read", "environment:manage"})
 	identities := identity.NewService(pool, nil, "https://server.example")
 	service := environment.NewService(pool).WithImages(clientEnvironmentImages{}).WithRuntime("https://server.example", resource.ID(), identities).WithRuntimeCatalog(clientRuntimeCatalog{})
-	if _, err := pool.Exec(t.Context(), `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,exchange_protocol,environment_synced_at,report) VALUES($1,$2,'runtime宿主','amd64','v2','active',now(),1,now()-interval '30 seconds','{"prerequisites_met":true,"runtime_protocol":1,"environment_protocol":2,"runtime_update_protocol":1,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, user); err != nil {
+	if _, err := pool.Exec(t.Context(), `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,exchange_protocol,environment_synced_at,report) VALUES($1,$2,'runtime宿主','amd64','v2','active',now(),1,now()-interval '30 seconds','{"prerequisites_met":true,"sandbox_root":true,"runtime_protocol":1,"environment_protocol":2,"runtime_update_protocol":1,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, user); err != nil {
 		t.Fatal(err)
 	}
 	query := sqlc.New(pool)

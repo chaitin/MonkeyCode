@@ -13,6 +13,8 @@
 | `/usr/bin/tini` | PID 1，负责回收孤儿进程 |
 | `/bin/sleep` | 支持 `infinity` 的驻留进程 |
 
+新建 `sandbox_root` 持久环境不采用旧版的只读系统层和 UID 1000：runtime exec 与已核验的容器使用相同的 root 身份，宿主托管的 runtime 父卷只读，状态目录和维护锁可写。旧规格保持原行为。
+
 镜像根只读；程序和动态库必须允许 UID/GID 1000 执行。托管规格忽略镜像 Entrypoint/Cmd，固定运行 `tini -g -- /bin/sleep infinity`，并使用固定的 PATH、HOME、USER、LOGNAME、LANG，不继承镜像的身份及执行环境变量。整个固定摘要镜像是这组程序的发行边界，不支持用户替换其中程序或在启动时下载浮动版本。
 
 runtime 卷挂载在 `/var/lib/monkeyai`，实际传入 `--state-dir /var/lib/monkeyai/state`。现有 runtime 在 state-dir 的父目录创建维护锁，所以父目录也必须位于可写持久卷内；不能直接把只读 `/var/lib` 当作维护锁目录。项目与用户目录分别为 `/workspace`、`/home/monkey`。

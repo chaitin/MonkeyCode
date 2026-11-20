@@ -138,18 +138,23 @@ func (s *Service) CreateOnHost(ctx context.Context, user, requestedHost string, 
 		}
 		id := resource.ID()
 		spec := profile.Spec(id)
+		spec.SandboxRoot = true
 		host, err := q.HostStatus(ctx, hostID)
 		if err != nil {
 			return err
 		}
 		var capabilities struct {
-			EnvironmentProtocol int `json:"environment_protocol"`
-			RuntimeProtocol     int `json:"runtime_update_protocol"`
+			SandboxRoot         bool `json:"sandbox_root"`
+			EnvironmentProtocol int  `json:"environment_protocol"`
+			RuntimeProtocol     int  `json:"runtime_update_protocol"`
 		}
 		if err := json.Unmarshal(host.Report, &capabilities); err != nil {
 			return err
 		}
 		spec.PersistentContainer = capabilities.EnvironmentProtocol >= 2 && capabilities.EnvironmentProtocol <= 3
+		if !capabilities.SandboxRoot || !spec.PersistentContainer {
+			return conflict("host_unavailable", "宿主尚不支持受限 root 环境")
+		}
 		if s.runtime != nil {
 			if profile.NetworkPolicy != "public-only" {
 				return conflict("runtime_network_required", "云环境需要 public-only 网络访问后台")
@@ -260,11 +265,15 @@ func (s *Service) Change(ctx context.Context, user *string, id, desired string, 
 			}
 			var report struct {
 				Ready               bool     `json:"prerequisites_met"`
+				SandboxRoot         bool     `json:"sandbox_root"`
 				EnvironmentProtocol int      `json:"environment_protocol"`
 				RuntimeProtocol     int      `json:"runtime_protocol"`
 				NetworkPolicies     []string `json:"network_policies"`
 			}
 			json.Unmarshal(status.Report, &report)
+			if spec.SandboxRoot && !report.SandboxRoot {
+				return conflict("host_unavailable", "宿主不再支持受限 root 环境")
+			}
 			if host.Protocol != 1 || host.SyncAt == nil || time.Since(*host.SyncAt) > 90*time.Second || status.Status != "active" || status.LastSeenAt == nil || time.Since(*status.LastSeenAt) > 90*time.Second || !report.Ready || (spec.PersistentContainer && (report.EnvironmentProtocol < 2 || report.EnvironmentProtocol > 3)) || (imageTag.MatchString(spec.Image) && report.EnvironmentProtocol != 3) || (spec.Runtime != nil && report.RuntimeProtocol != 1) || (spec.NetworkPolicy != "isolated" && !slices.Contains(report.NetworkPolicies, spec.NetworkPolicy)) {
 				return conflict("host_unavailable", "原宿主尚不可用；不会自动迁移持久目录")
 			}

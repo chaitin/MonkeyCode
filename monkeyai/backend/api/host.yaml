@@ -171,6 +171,7 @@ paths:
                     environment_protocol: {type: integer, enum: [0, 2, 3], description: 2 支持保留容器及旧摘要引用；3 进一步支持可读版本tag并独立校验image_digest。}
                     runtime_update_protocol: {type: integer, enum: [0, 1, 2], description: 1 支持旧四文件资源包；2 支持官方单文件及宿主本地准备内嵌引擎。}
                     runtime_protocol: {type: integer, enum: [0, 1], description: standalone 编排能力版本，缺省为 0}
+                    sandbox_root: {type: boolean, default: false, description: 支持受限 root 与只读管理目录。}
                     prerequisites_met: {type: boolean}
                     at: {type: string, format: date-time}
                     system: {$ref: '#/components/schemas/HostSystem'}
@@ -408,6 +409,7 @@ components:
       - volumes
       - network_policy
       properties:
+        sandbox_root: {type: boolean, default: false, description: 受限 gVisor 持久环境的执行身份为 root，不启用特权模式。}
         persistent_container:
           type: boolean
           default: false

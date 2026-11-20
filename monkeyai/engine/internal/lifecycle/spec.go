@@ -44,6 +44,7 @@ type Runtime struct {
 }
 type Spec struct {
 	RuntimePackage      *RuntimePackage `json:"runtime_package,omitempty"`
+	SandboxRoot         bool            `json:"sandbox_root,omitempty"`
 	PersistentContainer bool            `json:"persistent_container,omitempty"`
 	Runtime             *Runtime        `json:"runtime,omitempty"`
 	EnvironmentID       string          `json:"environment_id"`
@@ -93,6 +94,9 @@ func (s Spec) DigestReference() string {
 	return s.Image[:index] + "@" + s.ImageDigest
 }
 func (s Spec) Validate() error {
+	if s.SandboxRoot && !s.PersistentContainer {
+		return errors.New("沙箱 root 需要持久容器")
+	}
 	if s.RuntimePackage != nil {
 		if s.Runtime == nil || !s.PersistentContainer {
 			return errors.New("runtime 更新需要持久容器及 standalone 配置")

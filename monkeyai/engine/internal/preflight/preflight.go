@@ -59,6 +59,7 @@ type Report struct {
 	OS                    string    `json:"os"`
 	Architecture          string    `json:"architecture"`
 	Prerequisites         bool      `json:"prerequisites_met"`
+	SandboxRoot           bool      `json:"sandbox_root,omitempty"`
 	EnvironmentProtocol   int       `json:"environment_protocol,omitempty"`
 	RuntimeUpdateProtocol int       `json:"runtime_update_protocol,omitempty"`
 	RuntimeProtocol       int       `json:"runtime_protocol,omitempty"`

@@ -83,6 +83,7 @@ func testDockerLifecycle(t *testing.T, policy string, persistent, tagged bool) {
 		s.Image = "registry.example/environments/monkeyai-environment:runtime-26.1105.2"
 	}
 	s.PersistentContainer = persistent
+	s.SandboxRoot = persistent && tagged
 	s.NetworkPolicy = policy
 	if policy == "public-only" {
 		s.Runtime = &lifecycle.Runtime{Server: "https://example.com", ServerID: "server", UserID: "user"}
@@ -96,6 +97,7 @@ if [ "$1" = -j ]; then echo '{"nftables":[]}'; else cat >/dev/null; fi
 	var current *container
 	network := true
 	creates := 0
+	runtimeAvailable := true
 	var image imageInfo
 	image.ID = "sha256:" + strings.Repeat("b", 64)
 	image.Os = "linux"
@@ -112,6 +114,12 @@ if [ "$1" = -j ]; then echo '{"nftables":[]}'; else cat >/dev/null; fi
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimPrefix(r.URL.Path, "/v1.47")
 		switch {
+		case p == "/info":
+			if !runtimeAvailable {
+				io.WriteString(w, "{}")
+				return
+			}
+			io.WriteString(w, `{"OSType":"linux","CgroupVersion":"2","MemoryLimit":true,"SwapLimit":true,"CPUCfsQuota":true,"PidsLimit":true,"Runtimes":{"monkeyai-runsc":{"Path":"/opt/monkeyai-engine/current/bin/runsc","runtimeArgs":["--platform=systrap","--network=sandbox","--overlay2=none"]}}}`)
 		case strings.HasPrefix(p, "/networks/"):
 			if !network {
 				w.WriteHeader(404)
@@ -200,6 +208,29 @@ if [ "$1" = -j ]; then echo '{"nftables":[]}'; else cat >/dev/null; fi
 		t.Fatal(err)
 	}
 	current.State.Running = true
+	if s.SandboxRoot {
+		if current.Config.User != "0:0" || current.HostConfig.Runtime != dockerapi.Runtime || current.HostConfig.ReadonlyRootfs || len(current.HostConfig.CapAdd) != 0 || !equivalent(current.HostConfig.CapDrop, []string{"ALL"}) || !equivalent(current.HostConfig.SecurityOpt, []string{"no-new-privileges:true"}) {
+			t.Fatal("沙箱 root 身份或隔离设置不符")
+		}
+		found := false
+		for i, m := range current.Mounts {
+			if m.Destination != "/var/lib/monkeyai" {
+				continue
+			}
+			if m.RW {
+				t.Fatal("runtime 管理目录可写")
+			}
+			found = true
+			current.Mounts[i].RW = true
+			if _, err := d.Inspect(ctx, s, ref); err == nil {
+				t.Fatal("接管了管理目录可写的容器")
+			}
+			current.Mounts[i].RW = false
+		}
+		if !found {
+			t.Fatal("runtime 管理目录未受保护")
+		}
+	}
 	u, err := d.Usage(ctx, s, ref)
 	if err != nil || u == nil || u.MemoryBytes == nil || *u.MemoryBytes != 896 {
 		t.Fatal("Docker 采集失败", u, err)
@@ -242,6 +273,13 @@ if [ "$1" = -j ]; then echo '{"nftables":[]}'; else cat >/dev/null; fi
 		t.Fatal("接受特权容器")
 	}
 	current.HostConfig.Privileged = false
+	if s.SandboxRoot {
+		runtimeAvailable = false
+		if err := d.Start(ctx, s, ref); err == nil {
+			t.Fatal("运行时不可用仍允许启动 root 环境")
+		}
+		runtimeAvailable = true
+	}
 	if err = d.Start(ctx, s, ref); err != nil {
 		t.Fatal(err)
 	}

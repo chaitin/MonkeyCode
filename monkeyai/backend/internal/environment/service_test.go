@@ -72,7 +72,7 @@ func fixture(t *testing.T) (*Service, string, string) {
 	if _, err := db.Exec(t.Context(), "INSERT INTO users(id,name,email) VALUES($1::uuid,'环境测试',$1::text || '@example.com')", user); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(t.Context(), `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,report) VALUES($1::uuid,$2,'test','amd64','v1','active',now(),'{"prerequisites_met":true,"environment_protocol":2,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, user); err != nil {
+	if _, err := db.Exec(t.Context(), `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,report) VALUES($1::uuid,$2,'test','amd64','v1','active',now(),'{"prerequisites_met":true,"sandbox_root":true,"environment_protocol":2,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, user); err != nil {
 		t.Fatal(err)
 	}
 	q := sqlc.New(db)
@@ -402,7 +402,7 @@ func TestNetworkCapabilityRequiredForCreateAndRestart(t *testing.T) {
 	creation := Creation{testSpecification(), "联网项目", "network-create"}
 	setReport := func(report string) {
 		t.Helper()
-		if _, err := s.pool.Exec(t.Context(), `UPDATE hosts SET report=$2::jsonb || jsonb_build_object('environment_protocol',2,'system',report->'system') WHERE id=$1`, host, report); err != nil {
+		if _, err := s.pool.Exec(t.Context(), `UPDATE hosts SET report=$2::jsonb || jsonb_build_object('environment_protocol',2,'sandbox_root',true,'system',report->'system') WHERE id=$1`, host, report); err != nil {
 			t.Fatal(err)
 		}
 	}

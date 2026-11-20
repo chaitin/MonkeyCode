@@ -85,6 +85,7 @@ func TestPersistentDockerRuntimeIntegration(t *testing.T) {
 	spec.InstanceID = fmt.Sprintf("container-%d", time.Now().UnixNano())
 	spec.Image, spec.ImageDigest = image, image[len(image)-71:]
 	spec.PersistentContainer, spec.NetworkPolicy = true, "public-only"
+	spec.SandboxRoot = true
 	spec.Runtime = &lifecycle.Runtime{Server: "https://example.com", ServerID: "server", UserID: "user"}
 	store := lifecycle.FileStore{Root: filepath.Join(root, "states")}
 	coordinator, _ := lifecycle.NewCoordinator(store, driver)
@@ -103,7 +104,14 @@ func TestPersistentDockerRuntimeIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := container.ID
-	if output, err := exec.Command("docker", "exec", "--user", "0", original, "sh", "-c", "printf preserved > /etc/monkeyai-persistence-check").CombinedOutput(); err != nil {
+	if output, err := exec.Command("docker", "exec", original, "sh", "-ec", `
+test "$(id -u):$(id -g)" = 0:0
+test "$USER" = root
+touch /workspace/probe "$HOME/probe" /var/lib/monkeyai/state/probe
+test ! -w /var/lib/monkeyai
+test -w /var/lib/monkeyai/state.maintenance.lock
+test ! -S /var/run/docker.sock
+printf preserved > /etc/monkeyai-persistence-check`).CombinedOutput(); err != nil {
 		t.Fatal(err, string(output))
 	}
 	_ = exec.Command("docker", "exec", original, standalone.Binary, "login", "--device-code", "--state-dir", standalone.StateDir, "--server", "https://127.0.0.1:1").Run()
