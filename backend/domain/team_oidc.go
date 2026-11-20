@@ -81,7 +81,8 @@ type TeamOIDCPublicConfigResp struct {
 }
 
 type TeamOIDCLoginReq struct {
-	TeamID uuid.UUID `query:"team_id" validate:"required"`
+	TeamID      uuid.UUID `query:"team_id" validate:"required"`
+	RedirectURL string    `query:"redirect_url"`
 }
 
 type TeamOIDCCallbackReq struct {
