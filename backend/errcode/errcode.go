@@ -23,15 +23,16 @@ var (
 // 业务层面的错误
 var (
 	// 通用的错误
-	ErrInternalServer    = web.NewErr(http.StatusOK, 10000, "err-internal-server")
-	ErrPermision         = web.NewErr(http.StatusOK, 10001, "err-permision-denied")
-	ErrNotFound          = web.NewErr(http.StatusOK, 10002, "err-not-found")
-	ErrDuplicate         = web.NewErr(http.StatusOK, 10003, "err-duplicate")
-	ErrDatabaseQuery     = web.NewErr(http.StatusOK, 10004, "err-database-query")
-	ErrDatabaseOperation = web.NewErr(http.StatusOK, 10005, "err-database-operation-failed")
-	ErrHTTPRequest       = web.NewErr(http.StatusOK, 10006, "err-http-request-failed")
-	ErrHasInvalidEntry   = web.NewErr(http.StatusOK, 10007, "err-has-invalid-entry")
-	ErrStreamDisconnect  = web.NewErr(http.StatusOK, 10008, "err-stream-disconnect")
+	ErrInternalServer        = web.NewErr(http.StatusOK, 10000, "err-internal-server")
+	ErrPermision             = web.NewErr(http.StatusOK, 10001, "err-permision-denied")
+	ErrNotFound              = web.NewErr(http.StatusOK, 10002, "err-not-found")
+	ErrDuplicate             = web.NewErr(http.StatusOK, 10003, "err-duplicate")
+	ErrDatabaseQuery         = web.NewErr(http.StatusOK, 10004, "err-database-query")
+	ErrDatabaseOperation     = web.NewErr(http.StatusOK, 10005, "err-database-operation-failed")
+	ErrHTTPRequest           = web.NewErr(http.StatusOK, 10006, "err-http-request-failed")
+	ErrHasInvalidEntry       = web.NewErr(http.StatusOK, 10007, "err-has-invalid-entry")
+	ErrStreamDisconnect      = web.NewErr(http.StatusOK, 10008, "err-stream-disconnect")
+	ErrEndpointLimitExceeded = web.NewErr(http.StatusOK, 10009, "err-endpoint-limit-exceeded")
 
 	// 业务模块特有的 错误码
 

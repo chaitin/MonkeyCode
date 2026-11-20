@@ -73,6 +73,8 @@ const (
 	EdgeGitBots = "git_bots"
 	// EdgeMcpUpstreams holds the string denoting the mcp_upstreams edge name in mutations.
 	EdgeMcpUpstreams = "mcp_upstreams"
+	// EdgeEndpoints holds the string denoting the endpoints edge name in mutations.
+	EdgeEndpoints = "endpoints"
 	// EdgeTeamMembers holds the string denoting the team_members edge name in mutations.
 	EdgeTeamMembers = "team_members"
 	// EdgeTeamGroupMembers holds the string denoting the team_group_members edge name in mutations.
@@ -201,6 +203,13 @@ const (
 	McpUpstreamsInverseTable = "mcp_upstreams"
 	// McpUpstreamsColumn is the table column denoting the mcp_upstreams relation/edge.
 	McpUpstreamsColumn = "user_id"
+	// EndpointsTable is the table that holds the endpoints relation/edge.
+	EndpointsTable = "endpoints"
+	// EndpointsInverseTable is the table name for the Endpoint entity.
+	// It exists in this package in order to avoid circular dependency with the "endpoint" package.
+	EndpointsInverseTable = "endpoints"
+	// EndpointsColumn is the table column denoting the endpoints relation/edge.
+	EndpointsColumn = "user_id"
 	// TeamMembersTable is the table that holds the team_members relation/edge.
 	TeamMembersTable = "team_members"
 	// TeamMembersInverseTable is the table name for the TeamMember entity.
@@ -592,6 +601,20 @@ func ByMcpUpstreams(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByEndpointsCount orders the results by endpoints count.
+func ByEndpointsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newEndpointsStep(), opts...)
+	}
+}
+
+// ByEndpoints orders the results by endpoints terms.
+func ByEndpoints(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newEndpointsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamMembersCount orders the results by team_members count.
 func ByTeamMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -757,6 +780,13 @@ func newMcpUpstreamsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(McpUpstreamsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, McpUpstreamsTable, McpUpstreamsColumn),
+	)
+}
+func newEndpointsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(EndpointsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, EndpointsTable, EndpointsColumn),
 	)
 }
 func newTeamMembersStep() *sqlgraph.Step {
