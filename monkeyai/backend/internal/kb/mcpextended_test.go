@@ -23,7 +23,6 @@ func TestMCPExtendedArguments(t *testing.T) {
 		{"kb_get", resource.Object{"kb_id": 1}},
 		{"kb_list_tags", resource.Object{"owner": "all"}},
 		{"kb_list_permissions", resource.Object{}},
-		{"kb_list_chunks", resource.Object{"kb_id": resource.ID()}},
 		{"kb_get_image", resource.Object{}},
 		{"kb_get_image", resource.Object{"kb_id": resource.ID(), "name": "../../other.png"}},
 		{"kb_update", resource.Object{"kb_id": resource.ID(), "name": "new", "ownership_type": "system"}},
@@ -215,12 +214,7 @@ func TestMCPExtendedKnowledgeBaseTools(t *testing.T) {
 	docID := doc.String("id")
 	exec(`INSERT INTO knowledge_base_chunks(kb_id,document_id,chunk_index,content) VALUES($1,$2,0,'MCP chunk')`, id, docID)
 	docArgs := resource.Object{"kb_id": id, "document_id": docID}
-	chunks := structured(call(reader, "kb_list_chunks", docArgs, 0))["items"].([]any)
-	if len(chunks) != 1 || chunks[0].(map[string]any)["content"] != "MCP chunk" {
-		t.Fatalf("chunks: %v", chunks)
-	}
-	call(outsider, "kb_list_chunks", docArgs, 404)
-	for _, tool := range []string{"kb_list_chunks", "kb_move_document", "kb_restudy_document"} {
+	for _, tool := range []string{"kb_move_document", "kb_restudy_document"} {
 		call(owner, tool, resource.Object{"kb_id": foreign, "document_id": docID}, 404)
 	}
 	call(reader, "kb_move_document", docArgs, 403)
@@ -245,10 +239,10 @@ func TestMCPExtendedKnowledgeBaseTools(t *testing.T) {
 	// Revocation and disabling must apply to every subsequent MCP read and write.
 	exec(`DELETE FROM resource_access_grants WHERE resource_id=$1 AND user_id=$2`, id, editor)
 	call(editor, "kb_restudy_document", docArgs, 404)
-	call(editor, "kb_list_chunks", docArgs, 404)
+	call(editor, "kb_read_document", docArgs, 404)
 	exec(`UPDATE knowledge_bases SET enabled=false WHERE id=$1`, id)
 	call(owner, "kb_get", resource.Object{"kb_id": id}, 404)
-	call(reader, "kb_list_chunks", docArgs, 404)
+	call(reader, "kb_read_document", docArgs, 404)
 	call(owner, "kb_get_image", resource.Object{"kb_id": id, "name": upload.String("name")}, 404)
 	call(owner, "kb_move_document", docArgs, 404)
 	call(owner, "kb_restudy_document", docArgs, 404)

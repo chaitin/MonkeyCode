@@ -127,7 +127,19 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 	}
 	var payload any
 	switch call.Name {
-	case "kb_get", "kb_list_tags", "kb_list_permissions", "kb_list_chunks":
+	case "kb_edit_document":
+		item, err := s.editMCPDocument(ctx, userID, call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		payload = item
+	case "kb_read_document":
+		item, err := s.readMCPDocument(ctx, userID, call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		payload = item
+	case "kb_get", "kb_list_tags", "kb_list_permissions":
 		item, err := s.readMCPKnowledgeBase(ctx, userID, call.Name, call.Arguments)
 		if err != nil {
 			return nil, err
@@ -363,134 +375,6 @@ func mcpTagIDs(values ...string) []string {
 	return out
 }
 
-// MCPTools 返回知识库 MCP 暴露的工具目录，供 MCP 端点和 Agent 资源目录共同使用。
-func MCPTools() []resource.Object {
-	return append([]resource.Object{
-		{
-			"name":        "kb_upload_image",
-			"description": "上传知识库正文图片，要求知识库启用且调用者有正文读写权限。data_base64 为标准 Base64（无 data URL 前缀），原图最多 32 MiB、2500 万像素，支持 PNG/JPEG/GIF/WebP。返回 name、url、mime_type、size_bytes、markdown；将 markdown 写入文档正文后通过文档工具保存，上传本身不修改文档。",
-			"inputSchema": resource.Object{
-				"type": "object",
-				"properties": resource.Object{
-					"kb_id":       resource.Object{"type": "string", "format": "uuid"},
-					"data_base64": resource.Object{"type": "string", "minLength": 1, "maxLength": mcpImageBase64Limit, "description": "图片原始字节的标准 Base64 编码，不包含 data URL 前缀"},
-				},
-				"required":             []string{"kb_id", "data_base64"},
-				"additionalProperties": false,
-			},
-		},
-		{
-			"name":        "kb_create",
-			"description": "创建归当前调用者所有的个人知识库，返回知识库 id；可随后通过 kb_create_document 添加文档。不支持创建系统知识库或指定其他所有者。",
-			"inputSchema": resource.Object{
-				"type": "object",
-				"properties": resource.Object{
-					"name":        resource.Object{"type": "string", "minLength": 1, "description": "知识库名称，不超过 200 字节"},
-					"description": resource.Object{"type": "string", "description": "知识库说明，可省略"},
-				},
-				"required":             []string{"name"},
-				"additionalProperties": false,
-			},
-		},
-		{
-			"name":        "kb_list",
-			"description": "列出当前用户可访问且已启用的知识库，支持 owner、q、标签和分页，返回与 REST GET /api/v1/kb 一致的 knowledge_bases DTO",
-			"inputSchema": resource.Object{
-				"type": "object",
-				"properties": resource.Object{
-					"q":         resource.Object{"type": "string", "description": "按名称或描述做不区分大小写的包含匹配"},
-					"owner":     resource.Object{"type": "string", "enum": []string{"all", "team", "mine", "shared"}, "default": "all", "description": "team 为系统知识库，mine 为本人创建，shared 为他人分享"},
-					"tag_id":    resource.Object{"type": "string", "format": "uuid", "description": "按单个标签过滤，支持逗号分隔多个标签"},
-					"tag_ids":   resource.Object{"type": "array", "items": resource.Object{"type": "string", "format": "uuid"}, "description": "按多个标签过滤"},
-					"page":      resource.Object{"type": "integer", "minimum": 1, "maximum": documentMaxPage, "default": 1},
-					"page_size": resource.Object{"type": "integer", "minimum": 1, "maximum": documentMaxPageSize, "default": documentDefaultPageSize},
-				},
-			},
-		},
-		{
-			"name":        "kb_list_documents",
-			"description": "分页列出当前用户有权限的知识库（系统或个人）下的文档元数据，可按标题或文件名搜索，并按学习状态和来源类型筛选；不返回正文，无权知识库返回 kb_not_found",
-			"inputSchema": resource.Object{
-				"type": "object",
-				"properties": resource.Object{
-					"kb_id":       resource.Object{"type": "string", "format": "uuid"},
-					"q":           resource.Object{"type": "string", "description": "按文档标题或文件名做不区分大小写的包含匹配"},
-					"status":      resource.Object{"type": "string", "enum": documentStatuses, "description": "文档学习状态"},
-					"source_type": resource.Object{"type": "string", "enum": documentSourceTypes, "description": "文档来源类型"},
-					"page":        resource.Object{"type": "integer", "minimum": 1, "maximum": documentMaxPage, "default": 1},
-					"page_size":   resource.Object{"type": "integer", "minimum": 1, "maximum": documentMaxPageSize, "default": documentDefaultPageSize},
-				},
-				"required": []string{"kb_id"},
-			},
-		},
-		{
-			"name":        "kb_get_document",
-			"description": "读取当前用户有权限的知识库（系统或个人）文档元数据，可选返回正文；无权文档返回 kb_not_found",
-			"inputSchema": resource.Object{
-				"type": "object",
-				"properties": resource.Object{
-					"kb_id":           resource.Object{"type": "string", "format": "uuid"},
-					"document_id":     resource.Object{"type": "string", "format": "uuid"},
-					"include_content": resource.Object{"type": "boolean", "default": false},
-				},
-				"required": []string{"kb_id", "document_id"},
-			},
-		},
-		{
-			"name":        "kb_create_folder",
-			"description": "在启用且具有正文读写权限的知识库中创建文件夹。kb_id、title 必填，parent_id 可指定同库父文件夹，省略、null 或空字符串表示根目录。返回文件夹 id、parent_id、node_type 和 revision；文件夹不进入学习队列。",
-			"inputSchema": mcpObjectSchema(resource.Object{
-				"kb_id":     mcpIDSchema(),
-				"title":     resource.Object{"type": "string", "minLength": 1},
-				"parent_id": mcpCreateParentSchema(),
-			}, "kb_id", "title"),
-		},
-		{
-			"name":        "kb_create_document",
-			"description": "仅当知识库为当前用户拥有或具有读写权限的知识库时创建文档，并进入学习队列。parent_id 可指定同库父文件夹，省略、null 或空字符串表示根目录。",
-			"inputSchema": resource.Object{
-				"type":                 "object",
-				"properties":           mcpCreateDocumentProperties(),
-				"required":             []string{"kb_id", "title", "content"},
-				"additionalProperties": false,
-			},
-		},
-		{
-			"name":        "kb_update_document",
-			"description": "更新当前用户拥有或具有读写权限的知识库下的文档，并重新进入学习队列；只读用户不可写入；协作更新和删除须先读取文档并提供 expected_revision",
-			"inputSchema": resource.Object{
-				"type":                 "object",
-				"properties":           mcpUpdateDocumentProperties(),
-				"required":             []string{"kb_id", "document_id"},
-				"additionalProperties": false,
-			},
-		},
-		{
-			"name":        "kb_delete_document",
-			"description": "删除知识库文档或文件夹并取消活跃学习任务；支持 ids 数组（最多 200 项），返回 succeeded/failed，协作调用提供 expected_revisions；兼容 document_id 和 expected_revision。只读用户不可写入。",
-			"inputSchema": mcpDocumentOperationSchema(resource.Object{
-				"kb_id": mcpIDSchema(), "document_id": mcpIDSchema(),
-				"expected_revision":  resource.Object{"type": "integer", "minimum": 1},
-				"expected_revisions": resource.Object{"type": "object", "additionalProperties": resource.Object{"type": "integer", "minimum": 1}},
-			}),
-		},
-		{
-			"name":        "kb_search",
-			"description": "在可访问知识库中检索；绑定可用向量模型的知识库自动执行 lexical+vector 混合检索，否则仅执行 lexical",
-			"inputSchema": resource.Object{
-				"type": "object",
-				"properties": resource.Object{
-					"query":   resource.Object{"type": "string", "description": "检索问题"},
-					"kb_ids":  resource.Object{"type": "array", "items": resource.Object{"type": "string", "format": "uuid"}},
-					"top_k":   resource.Object{"type": "integer", "minimum": 1, "maximum": 20, "default": 8},
-					"filters": resource.Object{"type": "object", "additionalProperties": true},
-				},
-				"required": []string{"query"},
-			},
-		},
-	}, additionalMCPTools()...)
-}
-
 func mcpRequiredString(arguments map[string]any, key string) (string, error) {
 	value, _ := arguments[key].(string)
 	value = strings.TrimSpace(value)
@@ -548,28 +432,6 @@ func mcpDocumentUpdateProvided(arguments map[string]any) bool {
 		}
 	}
 	return false
-}
-
-func mcpDocumentProperties(includeKB bool) resource.Object {
-	properties := resource.Object{
-		"title":       resource.Object{"type": "string", "minLength": 1},
-		"source_type": resource.Object{"type": "string", "enum": []string{"text", "file"}},
-		"content":     resource.Object{"type": "string"},
-		"file_name":   resource.Object{"type": "string"},
-		"mime_type":   resource.Object{"type": "string"},
-		"size_bytes":  resource.Object{"type": "integer", "minimum": 0},
-	}
-	if includeKB {
-		properties["kb_id"] = resource.Object{"type": "string", "format": "uuid"}
-	}
-	return properties
-}
-
-func mcpUpdateDocumentProperties() resource.Object {
-	properties := mcpDocumentProperties(true)
-	properties["document_id"] = resource.Object{"type": "string", "format": "uuid"}
-	properties["expected_revision"] = resource.Object{"type": "integer", "minimum": 1}
-	return properties
 }
 
 func supportedKBProtocolVersion(version string) bool {
