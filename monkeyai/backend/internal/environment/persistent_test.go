@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func TestSandboxRootNeedsCapableHost(t *testing.T) {
+	s, user, host := fixture(t)
+	if _, err := s.pool.Exec(t.Context(), "UPDATE hosts SET report=report-'sandbox_root' WHERE id=$1", host); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(t.Context(), user, Creation{SpecificationSelection: testSpecification(), Name: "受限环境", RequestKey: "root-host"}); err == nil {
+		t.Fatal("将 root 环境调度到旧宿主")
+	}
+}
+
 func TestPersistentContainerRestartKeepsInstance(t *testing.T) {
 	service, user, host := fixture(t)
 	if _, err := service.pool.Exec(t.Context(), `UPDATE hosts SET report=report || '{"environment_protocol":2}'::jsonb WHERE id=$1`, host); err != nil {
@@ -15,7 +25,7 @@ func TestPersistentContainerRestartKeepsInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	var spec Spec
-	if err := json.Unmarshal(created.Environment.Spec, &spec); err != nil || !spec.PersistentContainer {
+	if err := json.Unmarshal(created.Environment.Spec, &spec); err != nil || !spec.PersistentContainer || !spec.SandboxRoot {
 		t.Fatal("新版宿主未启用容器持久化", spec, err)
 	}
 	syncState(t, service, host, observe(created.Environment, "running"))
@@ -36,7 +46,7 @@ func TestLegacyContainerCanEnterPersistentStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.pool.Exec(t.Context(), "UPDATE environments SET spec=spec-'persistent_container' WHERE id=$1", created.Environment.ID); err != nil {
+	if _, err := service.pool.Exec(t.Context(), "UPDATE environments SET spec=spec-'persistent_container'-'sandbox_root' WHERE id=$1", created.Environment.ID); err != nil {
 		t.Fatal(err)
 	}
 	syncState(t, service, host, observe(created.Environment, "running"))
@@ -48,7 +58,7 @@ func TestLegacyContainerCanEnterPersistentStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	var spec Spec
-	if err := json.Unmarshal(stopped.Environment.Spec, &spec); err != nil || !spec.PersistentContainer || stopped.Environment.InstanceID != created.Environment.InstanceID {
+	if err := json.Unmarshal(stopped.Environment.Spec, &spec); err != nil || !spec.PersistentContainer || spec.SandboxRoot || stopped.Environment.InstanceID != created.Environment.InstanceID {
 		t.Fatal("旧容器未以原身份进入持久停止", spec, err)
 	}
 }

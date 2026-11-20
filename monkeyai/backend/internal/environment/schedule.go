@@ -52,10 +52,11 @@ func (s *Service) schedule(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user
 			continue
 		}
 		var report struct {
-			Protocol        int `json:"environment_protocol"`
-			RuntimeProtocol int `json:"runtime_update_protocol"`
+			SandboxRoot     bool `json:"sandbox_root,omitempty"`
+			Protocol        int  `json:"environment_protocol"`
+			RuntimeProtocol int  `json:"runtime_update_protocol"`
 		}
-		if json.Unmarshal(h.Report, &report) != nil || report.Protocol < 2 || report.Protocol > 3 || imageTag.MatchString(reference) && report.Protocol != 3 {
+		if json.Unmarshal(h.Report, &report) != nil || !report.SandboxRoot || report.Protocol < 2 || report.Protocol > 3 || imageTag.MatchString(reference) && report.Protocol != 3 {
 			continue
 		}
 		if s.runtime != nil && s.runtimeCatalog != nil {

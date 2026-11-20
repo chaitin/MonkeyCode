@@ -144,6 +144,28 @@ func TestInterruptedDirectoryCreationResumes(t *testing.T) {
 	}
 }
 
+func TestRootVolumesCannotChangeIdentity(t *testing.T) {
+	m, s := manager(t), spec()
+	s.SandboxRoot, s.PersistentContainer = true, true
+	mounts, err := m.Ensure(t.Context(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range mounts {
+		if m.Target == "/var/lib/monkeyai" {
+			for _, name := range []string{"state", "state.maintenance.lock"} {
+				if _, err := os.Stat(filepath.Join(m.Source, name)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	s.SandboxRoot = false
+	if _, err = m.Ensure(t.Context(), s); err == nil {
+		t.Fatal("以旧身份接管了 root 卷")
+	}
+}
+
 func TestUnregisteredDirectoryIsNotAdopted(t *testing.T) {
 	m := manager(t)
 	s := spec()

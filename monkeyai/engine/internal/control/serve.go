@@ -92,6 +92,7 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 				report.EngineVersion = version
 				if commands != nil {
 					report.NetworkPolicies = commands.NetworkPolicies(ctx)
+					report.SandboxRoot = report.Prerequisites
 					report.RuntimeProtocol = 1
 					report.RuntimeUpdateProtocol = 2
 				}

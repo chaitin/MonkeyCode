@@ -14,7 +14,7 @@ func prepareRuntime(path string) error {
 	return unix.Fchmod(fd, 0755)
 }
 
-func prepareRuntimeLock(path string) error {
+func prepareRuntimeLock(path string, uid int) error {
 	fd, err := unix.Open(path, unix.O_RDWR|unix.O_CREAT|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
 	if err != nil {
 		return err
@@ -27,19 +27,19 @@ func prepareRuntimeLock(path string) error {
 	if info.Mode&unix.S_IFMT != unix.S_IFREG || info.Size != 0 {
 		return unix.EINVAL
 	}
-	if err := unix.Fchown(fd, 1000, 1000); err != nil {
+	if err := unix.Fchown(fd, uid, uid); err != nil {
 		return err
 	}
 	return unix.Fchmod(fd, 0600)
 }
 
-func prepare(path string) error {
+func prepare(path string, uid int) error {
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(fd)
-	if err := unix.Fchown(fd, 1000, 1000); err != nil {
+	if err := unix.Fchown(fd, uid, uid); err != nil {
 		return err
 	}
 	return unix.Fchmod(fd, 0700)

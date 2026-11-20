@@ -84,7 +84,7 @@ func TestEnvironmentClientAPI(t *testing.T) {
 
 	host := resource.ID()
 	if _, err := db.Exec(ctx, `INSERT INTO hosts(id,user_id,name,architecture,version,status,last_seen_at,exchange_protocol,environment_synced_at,report)
-	 VALUES($1,$2,'测试宿主','amd64','v1','active',now(),1,now(),'{"prerequisites_met":true,"environment_protocol":2,"runtime_protocol":1,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, users[0]); err != nil {
+	 VALUES($1,$2,'测试宿主','amd64','v1','active',now(),1,now(),'{"prerequisites_met":true,"sandbox_root":true,"environment_protocol":2,"runtime_protocol":1,"network_policies":["public-only"],"system":{"cpu":{"logical_cores":8},"memory":{"total_bytes":17179869184}}}')`, host, users[0]); err != nil {
 		t.Fatal(err)
 	}
 	q := sqlc.New(db)

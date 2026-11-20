@@ -10,6 +10,7 @@ type executionConfig struct {
 	Driver              string          `json:"driver"`
 	Image               string          `json:"image"`
 	ImageDigest         string          `json:"image_digest"`
+	SandboxRoot         bool            `json:"sandbox_root,omitempty"`
 	PersistentContainer bool            `json:"persistent_container,omitempty"`
 	HostTasks           int64           `json:"host_tasks"`
 	TemporaryBytes      int64           `json:"temporary_bytes"`
@@ -21,7 +22,7 @@ type executionConfig struct {
 }
 
 func saveSpec(s Spec) []byte {
-	raw, _ := json.Marshal(executionConfig{Driver: s.Driver, Image: s.Image, ImageDigest: s.ImageDigest, PersistentContainer: s.PersistentContainer, HostTasks: s.Resource.HostTasks, TemporaryBytes: s.Resource.TemporaryBytes, Volumes: s.Volumes, NetworkPolicy: s.NetworkPolicy, Runtime: s.Runtime, RuntimePackage: s.RuntimePackage, BootstrapPackage: s.bootstrapPackage})
+	raw, _ := json.Marshal(executionConfig{Driver: s.Driver, Image: s.Image, ImageDigest: s.ImageDigest, SandboxRoot: s.SandboxRoot, PersistentContainer: s.PersistentContainer, HostTasks: s.Resource.HostTasks, TemporaryBytes: s.Resource.TemporaryBytes, Volumes: s.Volumes, NetworkPolicy: s.NetworkPolicy, Runtime: s.Runtime, RuntimePackage: s.RuntimePackage, BootstrapPackage: s.bootstrapPackage})
 	return raw
 }
 func executionSpec(e sqlc.Environment) (Spec, error) {
@@ -29,7 +30,7 @@ func executionSpec(e sqlc.Environment) (Spec, error) {
 	if err := json.Unmarshal(e.Spec, &c); err != nil {
 		return Spec{}, err
 	}
-	return Spec{EnvironmentID: e.ID, InstanceID: e.InstanceID, Generation: e.Generation, DesiredState: e.Desired, Driver: c.Driver, Image: c.Image, ImageDigest: c.ImageDigest, PersistentContainer: c.PersistentContainer, Resource: Resources{CPUMillis: e.CpuMillis, MemoryBytes: e.MemoryBytes, HostTasks: c.HostTasks, TemporaryBytes: c.TemporaryBytes}, Volumes: c.Volumes, NetworkPolicy: c.NetworkPolicy, Runtime: c.Runtime, RuntimePackage: c.RuntimePackage, bootstrapPackage: c.BootstrapPackage}, nil
+	return Spec{EnvironmentID: e.ID, InstanceID: e.InstanceID, Generation: e.Generation, DesiredState: e.Desired, Driver: c.Driver, Image: c.Image, ImageDigest: c.ImageDigest, SandboxRoot: c.SandboxRoot, PersistentContainer: c.PersistentContainer, Resource: Resources{CPUMillis: e.CpuMillis, MemoryBytes: e.MemoryBytes, HostTasks: c.HostTasks, TemporaryBytes: c.TemporaryBytes}, Volumes: c.Volumes, NetworkPolicy: c.NetworkPolicy, Runtime: c.Runtime, RuntimePackage: c.RuntimePackage, bootstrapPackage: c.BootstrapPackage}, nil
 }
 func (s *Spec) stop() {
 	// 停止命令携带 runtime_package 会触发升级；保留启动阶段的包以便补装。
