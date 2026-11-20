@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | `GET /api/v1/environments` | 本人环境列表 | `environment:read` |
 | `GET /api/v1/environment-specifications` | 全局可选规格与版本，不分页 | `environment:read` |
+| `GET /api/v1/system-images` | 已就绪且未下架的系统镜像 | `environment:read` |
 | `GET /api/v1/environment-hosts` | 本人已授权宿主目录 | `environment:read` |
 | `POST /api/v1/environments` | 按所选全局规格创建 | `environment:manage` |
 | `GET /api/v1/environments/{id}` | 当前目标与最近观察结果 | `environment:read` |
@@ -39,9 +40,12 @@
 
 用户选择后调用 `POST /api/v1/environments`：
 
+创建弹窗同时读取系统镜像列表，按 display_name 展示、按 id 提交，优先选择 is_default=true；无默认且只有一项时自动选择，多项时由用户选择，空列表禁用新建。示例中的 image_id 须替换为接口返回的真实 ID。旧客户端省略 image_id 时沿用服务端默认镜像。固定宿主架构不匹配或镜像被移除时，不静默改用默认值。镜像选择参与幂等校验；重选需更换 request_key。
+
 ```json
 {
   "name": "项目 A",
+  "image_id": "85e8e030-e0d3-4e1a-b294-0ff3f690d81e",
   "specification_id": "11111111-1111-4111-8111-111111111111",
   "specification_version": 2,
   "request_key": "create-project-a-1"

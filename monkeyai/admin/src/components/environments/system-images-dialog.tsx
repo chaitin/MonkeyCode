@@ -11,10 +11,7 @@ import {
   Upload,
   X,
 } from "lucide-react"
-import {
-  systemImagesPreview,
-  type SystemImage,
-} from "@/lib/system-images-preview"
+import { systemImages, type SystemImage } from "@/lib/system-images"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -78,7 +75,7 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let active = true
-    systemImagesPreview
+    systemImages
       .list()
       .then((items) => {
         if (active) {
@@ -97,6 +94,30 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
     }
   }, [revision, t])
 
+  const importing = images.some(
+    (item) => item.status === "pending" || item.status === "importing"
+  )
+  useEffect(() => {
+    if (!importing) return
+    const controller = new AbortController()
+    let timer: number
+    async function poll() {
+      let delay = 1000
+      try {
+        const items = await systemImages.list(controller.signal)
+        if (!controller.signal.aborted) setImages(items)
+      } catch {
+        delay = 4000
+      }
+      if (!controller.signal.aborted) timer = window.setTimeout(poll, delay)
+    }
+    timer = window.setTimeout(poll, 1000)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [importing])
+
   function requestDelete(image: SystemImage) {
     setError("")
     setDeleteTarget(image)
@@ -108,8 +129,12 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
     if (!renaming?.name.trim() || busy) return
     setBusy(true)
     try {
-      setImages(
-        await systemImagesPreview.rename(renaming.image.id, renaming.name)
+      const updated = await systemImages.rename(
+        renaming.image.id,
+        renaming.name
+      )
+      setImages((items) =>
+        items.map((item) => (item.id === updated.id ? updated : item))
       )
       setRenaming(null)
       showToast({ status: "success", title: text("renamed") })
@@ -126,7 +151,8 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
     setBusy(true)
     setError("")
     try {
-      setImages(await systemImagesPreview.remove(deleteTarget.id))
+      await systemImages.remove(deleteTarget.id)
+      setImages((items) => items.filter((item) => item.id !== deleteTarget.id))
       setConfirmationOpen(false)
       showToast({
         status: "success",
@@ -200,13 +226,37 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                       <TableCell className="ps-4">
                         <span
                           className="block max-w-72 truncate text-sm font-medium"
-                          title={image.displayName}
+                          title={image.display_name}
                         >
-                          {image.displayName}
+                          {image.display_name}
                         </span>
+                        {image.status === "ready" && (
+                          <span className="text-xs text-muted-foreground">
+                            {text(image.is_default ? "defaultImage" : "stored")}
+                          </span>
+                        )}
+                        {image.status === "failed" && (
+                          <span role="alert">
+                            {image.error?.message || text("operationFailed")}
+                          </span>
+                        )}
+                        {(image.status === "importing" ||
+                          image.status === "pending") && (
+                          <ImageProgress
+                            stage={image.progress.stage}
+                            value={
+                              image.progress.total_bytes
+                                ? Math.floor(
+                                    (100 * image.progress.completed_bytes) /
+                                      image.progress.total_bytes
+                                  )
+                                : null
+                            }
+                          />
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(image.addedAt).toLocaleString(
+                        {new Date(image.added_at).toLocaleString(
                           i18n.resolvedLanguage ?? i18n.language,
                           {
                             year: "numeric",
@@ -222,7 +272,7 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                           <DropdownMenuTrigger
                             disabled={busy}
                             aria-label={
-                              t("common.more") + " · " + image.displayName
+                              t("common.more") + " · " + image.display_name
                             }
                             render={
                               <Button
@@ -244,7 +294,7 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                                 onClick={() =>
                                   setRenaming({
                                     image,
-                                    name: image.displayName,
+                                    name: image.display_name,
                                   })
                                 }
                               >
@@ -253,6 +303,11 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 variant="destructive"
+                                disabled={
+                                  image.is_default ||
+                                  image.status === "importing" ||
+                                  image.status === "pending"
+                                }
                                 onClick={() => requestDelete(image)}
                               >
                                 <Trash2 aria-hidden="true" />
@@ -350,7 +405,7 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
                     loading={busy}
                     disabled={
                       !renaming.name.trim() ||
-                      renaming.name.trim() === renaming.image.displayName
+                      renaming.name.trim() === renaming.image.display_name
                     }
                   >
                     {t("environmentAdmin.save")}
@@ -366,12 +421,15 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
             method={adding}
             images={images}
             onClose={() => setAdding(null)}
-            onAdded={(items) => {
-              setImages(items)
+            onAdded={(item) => {
+              setImages((items) => [
+                item,
+                ...items.filter((i) => i.id !== item.id),
+              ])
               setAdding(null)
               showToast({
                 status: "success",
-                title: text(adding === "pull" ? "pulled" : "added"),
+                title: text("accepted"),
               })
             }}
           />
@@ -392,14 +450,16 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
           <AlertDialogContent>
             <form onSubmit={confirmDelete} className="space-y-5">
               <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {text("deleteTitle")}
-                </AlertDialogTitle>
+                <AlertDialogTitle>{text("deleteTitle")}</AlertDialogTitle>
                 <AlertDialogDescription>
                   <Trans
                     i18nKey="environmentAdmin.systemImages.deleteHint"
                     components={{
-                      imageName: <strong className="break-all">{deleteTarget?.displayName}</strong>,
+                      imageName: (
+                        <strong className="break-all">
+                          {deleteTarget?.display_name}
+                        </strong>
+                      ),
                     }}
                   />
                 </AlertDialogDescription>
@@ -426,6 +486,26 @@ export function SystemImagesDialog({ onClose }: { onClose: () => void }) {
         </AlertDialog>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ImageProgress({
+  stage,
+  value,
+}: {
+  stage: string
+  value: number | null
+}) {
+  const { t } = useTranslation()
+  const label = t("environmentAdmin.systemImages.stages." + stage)
+  return (
+    <div className="space-y-1 text-xs text-muted-foreground">
+      <span>
+        {label}
+        {value !== null && ` · ${value}%`}
+      </span>
+      <Progress value={value} aria-label={label} />
+    </div>
   )
 }
 
@@ -465,7 +545,7 @@ function AddImageDialog({
 }: {
   method: ImportMethod
   images: SystemImage[]
-  onAdded: (images: SystemImage[]) => void
+  onAdded: (image: SystemImage) => void
   onClose: () => void
 }) {
   const { t } = useTranslation()
@@ -478,6 +558,13 @@ function AddImageDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
+  const [sent, setSent] = useState<number | null>(null)
+  const request = useRef<{
+    name: string
+    source: string
+    file: File | null
+    key: string
+  } | null>(null)
 
   function selectFile(files: File[]) {
     setError("")
@@ -509,7 +596,9 @@ function AddImageDialog({
     }
     if (
       method === "pull" &&
-      images.some((image) => image.reference === source)
+      images.some(
+        (image) => image.status !== "failed" && image.upstream === source
+      )
     ) {
       setError(text("duplicate"))
       return
@@ -517,25 +606,31 @@ function AddImageDialog({
     setError("")
     setBusy(true)
     try {
-      onAdded(
-        await systemImagesPreview.add(
-          method === "pull"
-            ? {
-                source: "pull",
-                reference: source,
-                upstream: source,
-                displayName,
-              }
-            : {
-                source: "upload",
-                reference: file!.name,
-                file: file!,
-                displayName,
-              }
-        )
+      if (
+        !request.current ||
+        request.current.name !== displayName ||
+        request.current.source !== source ||
+        request.current.file !== file
       )
-    } catch {
-      setError(text("operationFailed"))
+        request.current = {
+          name: displayName,
+          source,
+          file,
+          key: crypto.randomUUID(),
+        }
+      setSent(null)
+      onAdded(
+        method === "pull"
+          ? await systemImages.pull(displayName, source, request.current.key)
+          : await systemImages.upload(
+              displayName,
+              file!,
+              request.current.key,
+              setSent
+            )
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : text("operationFailed"))
       showToast({ status: "error", title: text("operationFailed") })
     } finally {
       setBusy(false)
@@ -663,7 +758,10 @@ function AddImageDialog({
             </ScrollArea>
           )}
           {busy && method === "upload" && (
-            <Progress value={null} aria-label={text("importing")} />
+            <ImageProgress
+              value={sent}
+              stage={sent === 100 ? "awaiting" : "uploading"}
+            />
           )}
           {error && (
             <p role="alert" className="text-sm text-destructive">

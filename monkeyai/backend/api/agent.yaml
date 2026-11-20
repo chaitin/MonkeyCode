@@ -8,6 +8,29 @@ servers:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/system-images:
+    get:
+      summary: 查询管理员已发布的可用系统镜像
+      description: 需要 environment:read。只列出已就绪且未下架的镜像。客户端应预选 is_default 项并提交其真实 ID。
+      responses:
+        '200':
+          description: 可选镜像目录，不缓存。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, display_name, architectures, is_default]
+                      properties:
+                        id: {type: string, format: uuid}
+                        display_name: {type: string}
+                        architectures: {type: array, items: {type: string}}
+                        is_default: {type: boolean}
   /api/v1/environment-specifications:
     get:
       summary: 查询全局可选云电脑规格
@@ -131,7 +154,7 @@ paths:
     post:
       summary: 使用所选全局规格创建环境
       description: >-
-        客户端提交 name、request_key、specification_id、specification_version，可选 host_id；不得传任意资源或镜像。
+        客户端提交 name、request_key、specification_id、specification_version 和从目录选择的 image_id，可选 host_id；不接受任意镜像地址。旧客户端不传 image_id 时使用当前默认镜像。
         服务端在事务内校验规格及版本，按所选 CPU 和内存校验计费，并在已授权、在线、镜像及 runtime 就绪的宿主中选择环境数量最少者。
         不限制宿主及用户环境数量，允许 CPU／内存超卖；宿主旧资源预设不参与准入。
         request_key 按用户幂等并绑定规格、版本及宿主选择；成功请求即使规格后来修改或删除仍返回原环境，不重新调度或扣款。
@@ -5607,6 +5630,10 @@ components:
           type: string
           format: uuid
           description: 从 environment-specifications 获取的有效规格 ID。
+        image_id:
+          type: string
+          format: uuid
+          description: 从 system-images 选定的镜像 ID，参与创建幂等校验。
         specification_version:
           type: integer
           format: int64

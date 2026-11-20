@@ -6208,6 +6208,107 @@ paths:
           format: int64
           minimum: 1
           maximum: 100
+  /api/admin/v1/system-images:
+    get:
+      summary: 列出未下架的系统镜像
+      responses:
+        '200':
+          description: 查询或修改成功。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/SystemImage'}}
+        '403': {description: 需要管理员权限。}
+  /api/admin/v1/system-images/pull:
+    post:
+      summary: 在线拉取系统镜像
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name, upstream]
+              properties:
+                display_name: {type: string, minLength: 1, maxLength: 128}
+                upstream: {type: string}
+      responses:
+        '202':
+          description: 任务已持久化，轮询镜像详情获取进度。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemImage'
+        '403': {description: 需要管理员权限。}
+        '409': {description: 来源重复、幂等冲突、正在导入或默认镜像受保护。}
+  /api/admin/v1/system-images/upload:
+    post:
+      summary: 上传 Docker 镜像包
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [display_name, file]
+              properties:
+                display_name: {type: string, minLength: 1, maxLength: 128}
+                file: {type: string, format: binary}
+      responses:
+        '202':
+          description: 任务已持久化，轮询镜像详情获取进度。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemImage'
+        '403': {description: 需要管理员权限。}
+        '409': {description: 来源重复、幂等冲突、正在导入或默认镜像受保护。}
+        '413': {description: 镜像包超过大小限制。}
+  /api/admin/v1/system-images/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 查询单个镜像和阶段进度
+      responses:
+        '200':
+          description: 查询或修改成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemImage'
+        '403': {description: 需要管理员权限。}
+    patch:
+      summary: 修改镜像展示名称
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name]
+              properties:
+                display_name: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        '200':
+          description: 查询或修改成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemImage'
+        '403': {description: 需要管理员权限。}
+    delete:
+      summary: 移除镜像目录项，已有实例不受影响
+      responses:
+        '204':
+          description: 已从目录移除。
+        '403': {description: 需要管理员权限。}
+        '409': {description: 来源重复、幂等冲突、正在导入或默认镜像受保护。}
   /api/admin/v1/environment-images:
     get:
       summary: 列出 server 已同步的云环境镜像
@@ -10768,6 +10869,31 @@ components:
           description: 宿主确认当前代次删除完成的时间；未完成或失败时为 null，历史记录继续保留。
       description: phase 是最后一次观察结果，判断当前目标是否完成必须同时检查 observed_generation == generation。running 仅表示容器进程运行，尚不代表 runtime
         登录或用户可连接。
+    SystemImage:
+      type: object
+      required: [id, display_name, added_at, status, source_type, progress, is_default, architectures]
+      properties:
+        id: {type: string, format: uuid}
+        display_name: {type: string}
+        added_at: {type: string, format: date-time}
+        source_type: {enum: [builtin, pull, upload]}
+        status: {enum: [pending, importing, ready, failed]}
+        reference: {type: [string, 'null']}
+        upstream: {type: [string, 'null']}
+        archive_name: {type: [string, 'null']}
+        is_default: {type: boolean}
+        architectures: {type: array, items: {type: string}}
+        progress:
+          type: object
+          properties:
+            stage: {type: string}
+            completed_bytes: {type: integer}
+            total_bytes: {type: [integer, 'null']}
+        error:
+          type: [object, 'null']
+          properties:
+            code: {type: string}
+            message: {type: string}
     EnvironmentImage:
       type: object
       required: [source, reference, status, architectures, updated_at]

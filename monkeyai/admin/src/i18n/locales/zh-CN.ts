@@ -38,6 +38,9 @@ export const zhCN = {
   },
   environmentAdmin: {
     systemImages: {
+      accepted: "镜像任务已受理。",
+      defaultImage: "默认镜像 · 已就绪",
+      stages: {queued:"等待处理",resolving:"解析镜像地址",pulling:"拉取镜像",reading_archive:"读取镜像包",importing:"镜像入库",verifying:"校验镜像",uploading:"发送镜像包",awaiting:"文件已发送，等待后台确认"},
       title: "系统镜像",
       description: "管理云电脑所支持的系统镜像，系统镜像是 docker 镜像的格式。",
       registry: "内置 Registry",
@@ -69,7 +72,7 @@ export const zhCN = {
       deleting: "正在删除",
       upstream: "镜像地址",
       added: "已模拟导入镜像，未上传或拉取真实镜像。",
-      deleted: "已从演示列表移除，未操作真实 Registry。",
+      deleted: "已从可选镜像中移除，已有云电脑不受影响。",
       loadFailed: "镜像列表读取失败，请重新刷新。",
       operationFailed: "操作失败，请重试。",
       addDescription: "选择导入方式，将 Docker 镜像添加到内置 Registry。",
@@ -440,6 +443,7 @@ export const zhCN = {
       sign_out: "退出登录",
     },
     targets: {
+      "system-images": "系统镜像",
       accounts: "积分账户",
       transactions: "计费交易",
       quotas: "额度",
