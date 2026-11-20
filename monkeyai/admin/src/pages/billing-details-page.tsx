@@ -609,7 +609,7 @@ export function BillingDetailsPage() {
                           {e.category === "environment" ? credits(e.credit_delta, i18n.language) : changedCredits(e.credit_delta, i18n.language)}
                         </TableCell>
                         <TableCell className="text-start text-yellow-600 tabular-nums dark:text-yellow-400">
-                          {e.category === "environment" ? credits(e.balance_after, i18n.language) : balanceCredits(e.balance_after, i18n.language)}
+                          {balanceCredits(e.balance_after, i18n.language)}
                         </TableCell>
                         <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                           {e.transaction_id ? (
