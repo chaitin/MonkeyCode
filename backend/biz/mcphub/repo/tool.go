@@ -167,6 +167,12 @@ func toToolSnapshots(rows []*db.MCPTool) ([]ToolSnapshot, error) {
 }
 
 func (r *ToolRepo) ReplaceByUpstream(ctx context.Context, upstreamID uuid.UUID, rows []UpsertToolInput) error {
+	return entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
+		return NewToolRepo(tx.Client()).replaceByUpstream(ctx, upstreamID, rows)
+	})
+}
+
+func (r *ToolRepo) replaceByUpstream(ctx context.Context, upstreamID uuid.UUID, rows []UpsertToolInput) error {
 	queryCtx := entx.SkipSoftDelete(ctx)
 	existingRows, err := r.db.MCPTool.Query().
 		Where(mcptool.UpstreamID(upstreamID)).
