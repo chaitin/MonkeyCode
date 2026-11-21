@@ -34,7 +34,8 @@ type rpcResponse struct {
 }
 
 type listToolsResult struct {
-	Tools []struct {
+	NextCursor string `json:"nextCursor"`
+	Tools      []struct {
 		Name        string          `json:"name"`
 		Description string          `json:"description"`
 		InputSchema json.RawMessage `json:"inputSchema"`
@@ -111,54 +112,76 @@ func (c *HTTPClient) ListTools(ctx context.Context, upstream *repo.UpstreamConfi
 		return nil, err
 	}
 
-	payload := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      "1",
-		"method":  "tools/list",
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal upstream list request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.URL, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("build upstream list request: %w", err)
-	}
-	data, headers, err := c.doRequestWithSession(ctx, upstream, req)
-	if err != nil {
+	c.clearSession(upstream)
+	if err := c.initializeSession(ctx, upstream); err != nil {
 		return nil, err
 	}
 
-	data, err = decodeMCPResponseBody(data, headers.Get("Content-Type"))
-	if err != nil {
-		return nil, fmt.Errorf("decode upstream list response: %w", err)
-	}
-
-	var rpc rpcResponse
-	if err := json.Unmarshal(data, &rpc); err != nil {
-		return nil, fmt.Errorf("decode upstream list response json: %w", err)
-	}
-	if rpc.Error != nil {
-		return nil, errors.New(rpc.Error.Message)
-	}
-
-	var result listToolsResult
-	if err := json.Unmarshal(rpc.Result, &result); err != nil {
-		return nil, fmt.Errorf("decode upstream tools result: %w", err)
-	}
-
-	tools := make([]repo.UpstreamTool, 0, len(result.Tools))
-	for _, tool := range result.Tools {
-		inputSchema := tool.InputSchema
-		if len(inputSchema) == 0 {
-			inputSchema = json.RawMessage(`{}`)
+	tools := make([]repo.UpstreamTool, 0)
+	seen := make(map[string]struct{})
+	cursor := ""
+	for {
+		payload := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      fmt.Sprintf("%d", len(seen)+2),
+			"method":  "tools/list",
 		}
-		tools = append(tools, repo.UpstreamTool{
-			Name:        tool.Name,
-			Description: tool.Description,
-			InputSchema: inputSchema,
-		})
+		if cursor != "" {
+			payload["params"] = map[string]string{"cursor": cursor}
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("marshal upstream list request: %w", err)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.URL, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("build upstream list request: %w", err)
+		}
+		data, headers, status, err := c.doRequest(ctx, upstream, req)
+		if err != nil {
+			return nil, err
+		}
+		if status >= http.StatusBadRequest {
+			return nil, fmt.Errorf("upstream http %d: %s", status, strings.TrimSpace(string(data)))
+		}
+		data, err = decodeMCPResponseBody(data, headers.Get("Content-Type"))
+		if err != nil {
+			return nil, fmt.Errorf("decode upstream list response: %w", err)
+		}
+
+		var rpc rpcResponse
+		if err := json.Unmarshal(data, &rpc); err != nil {
+			return nil, fmt.Errorf("decode upstream list response json: %w", err)
+		}
+		if rpc.Error != nil {
+			return nil, errors.New(rpc.Error.Message)
+		}
+
+		var result listToolsResult
+		if err := json.Unmarshal(rpc.Result, &result); err != nil {
+			return nil, fmt.Errorf("decode upstream tools result: %w", err)
+		}
+
+		for _, tool := range result.Tools {
+			inputSchema := tool.InputSchema
+			if len(inputSchema) == 0 {
+				inputSchema = json.RawMessage(`{}`)
+			}
+			tools = append(tools, repo.UpstreamTool{
+				Name:        tool.Name,
+				Description: tool.Description,
+				InputSchema: inputSchema,
+			})
+		}
+
+		if result.NextCursor == "" {
+			break
+		}
+		if _, ok := seen[result.NextCursor]; ok {
+			return nil, fmt.Errorf("upstream tools/list repeated cursor %q", result.NextCursor)
+		}
+		seen[result.NextCursor] = struct{}{}
+		cursor = result.NextCursor
 	}
 	return tools, nil
 }
