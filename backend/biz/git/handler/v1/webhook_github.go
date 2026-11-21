@@ -80,13 +80,16 @@ func (h *GithubWebhookHandler) Webhook(c *web.Context) error {
 	event := c.Request().Header.Get("X-Github-Event")
 	h.logger.With("bot", bot.ID, "body", string(body), "event", event).DebugContext(c.Request().Context(), "github webhook")
 	if event == "pull_request" {
-		h.handlePullRequest(ctx, bot, body)
+		if err := h.handlePullRequest(ctx, bot, body, c.Request().Header.Get("X-GitHub-Delivery")); err != nil {
+			h.logger.With("error", err).ErrorContext(ctx, "failed to handle github pr event")
+			return c.String(http.StatusInternalServerError, "failed to create review task")
+		}
 	}
 
 	return c.String(http.StatusOK, "ok")
 }
 
-func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domain.GitBot, payload []byte) {
+func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domain.GitBot, payload []byte, deliveryID string) error {
 	var ev struct {
 		Action      string `json:"action"`
 		PullRequest *struct {
@@ -117,28 +120,52 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 	}
 	if err := json.Unmarshal(payload, &ev); err != nil {
 		h.logger.With("error", err).ErrorContext(ctx, "failed to unmarshal github pr event")
-		return
+		return nil
 	}
 
 	pr := ev.PullRequest
 	if pr == nil || pr.Head == nil || pr.Head.Repo == nil || pr.User == nil {
-		return
+		return nil
 	}
 
 	switch ev.Action {
 	case "opened", "synchronize", "reopened":
 	default:
-		return
+		return nil
 	}
 
-	if !dedup(ctx, h.redis, pr.HTMLURL, h.logger) {
-		return
+	// GitHub retains the delivery ID on redelivery. Distinct deliveries for the
+	// same PR (for example, new commits) must not suppress one another.
+	if deliveryID == "" {
+		return fmt.Errorf("missing X-GitHub-Delivery")
 	}
+	key := fmt.Sprintf("github:pr_review:%s:%s", bot.ID, deliveryID)
+	owner := uuid.NewString()
+	claimed, err := h.redis.SetNX(ctx, key, owner, 5*time.Minute).Result()
+	if err != nil {
+		return fmt.Errorf("claim github delivery: %w", err)
+	}
+	if !claimed {
+		return nil
+	}
+	succeeded := false
+	defer func() {
+		if succeeded {
+			return
+		}
+		// Do not remove a newer claim if processing outlives the lease, or if
+		// the request context has been cancelled during task creation.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		const release = `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`
+		if err := h.redis.Eval(cleanupCtx, release, []string{key}, owner).Err(); err != nil {
+			h.logger.With("error", err).ErrorContext(cleanupCtx, "failed to release github delivery")
+		}
+	}()
 
 	host, err := h.pubhost.PickHost(ctx)
 	if err != nil {
-		h.logger.With("error", err).ErrorContext(ctx, "failed to pick host")
-		return
+		return fmt.Errorf("pick host: %w", err)
 	}
 
 	branch := pr.Head.Ref
@@ -171,8 +198,10 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 		Env:      map[string]string{"GITHUB_TOKEN": bot.Token},
 		Bot:      bot,
 	}); err != nil {
-		h.logger.With("error", err).ErrorContext(ctx, "failed to create git task")
+		return fmt.Errorf("create git task: %w", err)
 	}
+	succeeded = true
+	return nil
 }
 
 // --- 公共工具函数 ---
