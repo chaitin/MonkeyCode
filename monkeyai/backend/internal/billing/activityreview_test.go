@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -104,7 +105,7 @@ func TestActivityWeeklyRefund(t *testing.T) {
 	token := resource.ID()
 	ledgerExec(t, s, `INSERT INTO browser_sessions(token_hash,user_id,authentication_method,expires_at) VALUES($1,$2,'password',now()+interval '1 hour')`, fmt.Sprintf("%x", sha256.Sum256([]byte(token))), user)
 	router := chi.NewRouter()
-	s.RegisterAdmin(router)
+	s.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	handler := identity.NewService(s.pool, nil, "http://example.test").RequireAdmin(router)
 	for range 2 {
 		req := httptest.NewRequest(http.MethodPost, "/billing/transactions/"+r.ID+"/refund", strings.NewReader(`{"reason":"分区后退款回归"}`))

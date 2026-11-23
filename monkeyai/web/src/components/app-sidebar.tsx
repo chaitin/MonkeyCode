@@ -87,6 +87,7 @@ export function AppSidebar({
     {
       title: t("sections.aiResources"),
       url: CONSOLE_ROUTES.models,
+      disabled: user?.role === "group_admin",
       icon: <HugeiconsIcon icon={RoboticIcon} strokeWidth={2} />,
       items: [
         {
@@ -131,6 +132,7 @@ export function AppSidebar({
         {
           title: t("pages.billingSettings.title"),
           url: CONSOLE_ROUTES.billingSettings,
+          disabled: user?.role === "group_admin",
         },
         {
           title: t("pages.billingDetails.title"),

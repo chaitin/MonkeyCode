@@ -16,17 +16,20 @@ WHERE request_id = sqlc.arg(request_id);
 -- name: Page :one
 WITH filtered AS NOT MATERIALIZED (
     SELECT * FROM audits
-    WHERE (sqlc.arg(category)::text = '' OR category = sqlc.arg(category))
+    WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR actor_user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND (sqlc.arg(category)::text = '' OR category = sqlc.arg(category))
       AND (sqlc.arg(result)::text = '' OR result = sqlc.arg(result))
       AND (sqlc.arg(actor)::text = '' OR strpos(lower(actor_name || ' ' || coalesce(actor_email, '')), lower(sqlc.arg(actor))) > 0)
       AND (sqlc.narg(actor_user_id)::uuid IS NULL OR actor_user_id = sqlc.narg(actor_user_id)::uuid)
       AND (sqlc.arg(ip)::text = '' OR strpos(coalesce(host(source_ip), ''), sqlc.arg(ip)) > 0)
-      AND (sqlc.arg(params)::text = '' OR strpos(lower(request_params::text), lower(sqlc.arg(params))) > 0)
+      AND (sqlc.arg(params)::text = '' OR (sqlc.arg(visible_users)::uuid[] IS NULL AND strpos(lower(request_params::text), lower(sqlc.arg(params))) > 0))
       AND (sqlc.narg(since)::timestamptz IS NULL OR occurred_at >= sqlc.narg(since))
       AND (sqlc.narg(until)::timestamptz IS NULL OR occurred_at < sqlc.narg(until))
 ), page AS (
-    SELECT id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
-        request_params, host(source_ip) AS source_ip, user_agent, result, error_message, occurred_at, request_id
+    SELECT id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type,
+        CASE WHEN sqlc.arg(visible_users)::uuid[] IS NULL THEN target_id END AS target_id,
+        CASE WHEN sqlc.arg(visible_users)::uuid[] IS NULL THEN request_params ELSE '{}'::jsonb END AS request_params,
+        host(source_ip) AS source_ip, user_agent, result,
+        CASE WHEN sqlc.arg(visible_users)::uuid[] IS NULL THEN error_message END AS error_message, occurred_at, request_id
     FROM filtered ORDER BY occurred_at DESC, id DESC LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset)
 ), enriched AS (
     SELECT page.*, coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), '')) AS actor_avatar_url

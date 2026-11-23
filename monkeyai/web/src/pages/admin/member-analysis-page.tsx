@@ -67,6 +67,7 @@ function MemberPicker({
   return (
     <UserSearch
       id={id}
+      managed
       userID={userID ?? ""}
       query={query}
       placeholder={t(`${key}.selectMember`)}

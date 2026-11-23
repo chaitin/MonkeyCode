@@ -3,6 +3,7 @@ package billing
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/go-chi/chi/v5"
 	"net/http/httptest"
 	"testing"
@@ -23,7 +24,7 @@ func TestStandalonePolicyPreservesStoredExtension(t *testing.T) {
 		t.Fatal("普通设置覆盖了扩展定价")
 	}
 	r := chi.NewRouter()
-	NewService(nil).RegisterAdmin(r)
+	NewService(nil).RegisterAdmin(r, memberscope.AdminOnly(r.Get))
 	out := httptest.NewRecorder()
 	r.ServeHTTP(out, httptest.NewRequest("PATCH", "/billing/settings/environment", nil))
 	if out.Code != 404 {

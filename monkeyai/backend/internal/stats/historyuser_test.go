@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -13,7 +14,7 @@ import (
 func TestHistoryUserIDValidation(t *testing.T) {
 	for _, value := range []string{"invalid", "00000000-0000-4000-8000-00000000000z", strings.Repeat("a", 200)} {
 		recorder := httptest.NewRecorder()
-		(&Service{}).history(recorder, httptest.NewRequest("GET", "/statistics/history?user_id="+url.QueryEscape(value), nil))
+		(&Service{}).history(recorder, httptest.NewRequest("GET", "/statistics/history?user_id="+url.QueryEscape(value), nil), memberscope.All())
 		if recorder.Code != 400 || !strings.Contains(recorder.Body.String(), "用户 ID 无效") {
 			t.Fatalf("invalid user UUID %q: %d %s", value, recorder.Code, recorder.Body.String())
 		}

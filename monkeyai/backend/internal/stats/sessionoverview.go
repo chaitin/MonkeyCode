@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
 	"github.com/jackc/pgx/v5"
 )
 
 // sessionOverview reads every panel from one snapshot and one server timestamp.
-func (s *Service) sessionOverview(w http.ResponseWriter, r *http.Request) {
+func (s *Service) sessionOverview(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	if r.URL.RawQuery != "" {
 		resource.Fail(r.Context(), w, resource.Invalid("会话分析不支持查询参数"))
@@ -25,7 +26,7 @@ func (s *Service) sessionOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollbackStats(ctx, tx, "session_overview")
-	out, err := resource.DecodeObject(sqlc.New(tx).ReportingSessionOverview(ctx, s.now().UTC()))
+	out, err := resource.DecodeObject(sqlc.New(tx).ReportingSessionOverview(ctx, sqlc.ReportingSessionOverviewParams{At: s.now().UTC(), VisibleUsers: scope.IDs()}))
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http"
 	"strings"
 	"time"
@@ -60,7 +61,7 @@ func (s *Service) reportingFreshness(ctx context.Context, tx pgx.Tx, f reporting
 	return max(0, s.now().Sub(at).Seconds()), nil
 }
 
-func (s *Service) reportingResources(w http.ResponseWriter, r *http.Request) {
+func (s *Service) reportingResources(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	userQuery := strings.TrimSpace(r.URL.Query().Get("user"))
 	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
@@ -76,11 +77,14 @@ func (s *Service) reportingResources(w http.ResponseWriter, r *http.Request) {
 		f.userQuery, f.resourceKind = userQuery, kind
 		// Reject cursors issued before resources were grouped by user.
 		f.fingerprint += ":resource-users-v1"
+		if viewer := scope.Viewer(); viewer != "" {
+			f.fingerprint += ":" + viewer
+		}
 		cursor, err := f.decodeCursor()
 		if err != nil {
 			return nil, err
 		}
-		data, err := sqlc.New(tx).ReportingResources(ctx, sqlc.ReportingResourcesParams{
+		data, err := sqlc.New(tx).ReportingResources(ctx, sqlc.ReportingResourcesParams{VisibleUsers: scope.IDs(),
 			Filters:   f.sqlParams(cursor, ""),
 			FromTime:  f.from.Format(time.RFC3339Nano),
 			UntilTime: f.until.Format(time.RFC3339Nano),

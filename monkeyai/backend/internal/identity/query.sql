@@ -259,7 +259,8 @@ WHERE
 SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,
  'avatar_url',coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')),'deleted',u.deleted_at IS NOT NULL)
 FROM users u
-WHERE (sqlc.arg(include_deleted)::boolean OR u.deleted_at IS NULL)
+WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR u.id = ANY(sqlc.arg(visible_users)::uuid[]))
+ AND (sqlc.arg(include_deleted)::boolean OR u.deleted_at IS NULL)
  AND (sqlc.arg(user_id)::text = '' OR u.id = nullif(sqlc.arg(user_id)::text,'')::uuid)
  AND (sqlc.arg(query)::text = '' OR strpos(lower(u.name),lower(sqlc.arg(query)::text))>0
       OR strpos(lower(u.email),lower(sqlc.arg(query)::text))>0
@@ -283,6 +284,19 @@ LEFT JOIN (
 ) s ON s.user_id = u.id
 WHERE u.deleted_at IS NULL
 ORDER BY u.joined_at DESC;
+
+-- name: ManagedMemberIDs :many
+WITH RECURSIVE managed(id) AS (
+    SELECT g.id FROM groups g JOIN group_users gu ON gu.group_id = g.id
+    WHERE gu.user_id = sqlc.arg(supervisor_id)::uuid AND gu.is_supervisor
+      AND gu.removed_at IS NULL AND g.deleted_at IS NULL
+    UNION
+    SELECT g.id FROM groups g JOIN managed parent ON g.parent_id = parent.id
+    WHERE g.deleted_at IS NULL
+)
+SELECT DISTINCT u.id FROM managed g
+JOIN group_users gu ON gu.group_id = g.id AND gu.removed_at IS NULL
+JOIN users u ON u.id = gu.user_id AND u.deleted_at IS NULL;
 
 -- name: GetUserSupervisedGroups :many
 SELECT g.id, g.name

@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -19,6 +20,18 @@ import (
 func (s *Service) userCandidates(w http.ResponseWriter, r *http.Request, q url.Values) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	badRequest := func(message string) { writeError(r.Context(), w, http.StatusBadRequest, "invalid_input", message) }
+	scope := memberscope.All() // The unscoped member directory is deliberately shared in full.
+	if q.Has("scope") {
+		if q.Get("scope") != "managed" {
+			badRequest("scope 无效")
+			return
+		}
+		var ok bool
+		scope, ok = s.employeeScope(w, r)
+		if !ok {
+			return
+		}
+	}
 	includeDeleted := false
 	if q.Has("include_deleted") {
 		switch q.Get("include_deleted") {
@@ -60,7 +73,7 @@ func (s *Service) userCandidates(w http.ResponseWriter, r *http.Request, q url.V
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	rows, err := sqlc.New(s.db).SearchAdminUserCandidates(ctx, sqlc.SearchAdminUserCandidatesParams{IncludeDeleted: includeDeleted, UserID: id, Query: term, ResultLimit: int32(limit + 1)})
+	rows, err := sqlc.New(s.db).SearchAdminUserCandidates(ctx, sqlc.SearchAdminUserCandidatesParams{VisibleUsers: scope.IDs(), IncludeDeleted: includeDeleted, UserID: id, Query: term, ResultLimit: int32(limit + 1)})
 	if err != nil {
 		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "搜索用户失败", "module", "identity", "operation", "userCandidates", "error", err)
 		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "读取用户失败")

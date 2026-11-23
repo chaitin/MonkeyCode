@@ -2,6 +2,7 @@ package feedback
 
 import (
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,16 +16,17 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func (s *Service) RegisterAdmin(router chi.Router) {
-	router.Get("/feedback", s.list)
+func (s *Service) RegisterAdmin(router chi.Router, get memberscope.Get) {
+	get("/feedback", s.list)
 	router.Get("/feedback/{id}", s.detail)
 	router.Get("/feedback/{id}/attachments/{attachmentID}", s.download)
 	router.Patch("/feedback/{id}", s.patch)
 }
 
-func (s *Service) list(w http.ResponseWriter, r *http.Request) {
+func (s *Service) list(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	page, size, err := resource.PageParamsWithLimit(r, 500)
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
@@ -35,15 +37,25 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	var userID *string
+	if v := strings.TrimSpace(r.URL.Query().Get("user_id")); v != "" {
+		var id pgtype.UUID
+		if err := id.Scan(v); err != nil || !id.Valid {
+			resource.Fail(r.Context(), w, resource.Invalid("用户 ID 无效"))
+			return
+		}
+		userID = &v
+	}
 	q := sqlc.New(s.pool)
 	items, err := q.ListFeedbacks(r.Context(), sqlc.ListFeedbacksParams{
-		Category: category, State: state, PageLimit: int32(size), PageOffset: int32((page - 1) * size),
+		UserID: userID, VisibleUsers: scope.IDs(), Category: category, State: state, PageLimit: int32(size), PageOffset: int32((page - 1) * size),
 	})
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	total, err := q.CountFeedbacks(r.Context(), sqlc.CountFeedbacksParams{Category: category, State: state})
+	total, err := q.CountFeedbacks(r.Context(), sqlc.CountFeedbacksParams{UserID: userID, VisibleUsers: scope.IDs(), Category: category, State: state})
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

@@ -10,6 +10,22 @@ import (
 	"time"
 )
 
+const isManagedTask = `-- name: IsManagedTask :one
+SELECT EXISTS (SELECT 1 FROM sessions WHERE id=$1::uuid AND owner_user_id=ANY($2::uuid[]))
+`
+
+type IsManagedTaskParams struct {
+	TaskID       string
+	VisibleUsers []string
+}
+
+func (q *Queries) IsManagedTask(ctx context.Context, arg IsManagedTaskParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isManagedTask, arg.TaskID, arg.VisibleUsers)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listConversations = `-- name: ListConversations :many
 SELECT jsonb_build_object(
     'session_id', s.id, 'turn_index', t.turn_index, 'task_title', s.title,
@@ -24,23 +40,24 @@ SELECT jsonb_build_object(
 FROM session_turns t
 JOIN sessions s ON s.id = t.session_id
 JOIN users u ON u.id = s.owner_user_id
-WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
+WHERE ($1::uuid[] IS NULL OR s.owner_user_id = ANY($1::uuid[])) AND s.deleted_at IS NULL AND s.purged_at IS NULL
     AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
     AND s.parent_session_id IS NULL
-    AND ($1::uuid IS NULL OR s.owner_user_id = $1::uuid)
-    AND ($2::text = '' OR s.id = nullif($2::text, '')::uuid)
-    AND ($3::text = '' OR strpos(lower(s.title), lower($3::text)) > 0)
-    AND ($4::text = ''
-        OR strpos(lower(u.name), lower($4::text)) > 0
-        OR strpos(lower(u.email), lower($4::text)) > 0)
-    AND ($5::text = '' OR strpos(lower(t.input_text), lower($5::text)) > 0)
-    AND ($6::timestamptz IS NULL OR t.started_at >= $6)
-    AND ($7::timestamptz IS NULL OR t.started_at < $7)
+    AND ($2::uuid IS NULL OR s.owner_user_id = $2::uuid)
+    AND ($3::text = '' OR s.id = nullif($3::text, '')::uuid)
+    AND ($4::text = '' OR strpos(lower(s.title), lower($4::text)) > 0)
+    AND ($5::text = ''
+        OR strpos(lower(u.name), lower($5::text)) > 0
+        OR strpos(lower(u.email), lower($5::text)) > 0)
+    AND ($6::text = '' OR strpos(lower(t.input_text), lower($6::text)) > 0)
+    AND ($7::timestamptz IS NULL OR t.started_at >= $7)
+    AND ($8::timestamptz IS NULL OR t.started_at < $8)
 ORDER BY t.started_at DESC, s.id DESC, t.turn_index DESC
-LIMIT $9 OFFSET $8
+LIMIT $10 OFFSET $9
 `
 
 type ListConversationsParams struct {
+	VisibleUsers []string
 	UserID       *string
 	TaskID       string
 	TitleQuery   string
@@ -54,6 +71,7 @@ type ListConversationsParams struct {
 
 func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsParams) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listConversations,
+		arg.VisibleUsers,
 		arg.UserID,
 		arg.TaskID,
 		arg.TitleQuery,
@@ -91,41 +109,43 @@ FROM
     sessions s
     JOIN users u ON u.id = s.owner_user_id
 WHERE
-    s.deleted_at IS NULL
+    ($1::uuid[] IS NULL OR s.owner_user_id = ANY($1::uuid[])) AND s.deleted_at IS NULL
     AND s.purged_at IS NULL
     AND s.reporting_enabled_at IS NOT NULL
     AND s.placeholder = false
     AND s.parent_session_id IS NULL
-    AND ($1::text = ''
-        OR strpos(lower(s.title), lower($1::text)) > 0
-        OR strpos(s.id::text, lower($1::text)) > 0)
     AND ($2::text = ''
-        OR strpos(lower(u.name), lower($2::text)) > 0
-        OR strpos(lower(u.email), lower($2::text)) > 0)
-    AND ($3::uuid IS NULL
-        OR s.owner_user_id = $3::uuid)
-    AND ($4::timestamptz IS NULL
-        OR s.started_at >= $4)
+        OR strpos(lower(s.title), lower($2::text)) > 0
+        OR strpos(s.id::text, lower($2::text)) > 0)
+    AND ($3::text = ''
+        OR strpos(lower(u.name), lower($3::text)) > 0
+        OR strpos(lower(u.email), lower($3::text)) > 0)
+    AND ($4::uuid IS NULL
+        OR s.owner_user_id = $4::uuid)
     AND ($5::timestamptz IS NULL
-        OR s.started_at < $5)
+        OR s.started_at >= $5)
+    AND ($6::timestamptz IS NULL
+        OR s.started_at < $6)
 ORDER BY
     s.started_at DESC,
     s.id DESC
-LIMIT $7 OFFSET $6
+LIMIT $8 OFFSET $7
 `
 
 type ListHistoryParams struct {
-	TitleQuery string
-	UserQuery  string
-	UserID     *string
-	FromTime   *time.Time
-	UntilTime  *time.Time
-	Offset     int32
-	Limit      int32
+	VisibleUsers []string
+	TitleQuery   string
+	UserQuery    string
+	UserID       *string
+	FromTime     *time.Time
+	UntilTime    *time.Time
+	Offset       int32
+	Limit        int32
 }
 
 func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listHistory,
+		arg.VisibleUsers,
 		arg.TitleQuery,
 		arg.UserQuery,
 		arg.UserID,
@@ -166,26 +186,27 @@ SELECT jsonb_build_object(
 FROM session_turns t
 JOIN sessions s ON s.id = t.session_id
 JOIN users u ON u.id = s.owner_user_id
-WHERE t.session_id = nullif($1::text, '')::uuid
-    AND ($2::uuid IS NULL OR s.owner_user_id = $2::uuid)
-    AND ($3::timestamptz IS NULL OR t.started_at >= $3)
-    AND ($4::timestamptz IS NULL OR t.started_at <= $4)
+WHERE ($1::uuid[] IS NULL OR s.owner_user_id = ANY($1::uuid[])) AND t.session_id = nullif($2::text, '')::uuid
+    AND ($3::uuid IS NULL OR s.owner_user_id = $3::uuid)
+    AND ($4::timestamptz IS NULL OR t.started_at >= $4)
+    AND ($5::timestamptz IS NULL OR t.started_at <= $5)
     AND s.deleted_at IS NULL AND s.purged_at IS NULL
     AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
     AND s.parent_session_id IS NULL
-    AND ($1::text = '' OR s.id = nullif($1::text, '')::uuid)
-    AND ($5::text = '' OR strpos(lower(s.title), lower($5::text)) > 0)
-    AND ($6::text = ''
-        OR strpos(lower(u.name), lower($6::text)) > 0
-        OR strpos(lower(u.email), lower($6::text)) > 0)
-    AND ($7::text = '' OR strpos(lower(t.input_text), lower($7::text)) > 0)
-    AND ($8::timestamptz IS NULL OR t.started_at >= $8)
-    AND ($9::timestamptz IS NULL OR t.started_at < $9)
+    AND ($2::text = '' OR s.id = nullif($2::text, '')::uuid)
+    AND ($6::text = '' OR strpos(lower(s.title), lower($6::text)) > 0)
+    AND ($7::text = ''
+        OR strpos(lower(u.name), lower($7::text)) > 0
+        OR strpos(lower(u.email), lower($7::text)) > 0)
+    AND ($8::text = '' OR strpos(lower(t.input_text), lower($8::text)) > 0)
+    AND ($9::timestamptz IS NULL OR t.started_at >= $9)
+    AND ($10::timestamptz IS NULL OR t.started_at < $10)
 ORDER BY t.started_at DESC, s.id DESC, t.turn_index DESC
-LIMIT $11 OFFSET $10
+LIMIT $12 OFFSET $11
 `
 
 type ListTaskConversationsParams struct {
+	VisibleUsers  []string
 	TaskID        string
 	UserID        *string
 	FirstTurnTime *time.Time
@@ -201,6 +222,7 @@ type ListTaskConversationsParams struct {
 
 func (q *Queries) ListTaskConversations(ctx context.Context, arg ListTaskConversationsParams) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listTaskConversations,
+		arg.VisibleUsers,
 		arg.TaskID,
 		arg.UserID,
 		arg.FirstTurnTime,
@@ -470,6 +492,7 @@ WITH bounds AS (
     SELECT id, name, email, status,
            coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), '')) AS avatar_url
     FROM users WHERE id = $2::uuid AND deleted_at IS NULL
+      AND ($3::uuid[] IS NULL OR id = ANY($3::uuid[]))
 ), roots AS MATERIALIZED (
     SELECT s.id, s.title, s.started_at, s.last_active_at,
            CASE WHEN s.turn_count_verified THEN s.turn_count ELSE NULL END AS turn_count
@@ -515,12 +538,13 @@ SELECT jsonb_build_object(
 `
 
 type ReportingMemberAnalysisParams struct {
-	At     time.Time
-	UserID string
+	At           time.Time
+	UserID       string
+	VisibleUsers []string
 }
 
 func (q *Queries) ReportingMemberAnalysis(ctx context.Context, arg ReportingMemberAnalysisParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, reportingMemberAnalysis, arg.At, arg.UserID)
+	row := q.db.QueryRow(ctx, reportingMemberAnalysis, arg.At, arg.UserID, arg.VisibleUsers)
 	var jsonb_build_object []byte
 	err := row.Scan(&jsonb_build_object)
 	return jsonb_build_object, err
@@ -532,6 +556,7 @@ WITH bounds AS (
            ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
 ), members AS MATERIALIZED (
     SELECT id, created_at FROM users WHERE deleted_at IS NULL
+      AND ($2::uuid[] IS NULL OR id = ANY($2::uuid[]))
 ), days AS (
     SELECT d.day::date AS day
     FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
@@ -587,8 +612,13 @@ SELECT jsonb_build_object(
 ) FROM summary
 `
 
-func (q *Queries) ReportingMembersOverview(ctx context.Context, at time.Time) ([]byte, error) {
-	row := q.db.QueryRow(ctx, reportingMembersOverview, at)
+type ReportingMembersOverviewParams struct {
+	At           time.Time
+	VisibleUsers []string
+}
+
+func (q *Queries) ReportingMembersOverview(ctx context.Context, arg ReportingMembersOverviewParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingMembersOverview, arg.At, arg.VisibleUsers)
 	var jsonb_build_object []byte
 	err := row.Scan(&jsonb_build_object)
 	return jsonb_build_object, err
@@ -776,7 +806,7 @@ const reportingResources = `-- name: ReportingResources :one
 WITH opts AS NOT MATERIALIZED (SELECT $1::jsonb AS f),
 cohort AS NOT MATERIALIZED (
     SELECT s.id,s.owner_user_id,s.model_id FROM sessions s JOIN users u ON u.id = s.owner_user_id CROSS JOIN opts p
-    WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+    WHERE ($2::uuid[] IS NULL OR s.owner_user_id = ANY($2::uuid[])) AND s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
         AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
@@ -788,7 +818,7 @@ cohort AS NOT MATERIALIZED (
     -- Exact turn filters imply the corresponding session-level existence checks.
     SELECT t.session_id,t.turn_index,t.resources_snapshot_id,t.started_at,t.received_at,s.owner_user_id AS user_id
     FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
-    WHERE t.started_at >= $2::text::timestamptz AND t.started_at < $3::text::timestamptz
+    WHERE t.started_at >= $3::text::timestamptz AND t.started_at < $4::text::timestamptz
         AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
         AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')
 ), snapshots AS MATERIALIZED (
@@ -829,11 +859,11 @@ cohort AS NOT MATERIALIZED (
     SELECT s.owner_user_id,c.session_id,'connector',c.connector_id::text,NULL::text,
         false,false,true,1::bigint,CASE WHEN c.status = 'failed' THEN 1 ELSE 0 END::bigint
     FROM mcp_tool_calls c JOIN cohort s ON s.id = c.session_id CROSS JOIN opts p
-    WHERE c.started_at >= $2::text::timestamptz AND c.started_at < $3::text::timestamptz
+    WHERE c.started_at >= $3::text::timestamptz AND c.started_at < $4::text::timestamptz
         -- Gateway facts have no turn-level model/outcome. Only this branch needs
         -- session-level checks; matching model and outcome may be different turns.
-        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= $2::text::timestamptz AND mt.started_at < $3::text::timestamptz))
-        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= $2::text::timestamptz AND ot.started_at < $3::text::timestamptz))
+        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= $3::text::timestamptz AND mt.started_at < $4::text::timestamptz))
+        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= $3::text::timestamptz AND ot.started_at < $4::text::timestamptz))
         AND (p.f->>'kind' IS NULL OR p.f->>'kind' = 'connector')
         AND (p.f->>'resource_id' IS NULL OR c.connector_id::text = p.f->>'resource_id')
         AND p.f->>'resource_version' IS NULL
@@ -905,7 +935,7 @@ cohort AS NOT MATERIALIZED (
         OR EXISTS (SELECT 1 FROM session_turn_tools v WHERE v.session_id = t.session_id AND v.turn_index = t.turn_index AND v.category = p.f->>'kind')
         OR (p.f->>'kind' = 'skill' AND EXISTS (SELECT 1 FROM session_skill_events e WHERE e.session_id = t.session_id AND e.turn_index = t.turn_index))
         OR (p.f->>'kind' = 'connector' AND EXISTS (SELECT 1 FROM mcp_tool_calls c WHERE c.session_id = t.session_id
-            AND c.started_at >= $2::text::timestamptz AND c.started_at < $3::text::timestamptz)))
+            AND c.started_at >= $3::text::timestamptz AND c.started_at < $4::text::timestamptz)))
         AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
             SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
                 AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id')
@@ -925,16 +955,22 @@ SELECT jsonb_build_object(
 `
 
 type ReportingResourcesParams struct {
-	Filters   []byte
-	FromTime  string
-	UntilTime string
+	Filters      []byte
+	VisibleUsers []string
+	FromTime     string
+	UntilTime    string
 }
 
 // Inline session filters so time-bounded facts can drive the joins instead of
 // materializing every historical session. Bind RFC3339 bounds independently
 // of the JSON filters for partition pruning and preserve PostgreSQL rounding.
 func (q *Queries) ReportingResources(ctx context.Context, arg ReportingResourcesParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, reportingResources, arg.Filters, arg.FromTime, arg.UntilTime)
+	row := q.db.QueryRow(ctx, reportingResources,
+		arg.Filters,
+		arg.VisibleUsers,
+		arg.FromTime,
+		arg.UntilTime,
+	)
 	var jsonb_build_object []byte
 	err := row.Scan(&jsonb_build_object)
 	return jsonb_build_object, err
@@ -946,7 +982,8 @@ WITH bounds AS (
            ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
 ), roots AS MATERIALIZED (
     SELECT s.id, s.started_at FROM sessions s CROSS JOIN bounds b
-    WHERE s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
+    WHERE ($2::uuid[] IS NULL OR s.owner_user_id = ANY($2::uuid[]))
+      AND s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
       AND NOT s.placeholder AND s.deleted_at IS NULL AND s.purged_at IS NULL AND s.started_at < b.now_at
 ), days AS (
     SELECT d.day::date AS day FROM bounds b CROSS JOIN LATERAL
@@ -1005,8 +1042,13 @@ SELECT jsonb_build_object(
 ) FROM bounds b CROSS JOIN recent_summary r CROSS JOIN message_counts c
 `
 
-func (q *Queries) ReportingSessionOverview(ctx context.Context, at time.Time) ([]byte, error) {
-	row := q.db.QueryRow(ctx, reportingSessionOverview, at)
+type ReportingSessionOverviewParams struct {
+	At           time.Time
+	VisibleUsers []string
+}
+
+func (q *Queries) ReportingSessionOverview(ctx context.Context, arg ReportingSessionOverviewParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingSessionOverview, arg.At, arg.VisibleUsers)
 	var jsonb_build_object []byte
 	err := row.Scan(&jsonb_build_object)
 	return jsonb_build_object, err

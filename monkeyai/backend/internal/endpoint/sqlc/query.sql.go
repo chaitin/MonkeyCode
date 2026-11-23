@@ -74,7 +74,7 @@ WITH opts AS (SELECT $1::jsonb AS f), devices AS (
  SELECT e.id, e.user_id, e.machine_id, e.device_name, e.alias, e.platform, e.os_version, e.arch, e.client_version, e.protocol_version, e.status, e.created_at, e.updated_at, e.last_seen_at, e.revoked_at, e.client_type, e.client_name, e.channel, e.locale, e.system_locale, e.timezone, e.runtime_version, e.engine_version, e.electron_version, e.last_reported_at, e.execution_protocols, e.execution_public_key, e.key_id, e.deployment_mode, e.remote_access_state, e.active_grant_id, e.registration_version, e.grant_version, e.lease_epoch,u.name AS user_name,u.email AS user_email,coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')) AS user_avatar_url,
   u.deleted_at IS NOT NULL AS user_deleted,greatest(e.last_seen_at,e.last_reported_at) AS last_active_at
  FROM endpoints e LEFT JOIN users u ON u.id=e.user_id CROSS JOIN opts p
- WHERE (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
+ WHERE ($2::uuid[] IS NULL OR e.user_id = ANY($2::uuid[])) AND (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
  AND (p.f->>'user_id' IS NULL OR e.user_id=(p.f->>'user_id')::uuid)
  AND (p.f->>'platform' IS NULL OR lower(e.platform)=lower(p.f->>'platform'))
  AND (p.f->>'client_type' IS NULL OR lower(coalesce(nullif(btrim(e.client_type),''),'unknown'))=lower(p.f->>'client_type'))
@@ -100,8 +100,13 @@ SELECT jsonb_build_object('metric','devices','total',(SELECT count(*) FROM devic
  'client_version',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='client_version'),'[]'::jsonb)))
 `
 
-func (q *Queries) AdminDeviceOverview(ctx context.Context, filters []byte) ([]byte, error) {
-	row := q.db.QueryRow(ctx, adminDeviceOverview, filters)
+type AdminDeviceOverviewParams struct {
+	Filters      []byte
+	VisibleUsers []string
+}
+
+func (q *Queries) AdminDeviceOverview(ctx context.Context, arg AdminDeviceOverviewParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, adminDeviceOverview, arg.Filters, arg.VisibleUsers)
 	var jsonb_build_object []byte
 	err := row.Scan(&jsonb_build_object)
 	return jsonb_build_object, err
@@ -112,7 +117,7 @@ WITH opts AS (SELECT $3::jsonb AS f), devices AS (
  SELECT e.id, e.user_id, e.machine_id, e.device_name, e.alias, e.platform, e.os_version, e.arch, e.client_version, e.protocol_version, e.status, e.created_at, e.updated_at, e.last_seen_at, e.revoked_at, e.client_type, e.client_name, e.channel, e.locale, e.system_locale, e.timezone, e.runtime_version, e.engine_version, e.electron_version, e.last_reported_at, e.execution_protocols, e.execution_public_key, e.key_id, e.deployment_mode, e.remote_access_state, e.active_grant_id, e.registration_version, e.grant_version, e.lease_epoch,u.name AS user_name,u.email AS user_email,coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')) AS user_avatar_url,
   u.deleted_at IS NOT NULL AS user_deleted,greatest(e.last_seen_at,e.last_reported_at) AS last_active_at
  FROM endpoints e LEFT JOIN users u ON u.id=e.user_id CROSS JOIN opts p
- WHERE (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
+ WHERE ($4::uuid[] IS NULL OR e.user_id = ANY($4::uuid[])) AND (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
  AND (p.f->>'user_id' IS NULL OR e.user_id=(p.f->>'user_id')::uuid)
  AND (p.f->>'platform' IS NULL OR lower(e.platform)=lower(p.f->>'platform'))
  AND (p.f->>'client_type' IS NULL OR lower(coalesce(nullif(btrim(e.client_type),''),'unknown'))=lower(p.f->>'client_type'))
@@ -133,13 +138,19 @@ LIMIT $2::integer OFFSET $1::integer
 `
 
 type AdminDevicesParams struct {
-	PageOffset int32
-	PageLimit  int32
-	Filters    []byte
+	PageOffset   int32
+	PageLimit    int32
+	Filters      []byte
+	VisibleUsers []string
 }
 
 func (q *Queries) AdminDevices(ctx context.Context, arg AdminDevicesParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, adminDevices, arg.PageOffset, arg.PageLimit, arg.Filters)
+	rows, err := q.db.Query(ctx, adminDevices,
+		arg.PageOffset,
+		arg.PageLimit,
+		arg.Filters,
+		arg.VisibleUsers,
+	)
 	if err != nil {
 		return nil, err
 	}

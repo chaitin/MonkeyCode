@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
@@ -140,7 +141,7 @@ func TestRequestIntegration(t *testing.T) {
 	router := chi.NewRouter()
 	router.Use(logging.HTTP(s.logger))
 	router.Use(s.Middleware(func(*http.Request) Actor { return actor }))
-	s.RegisterAdmin(router)
+	s.RegisterMemberReads(memberscope.AdminOnly(router.Get))
 	const target = "22222222-2222-4222-8222-222222222222"
 	router.Post("/models/{id}/{operation}", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)

@@ -10,20 +10,20 @@ import (
 	"unicode/utf8"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // AdminReader keeps the administrator inventory separate from per-user device management.
 type AdminReader interface {
-	AdminDevices(context.Context, []byte, int, int) ([][]byte, error)
-	AdminDeviceOverview(context.Context, []byte) ([]byte, error)
+	AdminDevices(context.Context, []byte, int, int, memberscope.Scope) ([][]byte, error)
+	AdminDeviceOverview(context.Context, []byte, memberscope.Scope) ([]byte, error)
 }
 
-func (s *Service) RegisterAdmin(r chi.Router) {
-	r.Get("/endpoints", s.adminDevices)
-	r.Get("/endpoints/overview", s.adminOverview)
+func (s *Service) RegisterMemberReads(get memberscope.Get) {
+	get("/endpoints", s.adminDevices)
+	get("/endpoints/overview", s.adminOverview)
 }
 
 func deviceFilters(r *http.Request) ([]byte, error) {
@@ -91,7 +91,7 @@ func devicePage(r *http.Request) (int, int, error) {
 	return page, size, nil
 }
 
-func (s *Service) adminDevices(w http.ResponseWriter, r *http.Request) {
+func (s *Service) adminDevices(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	filters, err := deviceFilters(r)
 	if err != nil {
@@ -110,7 +110,7 @@ func (s *Service) adminDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	items, err := resource.DecodeObjects(reader.AdminDevices(ctx, filters, (page-1)*size, size+1))
+	items, err := resource.DecodeObjects(reader.AdminDevices(ctx, filters, (page-1)*size, size+1, scope))
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return
@@ -122,7 +122,7 @@ func (s *Service) adminDevices(w http.ResponseWriter, r *http.Request) {
 	resource.JSON(r.Context(), w, 200, resource.Object{"items": items, "page": page, "page_size": size, "has_next": hasNext})
 }
 
-func (s *Service) adminOverview(w http.ResponseWriter, r *http.Request) {
+func (s *Service) adminOverview(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	for _, key := range []string{"page", "page_size", "cursor", "limit"} {
 		if r.URL.Query().Has(key) {
@@ -142,7 +142,7 @@ func (s *Service) adminOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	out, err := resource.DecodeObject(reader.AdminDeviceOverview(ctx, filters))
+	out, err := resource.DecodeObject(reader.AdminDeviceOverview(ctx, filters, scope))
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return
@@ -150,9 +150,9 @@ func (s *Service) adminOverview(w http.ResponseWriter, r *http.Request) {
 	resource.JSON(r.Context(), w, 200, out)
 }
 
-func (p *Postgres) AdminDevices(ctx context.Context, filters []byte, offset, limit int) ([][]byte, error) {
-	return sqlc.New(p.pool).AdminDevices(ctx, sqlc.AdminDevicesParams{Filters: filters, PageOffset: int32(offset), PageLimit: int32(limit)})
+func (p *Postgres) AdminDevices(ctx context.Context, filters []byte, offset, limit int, scope memberscope.Scope) ([][]byte, error) {
+	return sqlc.New(p.pool).AdminDevices(ctx, sqlc.AdminDevicesParams{VisibleUsers: scope.IDs(), Filters: filters, PageOffset: int32(offset), PageLimit: int32(limit)})
 }
-func (p *Postgres) AdminDeviceOverview(ctx context.Context, filters []byte) ([]byte, error) {
-	return sqlc.New(p.pool).AdminDeviceOverview(ctx, filters)
+func (p *Postgres) AdminDeviceOverview(ctx context.Context, filters []byte, scope memberscope.Scope) ([]byte, error) {
+	return sqlc.New(p.pool).AdminDeviceOverview(ctx, sqlc.AdminDeviceOverviewParams{Filters: filters, VisibleUsers: scope.IDs()})
 }

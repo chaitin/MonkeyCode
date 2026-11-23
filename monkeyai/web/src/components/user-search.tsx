@@ -34,6 +34,7 @@ export type UserSearchProps = {
   selectionOnly?: boolean
   searchInPopup?: boolean
   searchPlaceholder?: string
+  managed?: boolean
   includeDeleted?: boolean
   /** Local options; omitting this keeps the paginated user lookup. */
   users?: readonly User[]
@@ -49,13 +50,17 @@ export function UserSearch({
   selectionOnly = false,
   searchInPopup = false,
   searchPlaceholder,
+  managed = false,
   includeDeleted = false,
   users,
 }: UserSearchProps) {
   const { t } = useTranslation()
   const { user } = useAuth()
   const showDeleted = includeDeleted && user?.role === "admin"
-  const deletedParam = showDeleted ? "&include_deleted=true" : ""
+  const lookupParams =
+    (managed ? "&scope=managed" : "") +
+    (showDeleted ? "&include_deleted=true" : "")
+  const lookupKey = JSON.stringify([user?.id, user?.role, lookupParams])
   const generatedID = useId()
   const inputPlaceholder =
     placeholder ?? t("pages.billingDetails.filters.userPlaceholder")
@@ -67,13 +72,15 @@ export function UserSearch({
   const [open, setOpen] = useState(false)
   const [generation, setGeneration] = useState(0)
   const [retry, setRetry] = useState(0)
-  const [resolved, setResolved] = useState<User | null>(null)
+  const [resolved, setResolved] = useState<{ user: User; key: string } | null>(
+    null
+  )
   const [result, setResult] = useState<
     (Result & { key: string; error?: string }) | null
   >(null)
   const term = searchInPopup ? popupQuery.trim() : userID ? "" : query.trim()
-  const requestKey = JSON.stringify([term, generation, retry, showDeleted])
-  const resolvedUser = resolved?.deleted && !showDeleted ? null : resolved
+  const requestKey = JSON.stringify([term, generation, retry, lookupKey])
+  const resolvedUser = resolved?.key === lookupKey ? resolved.user : null
   const selected = useMemo(
     () =>
       users
@@ -96,25 +103,25 @@ export function UserSearch({
     if (users || !userID || resolvedUser?.id === userID) return
     const controller = new AbortController()
     void api<Result>(
-      `/api/admin/v1/users?id=${encodeURIComponent(userID)}${deletedParam}`,
+      `/api/admin/v1/users?id=${encodeURIComponent(userID)}${lookupParams}`,
       { signal: controller.signal }
     )
       .then((data) => {
         if (!controller.signal.aborted && data.items[0])
-          setResolved(data.items[0])
+          setResolved({ user: data.items[0], key: lookupKey })
       })
       .catch(() => {
         /* The UUID remains usable if its display lookup fails. */
       })
     return () => controller.abort()
-  }, [userID, resolvedUser?.id, users, deletedParam])
+  }, [userID, resolvedUser?.id, users, lookupParams, lookupKey])
 
   useEffect(() => {
     if (users || !open) return
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       void api<Result>(
-        `/api/admin/v1/users?q=${encodeURIComponent(term)}&limit=20${deletedParam}`,
+        `/api/admin/v1/users?q=${encodeURIComponent(term)}&limit=20${lookupParams}`,
         { signal: controller.signal }
       )
         .then((data) => {
@@ -135,7 +142,7 @@ export function UserSearch({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [open, term, requestKey, users, deletedParam])
+  }, [open, term, requestKey, users, lookupParams])
 
   const current = users
     ? {
@@ -158,7 +165,9 @@ export function UserSearch({
           ...(current?.items ?? []).filter((user) => user.id !== selected.id),
         ]
       : (current?.items ?? [])
-  const visibleItems = showDeleted ? items : items.filter((user) => !user.deleted)
+  const visibleItems = showDeleted
+    ? items
+    : items.filter((user) => !user.deleted)
   return (
     <Combobox.Root<User>
       items={visibleItems}
@@ -193,7 +202,7 @@ export function UserSearch({
       }}
       onValueChange={(user, details) => {
         if (user && details.reason === "item-press") {
-          setResolved(user)
+          setResolved({ user, key: lookupKey })
           onChange({ userID: user.id, query: "" })
         } else if (!user && details.reason === "clear-press")
           onChange({ userID: "", query: "" })

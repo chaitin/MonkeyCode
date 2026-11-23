@@ -1091,30 +1091,31 @@ SELECT
     'user_avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''))))::jsonb
 FROM
     credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
-WHERE ($1::text = ''
+WHERE ($1::uuid[] IS NULL OR e.user_id = ANY($1::uuid[])) AND ($2::text = ''
     OR COALESCE(e.user_name, '')
-    ILIKE '%' || $1::text || '%'
+    ILIKE '%' || $2::text || '%'
     OR COALESCE(e.user_email, '')
-    ILIKE '%' || $1::text || '%')
-AND ($2::text = ''
-    OR e.item_name ILIKE '%' || $2::text || '%')
+    ILIKE '%' || $2::text || '%')
 AND ($3::text = ''
-    OR e.category = $3::text)
+    OR e.item_name ILIKE '%' || $3::text || '%')
 AND ($4::text = ''
-    OR e.mode = $4::text)
+    OR e.category = $4::text)
 AND ($5::text = ''
-    OR e.entry_type = $5::text)
-AND e.occurred_at >= coalesce($6::timestamptz, '-infinity'::timestamptz)
-AND e.occurred_at < coalesce($7::timestamptz, 'infinity'::timestamptz)
-AND ($8::text = ''
-    OR e.group_id = NULLIF ($8::text::text, '')::uuid)
+    OR e.mode = $5::text)
+AND ($6::text = ''
+    OR e.entry_type = $6::text)
+AND e.occurred_at >= coalesce($7::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce($8::timestamptz, 'infinity'::timestamptz)
+AND ($9::text = ''
+    OR e.group_id = NULLIF ($9::text::text, '')::uuid)
 ORDER BY
     e.occurred_at DESC,
     e.id DESC
-LIMIT $10 OFFSET $9
+LIMIT $11 OFFSET $10
 `
 
 type ListEntriesParams struct {
+	VisibleUsers []string
 	UserQuery    string
 	ContentQuery string
 	Category     string
@@ -1129,6 +1130,7 @@ type ListEntriesParams struct {
 
 func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listEntries,
+		arg.VisibleUsers,
 		arg.UserQuery,
 		arg.ContentQuery,
 		arg.Category,
@@ -1165,31 +1167,32 @@ SELECT
     'user_avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''))))::jsonb
 FROM
     credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
-WHERE e.user_id = $1::uuid
-AND ($2::text = ''
-    OR COALESCE(e.user_name, '')
-    ILIKE '%' || $2::text || '%'
-    OR COALESCE(e.user_email, '')
-    ILIKE '%' || $2::text || '%')
+WHERE ($1::uuid[] IS NULL OR e.user_id = ANY($1::uuid[])) AND e.user_id = $2::uuid
 AND ($3::text = ''
-    OR e.item_name ILIKE '%' || $3::text || '%')
+    OR COALESCE(e.user_name, '')
+    ILIKE '%' || $3::text || '%'
+    OR COALESCE(e.user_email, '')
+    ILIKE '%' || $3::text || '%')
 AND ($4::text = ''
-    OR e.category = $4::text)
+    OR e.item_name ILIKE '%' || $4::text || '%')
 AND ($5::text = ''
-    OR e.mode = $5::text)
+    OR e.category = $5::text)
 AND ($6::text = ''
-    OR e.entry_type = $6::text)
-AND e.occurred_at >= coalesce($7::timestamptz, '-infinity'::timestamptz)
-AND e.occurred_at < coalesce($8::timestamptz, 'infinity'::timestamptz)
-AND ($9::text = ''
-    OR e.group_id = NULLIF ($9::text::text, '')::uuid)
+    OR e.mode = $6::text)
+AND ($7::text = ''
+    OR e.entry_type = $7::text)
+AND e.occurred_at >= coalesce($8::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce($9::timestamptz, 'infinity'::timestamptz)
+AND ($10::text = ''
+    OR e.group_id = NULLIF ($10::text::text, '')::uuid)
 ORDER BY
     e.occurred_at DESC,
     e.id DESC
-LIMIT $11 OFFSET $10
+LIMIT $12 OFFSET $11
 `
 
 type ListEntriesByUserParams struct {
+	VisibleUsers []string
 	UserID       string
 	UserQuery    string
 	ContentQuery string
@@ -1205,6 +1208,7 @@ type ListEntriesByUserParams struct {
 
 func (q *Queries) ListEntriesByUser(ctx context.Context, arg ListEntriesByUserParams) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listEntriesByUser,
+		arg.VisibleUsers,
 		arg.UserID,
 		arg.UserQuery,
 		arg.ContentQuery,

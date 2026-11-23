@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *Service) membersOverview(w http.ResponseWriter, r *http.Request) {
+func (s *Service) membersOverview(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	if len(r.URL.Query()) != 0 {
 		resource.Fail(r.Context(), w, resource.Invalid("成员概览不支持查询参数"))
 		return
@@ -23,7 +24,7 @@ func (s *Service) membersOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollbackStats(ctx, tx, "members_overview")
-	out, err := resource.DecodeObject(sqlc.New(tx).ReportingMembersOverview(ctx, s.now().UTC()))
+	out, err := resource.DecodeObject(sqlc.New(tx).ReportingMembersOverview(ctx, sqlc.ReportingMembersOverviewParams{At: s.now().UTC(), VisibleUsers: scope.IDs()}))
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

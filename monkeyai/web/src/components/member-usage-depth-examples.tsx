@@ -36,7 +36,8 @@ export function MemberMessageRanking({
   data,
   loading,
   error,
-}: DepthProps & { error?: string }) {
+  linkToDetails = true,
+}: DepthProps & { error?: string; linkToDetails?: boolean }) {
   const [params] = useSearchParams()
   const topMembers = data?.top_members ?? []
   return (
@@ -69,34 +70,45 @@ export function MemberMessageRanking({
             ({ id, name, email, avatar_url, messages: count }) => {
               const search = new URLSearchParams(params)
               search.set("user_id", id)
+              const label = (
+                <>
+                  <UserAvatar src={avatar_url} />
+                  <span className="truncate">{name || email}</span>
+                </>
+              )
               return (
                 <li
                   key={id}
                   className="flex items-center gap-3 border-b border-border/50 py-1.5 text-sm last:border-0"
                 >
-                  <Link
-                    to={{
-                      pathname: CONSOLE_ROUTES.memberAnalysis,
-                      search: search.toString(),
-                      hash: "#member-details",
-                    }}
-                    preventScrollReset
-                    onClick={(event) => {
-                      if (!(
-                        event.metaKey ||
-                        event.ctrlKey ||
-                        event.shiftKey ||
-                        event.altKey
-                      ))
-                        document
-                          .getElementById("member-details")
-                          ?.scrollIntoView({ block: "start" })
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-2 hover:text-blue-600 focus-visible:text-blue-600 dark:hover:text-blue-400 dark:focus-visible:text-blue-400"
-                  >
-                    <UserAvatar src={avatar_url} />
-                    <span className="truncate">{name || email}</span>
-                  </Link>
+                  {linkToDetails ? (
+                    <Link
+                      to={{
+                        pathname: CONSOLE_ROUTES.memberAnalysis,
+                        search: search.toString(),
+                        hash: "#member-details",
+                      }}
+                      preventScrollReset
+                      onClick={(event) => {
+                        if (!(
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        ))
+                          document
+                            .getElementById("member-details")
+                            ?.scrollIntoView({ block: "start" })
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-2 hover:text-blue-600 focus-visible:text-blue-600 dark:hover:text-blue-400 dark:focus-visible:text-blue-400"
+                    >
+                      {label}
+                    </Link>
+                  ) : (
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      {label}
+                    </span>
+                  )}
                   <span className="tabular-nums">
                     <span className="text-muted-foreground">共 </span>
                     {count}

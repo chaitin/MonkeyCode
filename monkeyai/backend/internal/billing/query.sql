@@ -295,7 +295,7 @@ SELECT
     'user_avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''))))::jsonb
 FROM
     credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
-WHERE (sqlc.arg(user_query)::text = ''
+WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR e.user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND (sqlc.arg(user_query)::text = ''
     OR COALESCE(e.user_name, '')
     ILIKE '%' || sqlc.arg(user_query)::text || '%'
     OR COALESCE(e.user_email, '')
@@ -324,7 +324,7 @@ SELECT
     'user_avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''))))::jsonb
 FROM
     credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
-WHERE e.user_id = sqlc.arg(user_id)::uuid
+WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR e.user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND e.user_id = sqlc.arg(user_id)::uuid
 AND (sqlc.arg(user_query)::text = ''
     OR COALESCE(e.user_name, '')
     ILIKE '%' || sqlc.arg(user_query)::text || '%'

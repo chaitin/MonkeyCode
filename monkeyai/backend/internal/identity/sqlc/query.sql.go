@@ -1290,6 +1290,40 @@ func (q *Queries) LockUserCreationGroups(ctx context.Context) error {
 	return err
 }
 
+const managedMemberIDs = `-- name: ManagedMemberIDs :many
+WITH RECURSIVE managed(id) AS (
+    SELECT g.id FROM groups g JOIN group_users gu ON gu.group_id = g.id
+    WHERE gu.user_id = $1::uuid AND gu.is_supervisor
+      AND gu.removed_at IS NULL AND g.deleted_at IS NULL
+    UNION
+    SELECT g.id FROM groups g JOIN managed parent ON g.parent_id = parent.id
+    WHERE g.deleted_at IS NULL
+)
+SELECT DISTINCT u.id FROM managed g
+JOIN group_users gu ON gu.group_id = g.id AND gu.removed_at IS NULL
+JOIN users u ON u.id = gu.user_id AND u.deleted_at IS NULL
+`
+
+func (q *Queries) ManagedMemberIDs(ctx context.Context, supervisorID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, managedMemberIDs, supervisorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markUserDeleted = `-- name: MarkUserDeleted :one
 UPDATE users SET deleted_at = now(), updated_at = now(), password_hash = NULL
 WHERE id = $1 AND deleted_at IS NULL
@@ -1560,16 +1594,18 @@ const searchAdminUserCandidates = `-- name: SearchAdminUserCandidates :many
 SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,
  'avatar_url',coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')),'deleted',u.deleted_at IS NOT NULL)
 FROM users u
-WHERE ($1::boolean OR u.deleted_at IS NULL)
- AND ($2::text = '' OR u.id = nullif($2::text,'')::uuid)
- AND ($3::text = '' OR strpos(lower(u.name),lower($3::text))>0
-      OR strpos(lower(u.email),lower($3::text))>0
-      OR strpos(u.id::text,lower($3::text))>0)
+WHERE ($1::uuid[] IS NULL OR u.id = ANY($1::uuid[]))
+ AND ($2::boolean OR u.deleted_at IS NULL)
+ AND ($3::text = '' OR u.id = nullif($3::text,'')::uuid)
+ AND ($4::text = '' OR strpos(lower(u.name),lower($4::text))>0
+      OR strpos(lower(u.email),lower($4::text))>0
+      OR strpos(u.id::text,lower($4::text))>0)
 ORDER BY lower(u.name),lower(u.email),u.id
-LIMIT $4
+LIMIT $5
 `
 
 type SearchAdminUserCandidatesParams struct {
+	VisibleUsers   []string
 	IncludeDeleted bool
 	UserID         string
 	Query          string
@@ -1578,6 +1614,7 @@ type SearchAdminUserCandidatesParams struct {
 
 func (q *Queries) SearchAdminUserCandidates(ctx context.Context, arg SearchAdminUserCandidatesParams) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, searchAdminUserCandidates,
+		arg.VisibleUsers,
 		arg.IncludeDeleted,
 		arg.UserID,
 		arg.Query,

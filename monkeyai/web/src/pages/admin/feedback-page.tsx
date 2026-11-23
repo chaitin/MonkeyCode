@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { Loading03Icon, Search02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTableQuery } from "@/hooks/use-table-query"
+import { useAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
@@ -216,7 +217,7 @@ function FeedbackDetails({
       </dl>
       <div>
         <h3 className="mb-2 font-medium">{t("pages.feedback.content")}</h3>
-        <p className="rounded-md bg-muted p-3 break-words whitespace-pre-wrap">
+        <p className="whitespace-pre-wrap break-words rounded-md bg-muted p-3">
           {data.content || t("pages.feedback.noContent")}
         </p>
       </div>
@@ -312,6 +313,7 @@ function FeedbackDetails({
 const FEEDBACK_QUERY_KEYS = ["category", "state"] as const
 
 export function FeedbackPage() {
+  const canOpenDetails = useAuth().user?.role === "admin"
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const tableQuery = useTableQuery(FEEDBACK_QUERY_KEYS)
@@ -319,7 +321,11 @@ export function FeedbackPage() {
   const category = (filters.category ?? "all") as Category | "all"
   const state = (filters.state ?? "all") as State | "all"
   const [revision, setRevision] = useState(0)
-  const [draft, setDraft] = useState({ key: tableQuery.filterQuery, category, state })
+  const [draft, setDraft] = useState({
+    key: tableQuery.filterQuery,
+    category,
+    state,
+  })
   if (draft.key !== tableQuery.filterQuery) {
     setDraft({ key: tableQuery.filterQuery, category, state })
   }
@@ -356,7 +362,8 @@ export function FeedbackPage() {
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return
-        const message = reason instanceof Error ? reason.message : String(reason)
+        const message =
+          reason instanceof Error ? reason.message : String(reason)
         setResponse({ key: requestKey, error: message })
         showToast({ status: "error", title: message })
       })
@@ -381,7 +388,10 @@ export function FeedbackPage() {
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <form onSubmit={applySearch} className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]">
+          <form
+            onSubmit={applySearch}
+            className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
+          >
             <Select
               items={[
                 { value: "all", label: t("pages.feedback.allCategories") },
@@ -392,7 +402,8 @@ export function FeedbackPage() {
               ]}
               value={draft.category}
               onValueChange={(value) => {
-                if (value) setDraft((current) => ({ ...current, category: value }))
+                if (value)
+                  setDraft((current) => ({ ...current, category: value }))
               }}
             >
               <SelectTrigger aria-label={t("pages.feedback.category")}>
@@ -444,7 +455,11 @@ export function FeedbackPage() {
               <HugeiconsIcon
                 icon={loading ? Loading03Icon : Search02Icon}
                 data-icon="inline-start"
-                className={loading ? "animate-spin motion-reduce:animate-none" : undefined}
+                className={
+                  loading
+                    ? "animate-spin motion-reduce:animate-none"
+                    : undefined
+                }
               />
               {t("pages.operationLogs.filters.search")}
             </Button>
@@ -480,8 +495,9 @@ export function FeedbackPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex max-w-52 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring account-user-link"
+                          className="account-user-link flex max-w-52 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                           title={item.user_email || item.user_id}
+                          disabled={!canOpenDetails}
                           onClick={() => setAccountUserID(item.user_id)}
                         >
                           <UserAvatar src={item.user_avatar_url} />
@@ -507,6 +523,7 @@ export function FeedbackPage() {
                         <Button
                           size="xs"
                           variant="outline"
+                          disabled={!canOpenDetails}
                           onClick={() => setSelectedId(item.id)}
                         >
                           {t("pages.feedback.view")}
@@ -560,12 +577,12 @@ export function FeedbackPage() {
         </CardContent>
       </Card>
       <Dialog
-        open={selectedId !== null}
+        open={canOpenDetails && selectedId !== null}
         onOpenChange={(open) => {
           if (!open) setSelectedId(null)
         }}
       >
-        {selectedId && (
+        {canOpenDetails && selectedId && (
           <DialogContent
             className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"
             closeLabel={t("common.close")}
@@ -581,7 +598,7 @@ export function FeedbackPage() {
           </DialogContent>
         )}
       </Dialog>
-      {accountUserID && (
+      {canOpenDetails && accountUserID && (
         <AccountDialog
           key={accountUserID}
           userId={accountUserID}

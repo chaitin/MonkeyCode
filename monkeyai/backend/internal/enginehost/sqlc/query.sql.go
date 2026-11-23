@@ -257,6 +257,87 @@ func (q *Queries) ListHosts(ctx context.Context, arg ListHostsParams) ([]ListHos
 	return items, nil
 }
 
+const listMemberEnvironments = `-- name: ListMemberEnvironments :many
+WITH candidates AS (
+ SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at, e.deleted_at, e.archived_at, e.image_id, u.name AS user_name, u.email, coalesce(nullif(btrim(u.custom_avatar_url),''), u.avatar_url,'') AS avatar,
+        h.name AS host_name, h.report AS host_report, coalesce(rt.runtime_version,'') AS runtime_version,
+        CASE WHEN e.deleted_at IS NOT NULL OR e.archived_at IS NOT NULL THEN 'deleted'
+             WHEN e.generation <> e.observed_generation THEN 'pending_' || e.desired ELSE e.phase END AS state
+ FROM environments e JOIN users u ON u.id=e.user_id JOIN hosts h ON h.id=e.host_id
+ LEFT JOIN environment_runtimes rt ON rt.environment_id=e.id
+ WHERE ($4::uuid[] IS NULL OR e.user_id=ANY($4::uuid[]))
+   AND ($5::uuid IS NULL OR e.user_id=$5)
+   AND ($6::uuid IS NULL OR e.host_id=$6)
+   AND strpos(lower(u.name || ' ' || u.email),lower($7::text))>0
+   AND strpos(lower(e.name),lower($8::text))>0
+), ranked AS (
+ SELECT c.id, c.user_id, c.host_id, c.name, c.instance_id, c.generation, c.desired, c.phase, c.observed_generation, c.spec, c.cpu_millis, c.memory_bytes, c.usage, c.reason, c.billing_stop_reason, c.observed_at, c.created_at, c.updated_at, c.deleted_at, c.archived_at, c.image_id, c.user_name, c.email, c.avatar, c.host_name, c.host_report, c.runtime_version, c.state, CASE WHEN state='running' AND pg_input_is_valid(usage->>'at','timestamptz') THEN
+        CASE WHEN (usage->>'at')::timestamptz BETWEEN now()-interval '90 seconds' AND now() THEN
+           CASE WHEN $1::text IN ('cpu_asc','cpu_desc') THEN usage->'cpu_cores' ELSE usage->'memory_bytes' END END END AS metric
+ FROM candidates c WHERE $9::text='all'
+    OR ($9='active' AND state<>'deleted') OR state=$9
+)
+SELECT (jsonb_build_object('id',id,'user_id',user_id,'host_id',host_id,'name',name,'created_at',created_at,'deleted_at',deleted_at,
+ 'user',jsonb_build_object('name',user_name,'email',email,'avatar_url',avatar),
+ 'host',jsonb_build_object('name',host_name,'hostname',coalesce(host_report#>>'{system,hostname}',''),'os_name',coalesce(host_report#>>'{system,os_name}','')),
+ 'instance_id',instance_id,'generation',generation,'observed_generation',observed_generation,'observed_at',observed_at,
+ 'desired',desired,'phase',phase,'reason',reason,'storage_retained',true,'workload_verified',false,'runtime_version',runtime_version,
+ -- Provisioning/runtime material is not list data. Only project display fields from the stored specification.
+ 'spec',jsonb_build_object('environment_id',id,'instance_id',instance_id,'generation',generation,'desired_state',desired,
+     'driver',spec->'driver','image',spec->'image','image_digest',spec->'image_digest','network_policy',spec->'network_policy',
+     'resource',jsonb_build_object('cpu_millis',cpu_millis,'memory_bytes',memory_bytes,'host_tasks',spec#>'{resource,host_tasks}',
+        'temporary_bytes',spec#>'{resource,temporary_bytes}'),
+     'volumes',coalesce((SELECT jsonb_agg(jsonb_build_object('id',v->'id','purpose',v->'purpose','bytes',v->'bytes','inodes',v->'inodes') ORDER BY ord)
+         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(spec->'volumes')='array' THEN spec->'volumes' ELSE '[]'::jsonb END) WITH ORDINALITY AS entries(v,ord)), '[]'::jsonb)))
+ || jsonb_strip_nulls(jsonb_build_object('archived_at',archived_at)))::jsonb AS item
+FROM ranked
+ORDER BY CASE WHEN $1::text IN ('cpu_desc','memory_desc') AND jsonb_typeof(metric)='number' THEN metric END DESC NULLS LAST,
+         CASE WHEN $1::text IN ('cpu_asc','memory_asc') AND jsonb_typeof(metric)='number' THEN metric END ASC NULLS LAST,
+         created_at DESC,id DESC LIMIT $3::int OFFSET $2::int
+`
+
+type ListMemberEnvironmentsParams struct {
+	Ordering     string
+	PageOffset   int32
+	PageLimit    int32
+	VisibleUsers []string
+	UserID       *string
+	HostID       *string
+	UserQuery    string
+	NameQuery    string
+	StateFilter  string
+}
+
+func (q *Queries) ListMemberEnvironments(ctx context.Context, arg ListMemberEnvironmentsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listMemberEnvironments,
+		arg.Ordering,
+		arg.PageOffset,
+		arg.PageLimit,
+		arg.VisibleUsers,
+		arg.UserID,
+		arg.HostID,
+		arg.UserQuery,
+		arg.NameQuery,
+		arg.StateFilter,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var item []byte
+		if err := rows.Scan(&item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockControl = `-- name: LockControl :exec
 SELECT pg_advisory_xact_lock(129678,hashtext(current_schema() || ':environments'))
 `

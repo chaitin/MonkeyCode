@@ -2,6 +2,7 @@ package audit
 
 import (
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestPageActorAvatar(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
-	s.RegisterAdmin(router)
+	s.RegisterMemberReads(memberscope.AdminOnly(router.Get))
 	readPage := func(query string, total, size int) []map[string]any {
 		t.Helper()
 		w := httptest.NewRecorder()

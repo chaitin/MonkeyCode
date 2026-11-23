@@ -113,7 +113,7 @@ WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f), devices AS (
  SELECT e.*,u.name AS user_name,u.email AS user_email,coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')) AS user_avatar_url,
   u.deleted_at IS NOT NULL AS user_deleted,greatest(e.last_seen_at,e.last_reported_at) AS last_active_at
  FROM endpoints e LEFT JOIN users u ON u.id=e.user_id CROSS JOIN opts p
- WHERE (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
+ WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR e.user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
  AND (p.f->>'user_id' IS NULL OR e.user_id=(p.f->>'user_id')::uuid)
  AND (p.f->>'platform' IS NULL OR lower(e.platform)=lower(p.f->>'platform'))
  AND (p.f->>'client_type' IS NULL OR lower(coalesce(nullif(btrim(e.client_type),''),'unknown'))=lower(p.f->>'client_type'))
@@ -137,7 +137,7 @@ WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f), devices AS (
  SELECT e.*,u.name AS user_name,u.email AS user_email,coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')) AS user_avatar_url,
   u.deleted_at IS NOT NULL AS user_deleted,greatest(e.last_seen_at,e.last_reported_at) AS last_active_at
  FROM endpoints e LEFT JOIN users u ON u.id=e.user_id CROSS JOIN opts p
- WHERE (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
+ WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR e.user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
  AND (p.f->>'user_id' IS NULL OR e.user_id=(p.f->>'user_id')::uuid)
  AND (p.f->>'platform' IS NULL OR lower(e.platform)=lower(p.f->>'platform'))
  AND (p.f->>'client_type' IS NULL OR lower(coalesce(nullif(btrim(e.client_type),''),'unknown'))=lower(p.f->>'client_type'))

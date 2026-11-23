@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -70,7 +71,7 @@ func TestAdminListUserAvatars(t *testing.T) {
 		}
 	}
 	router := chi.NewRouter()
-	s.RegisterAdmin(router)
+	s.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	for _, tc := range []struct {
 		name   string
 		stored any

@@ -336,7 +336,7 @@ paths:
     get:
       summary: 按用户查询资源开启、使用、调用和失败指标
       description: |
-        每行按用户、资源类别、资源 ID 和版本分别聚合；用户为会话所属用户，姓名和邮箱使用当前账户信息。
+        全局管理员可读全量，主管仅可读当前管辖组及下级组的未删除员工数据。每行按用户、资源类别、资源 ID 和版本分别聚合；用户为会话所属用户，姓名和邮箱使用当前账户信息。
         包含符合条件的子会话，时间范围为 [from, until)，默认最近 24 小时。
         user 按用户名、邮箱或用户 ID 做不区分大小写的字面子串匹配；可与 user_id、kind 及资源筛选组合。
         kind 按原始类别精确筛选，包含快照、工具、技能事件和网关连接器指标；空值表示全部类别。
@@ -1190,7 +1190,7 @@ paths:
   /api/admin/v1/audits:
     get:
       summary: 查询操作审计
-      description: 仅管理员可访问；按发生时间、ID 倒序稳定分页。支持历史记录与请求审计，时间范围左闭右开，文本筛选为不区分大小写的字面子串（IP 除外）。不提供修改或删除接口。
+      description: 全局管理员可读全量，主管仅可读当前管辖组及下级组的未删除员工数据。范围按操作者判断；主管不返回请求参数、目标 ID 或错误详情，按请求参数搜索返回空列表。按发生时间、ID 倒序稳定分页。支持历史记录与请求审计，时间范围左闭右开，文本筛选为不区分大小写的字面子串（IP 除外）。不提供修改或删除接口。
       parameters:
         - name: page
           in: query
@@ -1347,8 +1347,8 @@ paths:
     get:
       summary: 会话分析页面的数量、趋势、模型使用、消息结果与分布统计
       description: |
-        仅管理员可访问，不接收查询参数。全部统计来自同一只读快照及同一 generated_at。
-        沿用会话历史和消息历史口径：仅统计已启用上报、非占位、未删除、未清理且 started_at 早于 generated_at 的根会话；不包含子会话。保留停用或已删除用户的历史会话，与历史列表一致。消息为 session_turns 中的一条已上报轮次，不是模型调用或输入、输出分别计数。
+        全局管理员统计全量，分组主管仅统计当前管辖员工的会话（含下级组）。不接收查询参数。全部统计来自同一只读快照及同一 generated_at。
+        沿用会话历史和消息历史口径：仅统计已启用上报、非占位、未删除、未清理且 started_at 早于 generated_at 的根会话；不包含子会话。保留停用成员的历史会话；仅超管可见已删除用户的会话。消息为 session_turns 中的一条已上报轮次，不是模型调用或输入、输出分别计数。
         会话总量和消息总数覆盖全部历史，未来消息不计入。新增会话按 sessions.started_at，活跃会话按消息 started_at 去重。24 小时窗口为 [generated_at - 24 小时, generated_at)，消息数、结果、耗时、每会话消息数及模型使用均使用此窗口。耗时为 ended_at - started_at，包含所有结果；每会话消息数只统计窗口内有消息的会话，跨模型消息合并到所属根会话。P10/P90 使用最近秩法，即排序后取 ceil(N * p) 项；无样本时平均值和百分位返回 null。
         days 为近 90 个北京时间（Asia/Shanghai）自然日，含当天部分数据，升序补零。models 按消息数降序、模型 UUID 升序，未知模型排在同数量已知模型之后；包含已停用、已删除模型的历史用量，model_id 缺失时归入 id/name 为 null 的未知模型。仅返回模型 ID、名称与数量，不返回配置、密钥、消息正文或用户资料。
       responses:
@@ -1372,7 +1372,7 @@ paths:
   /api/admin/v1/statistics/session-reporting/members/overview:
     get:
       summary: 成员总数、7 天和 24 小时活跃成员及近 90 天趋势
-      description: 仅管理员可访问。固定窗口，不接收查询参数。全部统计只包含当前未软删除的成员，包含管理员和停用成员。活跃指时间范围内存在 session_turns 记录的去重任务所属成员，轮次完成上报后才可统计，与总览活跃口径一致。滚动窗口为左闭右开，7 天严格按 168 小时计算，上一周期为紧邻的同长度窗口。每日趋势按北京时间（Asia/Shanghai）自然日，包含当天部分数据；全部数据来自同一只读快照和同一 generated_at。
+      description: 全局管理员统计全量，分组主管仅统计当前管辖员工（含下级组），包括排行榜和每日趋势。固定窗口，不接收查询参数。全部统计只包含当前未软删除的成员，包含管理员和停用成员。活跃指时间范围内存在 session_turns 记录的去重任务所属成员，轮次完成上报后才可统计，与总览活跃口径一致。滚动窗口为左闭右开，7 天严格按 168 小时计算，上一周期为紧邻的同长度窗口。每日趋势按北京时间（Asia/Shanghai）自然日，包含当天部分数据；全部数据来自同一只读快照和同一 generated_at。
       responses:
         "200":
           description: 同时提供三张数字卡片和新增、活跃两张趋势图所需数据。
@@ -1397,7 +1397,7 @@ paths:
     get:
       summary: 按用户 ID 查询成员使用情况分析
       description: |
-        仅管理员可访问；不接收查询参数。不存在或已软删除的成员返回 404，停用成员仍可查询。
+        全局管理员可查全量，分组主管仅可查询当前管辖组及下级组的成员。不接收查询参数。组外、不存在或已软删除的成员均返回 404；范围内停用成员仍可查询。
         使用同一只读数据库快照和 generated_at 返回成员基本信息、当前分组、近 30 个北京时间自然日（含当天）的任务数、对话数、积分净消耗、本人创建的资源数量、近一年每日对话次数及最近 10 条任务。
         任务和对话沿用任务历史、对话历史口径：只统计已上报、非占位、未删除且未清理的根会话；对话按轮次开始时间，包含空正文及失败轮次，不包含子会话。近 30 天任务数按创建时间统计。积分取同一时间范围用户所有类别的 charge/refund 净额（扣费减退款），以十进制字符串返回，不计额度发放或手动调整，可为负数。
         创建资源统计全部历史未删除资源，包含停用资源及系统/个人资源，不统计授权资源，资源包导入不视为本人创作。专家按 created_by_user_id，其余资源按作为作者持久化的 owner_user_id；大模型包含文本、图片、视频类型。知识库尚无服务端存储，knowledge_bases 固定返回 null。
@@ -1430,7 +1430,7 @@ paths:
   /api/admin/v1/statistics/conversations:
     get:
       summary: 分页查询对话轮次历史
-      description: 仅管理员可访问。查询已启用上报、非占位、未删除且未清理的根会话轮次，包含空正文；不包含子会话。日期筛选按轮次开始时间，而非任务开始时间，未传日期不限制历史范围。每页多查一条生成 has_next，不执行 COUNT，不返回总数。
+      description: 全局管理员可读全量，主管仅可读当前管辖组及下级组的未删除员工数据。按会话所有者过滤。查询已启用上报、非占位、未删除且未清理的根会话轮次，包含空正文；不包含子会话。日期筛选按轮次开始时间，而非任务开始时间，未传日期不限制历史范围。每页多查一条生成 has_next，不执行 COUNT，不返回总数。
       parameters:
         - name: task
           in: query
@@ -1489,7 +1489,7 @@ paths:
   /api/admin/v1/statistics/history:
     get:
       summary: 分页查询任务历史
-      description: 仅管理员可访问。每页多查一条生成 has_next，不执行总数或逐任务轮次 COUNT。对话数读取 sessions 的已校准缓存，存量后台校准期间为 null。
+      description: 全局管理员可读全量，主管仅可读当前管辖组及下级组的未删除员工数据。按会话所有者过滤。每页多查一条生成 has_next，不执行总数或逐任务轮次 COUNT。对话数读取 sessions 的已校准缓存，存量后台校准期间为 null。
       parameters:
         - name: task
           in: query
@@ -2125,7 +2125,7 @@ paths:
   /api/admin/v1/billing/entries:
     get:
       summary: 分页查询不可变积分流水
-      description: 读取不可变账本，不执行 COUNT 或返回精确总数。每页最多查询 page_size 加一条，以 has_next 判断后续页。时间范围为左闭右开；from 和 until 均未传入时，默认北京时间最近 28 个自然日（含今天）。range=all 显式取消默认范围；已提供的单侧或双侧时间条件保持原样。响应 from/until 返回实际生效的边界。
+      description: 全局管理员可读全量，主管仅可读当前管辖组及下级组的未删除员工数据。按流水所属员工过滤，不按历史组授权；主管不返回扩展元数据和外部引用。读取不可变账本，不执行 COUNT 或返回精确总数。每页最多查询 page_size 加一条，以 has_next 判断后续页。时间范围为左闭右开；from 和 until 均未传入时，默认北京时间最近 28 个自然日（含今天）。range=all 显式取消默认范围；已提供的单侧或双侧时间条件保持原样。响应 from/until 返回实际生效的边界。
       responses:
         '200':
           description: 请求成功
@@ -2492,7 +2492,7 @@ paths:
   /api/admin/v1/users:
     get:
       summary: 查询管理端成员列表或搜索用户候选
-      description: 全局管理员和分组主管均可访问，不按受管分组过滤。无搜索参数时按加入时间降序返回全部未删除成员及其直接负责的有效分组。提供 q（含空字符串）、id、limit 或 include_deleted 中任一参数时，按姓名、邮箱、ID 排序返回轻量候选，包含停用成员，默认排除已删除成员。
+      description: 全局管理员和分组主管均可访问。默认不按受管分组过滤。无搜索参数时按加入时间降序返回全部未删除成员及其直接负责的有效分组。提供 q（含空字符串）、id、limit、scope 或 include_deleted 中任一参数时，按姓名、邮箱、ID 排序返回轻量候选，包含停用成员，默认排除已删除成员。
       parameters:
       - in: query
         name: q
@@ -2513,6 +2513,10 @@ paths:
           default: 20
           minimum: 1
           maximum: 50
+      - in: query
+        name: scope
+        description: managed 表示按当前管辖员工范围搜索和回显；超管仍可查询全量。
+        schema: {type: string, enum: [managed]}
       - in: query
         name: include_deleted
         description: 仅全局管理员可设为 true，用于历史记录搜索和按 ID 回显；不影响完整列表。
@@ -2614,7 +2618,7 @@ paths:
           format: uuid
     get:
       summary: 根据 ID 查询成员资料
-      description: 返回成员资料及其直接负责的有效分组。没有负责的分组时 supervised_groups 为空数组；已删除或不存在的成员返回 404。
+      description: 全局管理员可查全量。分组主管仅可查询当前管辖组与下级组的成员，组外成员与不存在的成员均返回 404。返回成员资料及其直接负责的有效分组。没有负责的分组时 supervised_groups 为空数组；已删除或不存在的成员返回 404。
       responses:
         '200':
           description: 成员资料及主管分组，与管理端成员列表中的单项一致。
@@ -3206,7 +3210,9 @@ paths:
   /api/admin/v1/feedback:
     get:
       summary: 分页查询用户反馈
+      description: 全局管理员可读全量，主管仅可读当前管辖组及下级组的未删除员工数据。按提交人过滤；不包含详情、附件下载或写权限。
       parameters:
+        - {name: user_id, in: query, schema: {type: string, format: uuid}}
         - name: page
           in: query
           schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}
@@ -5552,7 +5558,7 @@ paths:
   /api/admin/v1/endpoints:
     get:
       summary: 查询所有用户的客户端设备登记记录
-      description: 一行对应 (user_id,machine_id) 的一条设备登记记录，字段为当前登记值。以 endpoints 为主表关联 users，不依赖会话或轮次上报。默认无时间限制，包含已撤销登记和已删除用户的记录；按最近活动降序（空值最后）、创建时间降序、ID 降序分页。最近活动为设备记录中 last_seen_at 与 last_reported_at 较新的时间，不能据此推断实时在线。每次读取 page_size+1 判断 has_next，不执行列表总数
+      description: 全局管理员可读全量，主管仅可读当前管辖组及下级组的未删除员工数据。一行对应 (user_id,machine_id) 的一条设备登记记录，字段为当前登记值。以 endpoints 为主表关联 users，不依赖会话或轮次上报。默认无时间限制，包含已撤销登记；仅全局管理员可见已删除用户的记录；按最近活动降序（空值最后）、创建时间降序、ID 降序分页。最近活动为设备记录中 last_seen_at 与 last_reported_at 较新的时间，不能据此推断实时在线。每次读取 page_size+1 判断 has_next，不执行列表总数
         COUNT。只返回展示字段，不返回执行公钥或授权信息。
       parameters:
       - in: query
@@ -5659,7 +5665,7 @@ paths:
   /api/admin/v1/endpoints/overview:
     get:
       summary: 统计客户端设备登记记录及其分布
-      description: 筛选口径与设备列表一致，默认覆盖全部登记记录。total 按 (user_id,machine_id) 记录计数，users 按 user_id 去重；三个分布均按设备登记记录计数，不是会话数，也不是按物理设备去重的安装量。不接受分页参数。
+      description: 全局管理员可读全量，主管仅可读当前管辖组及下级组的未删除员工数据。筛选口径与设备列表一致；没有可见设备时所有分布为空。total 按 (user_id,machine_id) 记录计数，users 按 user_id 去重；三个分布均按设备登记记录计数，不是会话数，也不是按物理设备去重的安装量。不接受分页参数。
       parameters:
       - in: query
         name: query
@@ -6149,7 +6155,7 @@ paths:
   /api/admin/v1/environments:
     get:
       summary: 查询环境列表
-      description: '默认隐藏已确认删除和已离线归档的环境，二者均可按 deleted 查看；在线等待删除和清理失败仍显示。可按host_id精确筛选宿主；筛选先于排序和分页。状态与页面目标代次一致。列表不返回 usage 和 usage_stale，资源使用数据仅在详情返回。按实际 CPU 核数或内存字节排序，未上报、过期超过 90 秒及非运行实例排最后；相同占用按创建时间、ID 降序。所有响应使用 Cache-Control: no-store。'
+      description: '全局管理员可查全量；分组主管仅可列出当前管辖组及下级组员工拥有的环境，不授予宿主、环境详情或写权限。默认隐藏已确认删除和已离线归档的环境，二者均可按 deleted 查看；在线等待删除和清理失败仍显示。可按host_id精确筛选宿主；筛选先于排序和分页。状态与页面目标代次一致。列表不返回 usage 和 usage_stale，资源使用数据仅在详情返回。按实际 CPU 核数或内存字节排序，未上报、过期超过 90 秒及非运行实例排最后；相同占用按创建时间、ID 降序。所有响应使用 Cache-Control: no-store。'
       responses:
         '200':
           description: 成功。
@@ -6194,6 +6200,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnvironmentError'
       parameters:
+      - {name: user_id, in: query, schema: {type: string, format: uuid}, description: 精确筛选环境所属员工。}
+      - {name: user, in: query, schema: {type: string, maxLength: 200}, description: 按员工姓名或邮箱筛选。}
+      - {name: name, in: query, schema: {type: string, maxLength: 200}, description: 按环境名称筛选。}
       - name: host_id
         in: query
         description: 精确筛选宿主；格式为UUID，不存在的宿主返回空列表，重复或无效值返回400。

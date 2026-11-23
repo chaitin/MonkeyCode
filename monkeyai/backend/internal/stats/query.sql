@@ -7,7 +7,7 @@ FROM
     sessions s
     JOIN users u ON u.id = s.owner_user_id
 WHERE
-    s.deleted_at IS NULL
+    (sqlc.arg(visible_users)::uuid[] IS NULL OR s.owner_user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND s.deleted_at IS NULL
     AND s.purged_at IS NULL
     AND s.reporting_enabled_at IS NOT NULL
     AND s.placeholder = false
@@ -43,7 +43,7 @@ SELECT jsonb_build_object(
 FROM session_turns t
 JOIN sessions s ON s.id = t.session_id
 JOIN users u ON u.id = s.owner_user_id
-WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
+WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR s.owner_user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND s.deleted_at IS NULL AND s.purged_at IS NULL
     AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
     AND s.parent_session_id IS NULL
     AND (sqlc.narg(user_id)::uuid IS NULL OR s.owner_user_id = sqlc.narg(user_id)::uuid)
@@ -72,7 +72,7 @@ SELECT jsonb_build_object(
 FROM session_turns t
 JOIN sessions s ON s.id = t.session_id
 JOIN users u ON u.id = s.owner_user_id
-WHERE t.session_id = nullif(sqlc.arg(task_id)::text, '')::uuid
+WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR s.owner_user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND t.session_id = nullif(sqlc.arg(task_id)::text, '')::uuid
     AND (sqlc.narg(user_id)::uuid IS NULL OR s.owner_user_id = sqlc.narg(user_id)::uuid)
     AND (sqlc.narg(first_turn_time)::timestamptz IS NULL OR t.started_at >= sqlc.narg(first_turn_time))
     AND (sqlc.narg(last_turn_time)::timestamptz IS NULL OR t.started_at <= sqlc.narg(last_turn_time))
@@ -92,6 +92,9 @@ LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: LockConversationTurns :exec
 LOCK TABLE ONLY session_turns IN ACCESS SHARE MODE;
+
+-- name: IsManagedTask :one
+SELECT EXISTS (SELECT 1 FROM sessions WHERE id=sqlc.arg(task_id)::uuid AND owner_user_id=ANY(sqlc.arg(visible_users)::uuid[]));
 
 -- name: TaskTurnBounds :one
 SELECT jsonb_build_object('backfilling',session_turns_backfilling(),'first_at',b.first_at,'last_at',b.last_at)
@@ -259,7 +262,8 @@ WITH bounds AS (
            (sqlc.arg(at)::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
 ), roots AS MATERIALIZED (
     SELECT s.id, s.started_at FROM sessions s CROSS JOIN bounds b
-    WHERE s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
+    WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR s.owner_user_id = ANY(sqlc.arg(visible_users)::uuid[]))
+      AND s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
       AND NOT s.placeholder AND s.deleted_at IS NULL AND s.purged_at IS NULL AND s.started_at < b.now_at
 ), days AS (
     SELECT d.day::date AS day FROM bounds b CROSS JOIN LATERAL
@@ -323,6 +327,7 @@ WITH bounds AS (
            (sqlc.arg(at)::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
 ), members AS MATERIALIZED (
     SELECT id, created_at FROM users WHERE deleted_at IS NULL
+      AND (sqlc.arg(visible_users)::uuid[] IS NULL OR id = ANY(sqlc.arg(visible_users)::uuid[]))
 ), days AS (
     SELECT d.day::date AS day
     FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
@@ -389,6 +394,7 @@ WITH bounds AS (
     SELECT id, name, email, status,
            coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), '')) AS avatar_url
     FROM users WHERE id = sqlc.arg(user_id)::uuid AND deleted_at IS NULL
+      AND (sqlc.arg(visible_users)::uuid[] IS NULL OR id = ANY(sqlc.arg(visible_users)::uuid[]))
 ), roots AS MATERIALIZED (
     SELECT s.id, s.title, s.started_at, s.last_active_at,
            CASE WHEN s.turn_count_verified THEN s.turn_count ELSE NULL END AS turn_count
@@ -543,7 +549,7 @@ WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_a
 WITH opts AS NOT MATERIALIZED (SELECT sqlc.arg(filters)::jsonb AS f),
 cohort AS NOT MATERIALIZED (
     SELECT s.id,s.owner_user_id,s.model_id FROM sessions s JOIN users u ON u.id = s.owner_user_id CROSS JOIN opts p
-    WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+    WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR s.owner_user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
         AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)

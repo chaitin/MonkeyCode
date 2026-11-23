@@ -3,6 +3,7 @@ package billing
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http/httptest"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestAdminLargePages(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
-	s.RegisterAdmin(router)
+	s.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	for _, endpoint := range []string{"entries", "reconciliation"} {
 		for _, size := range []int{200, 500} {
 			seen := make(map[string]bool)

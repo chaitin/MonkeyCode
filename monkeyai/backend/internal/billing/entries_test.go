@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -80,7 +81,7 @@ func TestAdminEntryWindowAndNoCount(t *testing.T) {
 	reader := NewService(pool)
 	reader.now = s.now
 	router := chi.NewRouter()
-	reader.RegisterAdmin(router)
+	reader.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	for _, tc := range []struct {
 		name, query string
 		want        int

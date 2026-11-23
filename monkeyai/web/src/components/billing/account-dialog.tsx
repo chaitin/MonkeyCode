@@ -16,6 +16,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useAuth } from "@/hooks/use-auth"
 import { UserAvatar } from "@/components/user-avatar"
 import { ApiError, api } from "@/lib/api"
 import {
@@ -38,15 +39,29 @@ type AccountMember = {
   last_login_at?: string
 }
 
-export function AccountDialog({
-  userId,
-  onClose,
-  onChanged,
-}: {
+type AccountDialogProps = {
   userId: string
   onClose: () => void
   onChanged?: () => void
-}) {
+}
+
+export function AccountDialog(props: AccountDialogProps) {
+  const { user } = useAuth()
+  return (
+    <AccountDialogBody
+      key={`${user?.id}:${user?.role}:${props.userId}`}
+      {...props}
+      billing={user?.role === "admin"}
+    />
+  )
+}
+
+function AccountDialogBody({
+  billing,
+  userId,
+  onClose,
+  onChanged,
+}: AccountDialogProps & { billing: boolean }) {
   const { t, i18n } = useTranslation()
   const { showToast } = useAppToast()
   const displayCredits = (value: string | null | undefined) =>
@@ -70,14 +85,14 @@ export function AccountDialog({
     () =>
       Promise.all([
         api<AccountMember>(memberPath),
-        api<AccountDetails>(accountPath),
+        billing ? api<AccountDetails>(accountPath) : Promise.resolve(null),
       ]).then(([person, value]) => {
         setMember(person)
         setData(value)
-        setExternal(value.external_user_id)
+        setExternal(value?.external_user_id ?? "")
         setLoadFailed(false)
       }),
-    [accountPath, memberPath]
+    [accountPath, memberPath, billing]
   )
   const loadAccount = useCallback(() => {
     void load().catch((error: Error) => {
@@ -89,7 +104,7 @@ export function AccountDialog({
     loadAccount()
   }, [loadAccount])
   const run = async (kind: "adjust" | "wallet") => {
-    if (running.current) return
+    if (!billing || running.current) return
     running.current = true
     setPendingAction(kind)
     try {
@@ -148,7 +163,11 @@ export function AccountDialog({
         <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-xl">
           <DialogHeader className="shrink-0 pe-8">
             <DialogTitle>
-              {member?.name ? `${member.name} 的账户详情` : "账户详情"}
+              {billing
+                ? member?.name
+                  ? `${member.name} 的账户详情`
+                  : "账户详情"
+                : "成员资料"}
             </DialogTitle>
           </DialogHeader>
           <ScrollArea
@@ -161,9 +180,9 @@ export function AccountDialog({
                   重试
                 </Button>
               )}
-              {(!data || !member) && !loadFailed ? (
-                <p role="status">正在读取成员和账户信息…</p>
-              ) : data && member ? (
+              {((billing && !data) || !member) && !loadFailed ? (
+                <p role="status">正在读取资料…</p>
+              ) : member ? (
                 <div className="space-y-6">
                   <dl className="divide-y rounded-lg border">
                     <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
@@ -183,7 +202,9 @@ export function AccountDialog({
                           ? t("pages.membersAndGroups.bulk.administrator")
                           : member.supervised_groups?.length
                             ? t("pages.membersAndGroups.supervisorBadgeHint", {
-                                groups: member.supervised_groups.map((group) => group.name).join(", "),
+                                groups: member.supervised_groups
+                                  .map((group) => group.name)
+                                  .join(", "),
                               })
                             : t("pages.membersAndGroups.bulk.member"),
                       ],
@@ -208,14 +229,18 @@ export function AccountDialog({
                       </div>
                     ))}
 
-                    <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
-                      <dt className="shrink-0 text-muted-foreground">剩余积分</dt>
-                      <dd className="min-w-0 break-all text-right tabular-nums">
-                        {displayCredits(data.account.balance)}
-                      </dd>
-                    </div>
+                    {data && (
+                      <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                        <dt className="shrink-0 text-muted-foreground">
+                          剩余积分
+                        </dt>
+                        <dd className="min-w-0 break-all text-right tabular-nums">
+                          {displayCredits(data.account.balance)}
+                        </dd>
+                      </div>
+                    )}
                   </dl>
-                  {data.wallet.configured && (
+                  {data?.wallet.configured && (
                     <div className="space-y-3 border-t pt-4">
                       <Field>
                         <FieldLabel htmlFor="wallet-user">

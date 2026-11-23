@@ -5,6 +5,7 @@ import {
   Search02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
@@ -137,6 +138,7 @@ function auditQuery(
 }
 
 export function OperationLogsPage() {
+  const canOpenDetails = useAuth().user?.role === "admin"
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const tableQuery = useTableQuery(AUDIT_QUERY_KEYS, DEFAULT_PAGE_SIZE)
@@ -309,6 +311,7 @@ export function OperationLogsPage() {
           >
             {visibleFields.has("operator") && (
               <UserSearch
+                managed
                 id="audit-operator"
                 includeDeleted
                 selectionOnly
@@ -511,7 +514,7 @@ export function OperationLogsPage() {
                   <TableHead>
                     {t("pages.operationLogs.columns.ipAddress")}
                   </TableHead>
-                  <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
+                  <TableHead className="w-20 whitespace-nowrap pe-[var(--card-spacing)]">
                     {t("pages.operationLogs.columns.operations")}
                   </TableHead>
                 </TableRow>
@@ -526,9 +529,9 @@ export function OperationLogsPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex max-w-52 items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer account-user-link"
+                          className="account-user-link flex max-w-52 items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer"
                           title={log.actor_email ?? undefined}
-                          disabled={!log.actor_user_id}
+                          disabled={!canOpenDetails || !log.actor_user_id}
                           onClick={() => {
                             if (log.actor_user_id)
                               setAccountUserID(log.actor_user_id)
@@ -553,7 +556,7 @@ export function OperationLogsPage() {
                       <TableCell className="font-mono">
                         {log.source_ip || "—"}
                       </TableCell>
-                      <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
+                      <TableCell className="w-20 whitespace-nowrap pe-[var(--card-spacing)]">
                         <Dialog>
                           <DialogTrigger
                             render={
@@ -615,14 +618,14 @@ export function OperationLogsPage() {
                                       <dt className="w-32 shrink-0 break-words text-muted-foreground sm:w-44">
                                         {label}
                                       </dt>
-                                      <dd className="min-w-0 text-right break-all tabular-nums">
+                                      <dd className="min-w-0 break-all text-right tabular-nums">
                                         {value || "—"}
                                       </dd>
                                     </div>
                                   ))}
                                 </dl>
                               </ScrollArea>
-                              <pre className="rounded-md bg-muted p-3 text-xs break-all whitespace-pre-wrap">
+                              <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-3 text-xs">
                                 {JSON.stringify(log.request_params, null, 2)}
                               </pre>
                             </div>
@@ -668,7 +671,7 @@ export function OperationLogsPage() {
           />
         </CardContent>
       </Card>
-      {accountUserID && (
+      {canOpenDetails && accountUserID && (
         <AccountDialog
           key={accountUserID}
           userId={accountUserID}

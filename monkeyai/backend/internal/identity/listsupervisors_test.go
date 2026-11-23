@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -44,6 +45,7 @@ func TestAdminListUserSupervisedGroups(t *testing.T) {
 	slices.Reverse(want)
 	router := chi.NewRouter()
 	service.RegisterAdmin(router)
+	service.RegisterMemberReads(memberscope.AdminOnly(router.Get))
 	service.RegisterSharedAdminReads(router.Get)
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/users", nil))

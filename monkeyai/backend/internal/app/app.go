@@ -278,7 +278,9 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	admin.Use(identities.RequireAdmin, rootGroup, auditAdmin)
 	console := chi.NewRouter()
 	shared := console.With(identities.RequireAdminOrGroupSupervisor, rootGroup, auditAdmin)
-	audits.RegisterAdmin(admin)
+	scopedGet := identities.MemberReads(shared.Get)
+	audits.RegisterMemberReads(scopedGet)
+	identities.RegisterMemberReads(scopedGet)
 	identities.RegisterAdmin(admin)
 	identities.RegisterSharedAdminReads(shared.Get)
 	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion)
@@ -298,8 +300,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	groupService.RegisterAdmin(admin)
 	groupService.RegisterSharedAdminReads(shared.Get)
 	settings.RegisterAdmin(admin)
-	charges.RegisterAdmin(admin)
-	stats.NewService(pool).RegisterAdmin(admin)
+	charges.RegisterAdmin(admin, scopedGet)
+	stats.NewService(pool).RegisterAdmin(admin, scopedGet)
 	keys.RegisterAdmin(admin)
 	models.RegisterAdmin(admin)
 	store.RegisterAdmin(admin)
@@ -312,7 +314,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	experts.RegisterAdmin(admin)
 	knowledgeBases.RegisterAdmin(admin)
 	resources.RegisterAdmin(admin)
-	feedbacks.RegisterAdmin(admin)
+	feedbacks.RegisterAdmin(admin, scopedGet)
 	sessions.RegisterAdmin(admin)
 
 	agent := chi.NewRouter()
@@ -338,7 +340,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	resourceImports.WithDesignCatalog(designs).WithKnowledgeCatalog(knowledgeBases)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
-	endpoints.RegisterAdmin(admin)
+	endpoints.RegisterMemberReads(scopedGet)
 	identities.RegisterAgent(agent)
 	group.NewService(pool).RegisterAgent(interactive)
 	keys.RegisterAgent(agent.With(identity.RequireGatewayKeys))
@@ -462,6 +464,10 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 				reads.RegisterSharedAdminReads(shared.Get)
 			}
 		}
+	}
+	// Preserve an installed environment module's routes and authorization rules.
+	if !admin.Match(chi.NewRouteContext(), http.MethodGet, "/environments") && !console.Match(chi.NewRouteContext(), http.MethodGet, "/environments") {
+		engineHosts.RegisterEnvironmentList(scopedGet)
 	}
 	// A host without license support returns 404 to both console roles.
 	if !admin.Match(chi.NewRouteContext(), http.MethodGet, "/license/status") && !console.Match(chi.NewRouteContext(), http.MethodGet, "/license/status") {

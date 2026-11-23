@@ -6,6 +6,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
+import { useAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
@@ -46,11 +47,7 @@ import {
   type ReportWindow,
 } from "@/lib/session-reporting"
 import { cn } from "@/lib/utils"
-import {
-  ReportKind,
-  ReportNumber,
-  ReportValue,
-} from "./session-reporting-page"
+import { ReportKind, ReportNumber, ReportValue } from "./session-reporting-page"
 
 const key = "pages.sessionReporting"
 const columns = [
@@ -79,6 +76,7 @@ const resourceKinds = [
 ]
 
 export function ResourceAnalysisPage() {
+  const canOpenDetails = useAuth().user?.role === "admin"
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const [filters, setFilters] = useState<ReportWindow>(defaultWindow)
@@ -243,9 +241,9 @@ export function ResourceAnalysisPage() {
       return (
         <button
           type="button"
-          className="flex max-w-52 items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer account-user-link"
+          className="account-user-link flex max-w-52 items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer"
           title={row.user_email || undefined}
-          disabled={!row.user_id}
+          disabled={!canOpenDetails || !row.user_id}
           onClick={() => {
             if (row.user_id) setAccountUserID(row.user_id)
           }}
@@ -522,7 +520,7 @@ export function ResourceAnalysisPage() {
           />
         </CardContent>
       </Card>
-      {accountUserID && (
+      {canOpenDetails && accountUserID && (
         <AccountDialog
           key={accountUserID}
           userId={accountUserID}

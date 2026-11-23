@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,6 +21,7 @@ func TestAdminGetUserByID(t *testing.T) {
 	}
 	router := chi.NewRouter()
 	service.RegisterAdmin(router)
+	service.RegisterMemberReads(memberscope.AdminOnly(router.Get))
 
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users/"+user.ID, nil))

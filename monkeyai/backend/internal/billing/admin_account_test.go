@@ -2,6 +2,7 @@ package billing
 
 import (
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,7 @@ func TestAdminAccountIncludesCurrentUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
-	s.RegisterAdmin(router)
+	s.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/billing/accounts/"+userID, nil))
 	if response.Code != http.StatusOK {

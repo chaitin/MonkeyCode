@@ -69,5 +69,43 @@ RETURNING host_id,id,from_version,target_version AS version,installer_sha256,man
 -- name: ReportUpgrade :exec
 UPDATE host_upgrades SET status=sqlc.arg(status),reason=sqlc.arg(reason),updated_at=now() WHERE host_id=sqlc.arg(host_id) AND id=sqlc.arg(id) AND status IN ('pending','running');
 
+-- name: ListMemberEnvironments :many
+WITH candidates AS (
+ SELECT e.*, u.name AS user_name, u.email, coalesce(nullif(btrim(u.custom_avatar_url),''), u.avatar_url,'') AS avatar,
+        h.name AS host_name, h.report AS host_report, coalesce(rt.runtime_version,'') AS runtime_version,
+        CASE WHEN e.deleted_at IS NOT NULL OR e.archived_at IS NOT NULL THEN 'deleted'
+             WHEN e.generation <> e.observed_generation THEN 'pending_' || e.desired ELSE e.phase END AS state
+ FROM environments e JOIN users u ON u.id=e.user_id JOIN hosts h ON h.id=e.host_id
+ LEFT JOIN environment_runtimes rt ON rt.environment_id=e.id
+ WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR e.user_id=ANY(sqlc.arg(visible_users)::uuid[]))
+   AND (sqlc.narg(user_id)::uuid IS NULL OR e.user_id=sqlc.narg(user_id))
+   AND (sqlc.narg(host_id)::uuid IS NULL OR e.host_id=sqlc.narg(host_id))
+   AND strpos(lower(u.name || ' ' || u.email),lower(sqlc.arg(user_query)::text))>0
+   AND strpos(lower(e.name),lower(sqlc.arg(name_query)::text))>0
+), ranked AS (
+ SELECT c.*, CASE WHEN state='running' AND pg_input_is_valid(usage->>'at','timestamptz') THEN
+        CASE WHEN (usage->>'at')::timestamptz BETWEEN now()-interval '90 seconds' AND now() THEN
+           CASE WHEN sqlc.arg(ordering)::text IN ('cpu_asc','cpu_desc') THEN usage->'cpu_cores' ELSE usage->'memory_bytes' END END END AS metric
+ FROM candidates c WHERE sqlc.arg(state_filter)::text='all'
+    OR (sqlc.arg(state_filter)='active' AND state<>'deleted') OR state=sqlc.arg(state_filter)
+)
+SELECT (jsonb_build_object('id',id,'user_id',user_id,'host_id',host_id,'name',name,'created_at',created_at,'deleted_at',deleted_at,
+ 'user',jsonb_build_object('name',user_name,'email',email,'avatar_url',avatar),
+ 'host',jsonb_build_object('name',host_name,'hostname',coalesce(host_report#>>'{system,hostname}',''),'os_name',coalesce(host_report#>>'{system,os_name}','')),
+ 'instance_id',instance_id,'generation',generation,'observed_generation',observed_generation,'observed_at',observed_at,
+ 'desired',desired,'phase',phase,'reason',reason,'storage_retained',true,'workload_verified',false,'runtime_version',runtime_version,
+ -- Provisioning/runtime material is not list data. Only project display fields from the stored specification.
+ 'spec',jsonb_build_object('environment_id',id,'instance_id',instance_id,'generation',generation,'desired_state',desired,
+     'driver',spec->'driver','image',spec->'image','image_digest',spec->'image_digest','network_policy',spec->'network_policy',
+     'resource',jsonb_build_object('cpu_millis',cpu_millis,'memory_bytes',memory_bytes,'host_tasks',spec#>'{resource,host_tasks}',
+        'temporary_bytes',spec#>'{resource,temporary_bytes}'),
+     'volumes',coalesce((SELECT jsonb_agg(jsonb_build_object('id',v->'id','purpose',v->'purpose','bytes',v->'bytes','inodes',v->'inodes') ORDER BY ord)
+         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(spec->'volumes')='array' THEN spec->'volumes' ELSE '[]'::jsonb END) WITH ORDINALITY AS entries(v,ord)), '[]'::jsonb)))
+ || jsonb_strip_nulls(jsonb_build_object('archived_at',archived_at)))::jsonb AS item
+FROM ranked
+ORDER BY CASE WHEN sqlc.arg(ordering)::text IN ('cpu_desc','memory_desc') AND jsonb_typeof(metric)='number' THEN metric END DESC NULLS LAST,
+         CASE WHEN sqlc.arg(ordering)::text IN ('cpu_asc','memory_asc') AND jsonb_typeof(metric)='number' THEN metric END ASC NULLS LAST,
+         created_at DESC,id DESC LIMIT sqlc.arg(page_limit)::int OFFSET sqlc.arg(page_offset)::int;
+
 -- name: ExpireUpgrade :exec
 UPDATE host_upgrades SET status='failed',reason='upgrade_timeout',updated_at=now() WHERE host_id=$1 AND status IN ('pending','running') AND created_at<now()-interval '30 minutes';

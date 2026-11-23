@@ -32,7 +32,7 @@ export const CONSOLE_ROUTES = {
   engineHosts: `${CONSOLE_PATH}/settings/engine-hosts`,
 } as const
 
-export const DEFAULT_CONSOLE_PATH = CONSOLE_ROUTES.realtimeStatus
+export const DEFAULT_CONSOLE_PATH = CONSOLE_ROUTES.overview
 
 export const CONSOLE_PAGES = [
   {

@@ -37,6 +37,7 @@ import { RuntimeUpgrade } from "@/components/environments/runtime-upgrade"
 import { EnvironmentStatus } from "@/components/environments/status-badge"
 import { OSIcon } from "@/components/environments/os-icon"
 import { UserAvatar } from "@/components/user-avatar"
+import { useAuth } from "@/hooks/use-auth"
 import { UserSearch } from "@/components/user-search"
 import { Input } from "@/components/ui/input"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -131,7 +132,8 @@ export function EnvironmentsPage({
   const pageSize = Number(
     pageSizeOptions.find((size) => size === params.get("page_size")) ?? "20"
   )
-  const selected = params.get("environment")
+  const admin = useAuth().user?.role === "admin"
+  const selected = admin ? params.get("environment") : null
   const hostID = params.get("host_id") || ""
   const hosts = useEnvironmentData<{
     items: {
@@ -141,7 +143,7 @@ export function EnvironmentsPage({
     }[]
     total: number
   }>(
-    "/api/admin/v1/engine-hosts",
+    admin ? "/api/admin/v1/engine-hosts" : null,
     false,
     loadEngineHosts<{
       id: string
@@ -227,7 +229,7 @@ export function EnvironmentsPage({
     setAction({ environment, desired, key: crypto.randomUUID() })
   }
   async function submit() {
-    if (!action || busy || conflict) return
+    if (!admin || !action || busy || conflict) return
     setBusy(true)
     setError("")
     try {
@@ -312,6 +314,7 @@ export function EnvironmentsPage({
           >
             {visibleFields.creator && (
               <UserSearch
+                managed
                 id="environment-creator"
                 includeDeleted
                 placeholder={t("environmentAdmin.creator")}
@@ -532,6 +535,7 @@ export function EnvironmentsPage({
                     <Button
                       variant="link"
                       className="h-auto max-w-60 justify-start whitespace-normal break-all p-0 text-start font-medium hover:text-blue-600 hover:no-underline dark:hover:text-blue-400"
+                      disabled={!admin}
                       onClick={() => select(env.id)}
                     >
                       {env.name}
@@ -564,6 +568,7 @@ export function EnvironmentsPage({
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger
+                        disabled={!admin}
                         render={
                           <Button
                             type="button"
@@ -671,7 +676,7 @@ export function EnvironmentsPage({
         />
       )}
       <AlertDialog
-        open={!!action}
+        open={admin && !!action}
         onOpenChange={(value) => {
           if (!value && !busy) setAction(null)
         }}

@@ -6,6 +6,7 @@ import {
   Search02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
@@ -149,6 +150,7 @@ const categoryNames: Record<string, string> = {
 }
 
 export function BillingDetailsPage() {
+  const canOpenDetails = useAuth().user?.role === "admin"
   const { t, i18n } = useTranslation()
   const { showToast } = useAppToast()
   const [rawParams, setParams] = useSearchParams()
@@ -184,7 +186,7 @@ export function BillingDetailsPage() {
   const searchRefreshRef = useRef<number | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
-  const view = params.get("view") ?? "entries"
+  const view = canOpenDetails ? (params.get("view") ?? "entries") : "entries"
   const { page, pageSize } = tableQueryState(params.toString(), [])
   const setPage = (nextPage: number) =>
     setParams(tableQueryParams(params.toString(), [], {}, nextPage, pageSize))
@@ -360,7 +362,9 @@ export function BillingDetailsPage() {
       >
         <TabsList>
           <TabsTrigger value="entries">积分流水</TabsTrigger>
-          <TabsTrigger value="pending">待处理与对账</TabsTrigger>
+          <TabsTrigger value="pending" disabled={!canOpenDetails}>
+            待处理与对账
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="entries" className="min-h-0 flex-1">
           <Card className="h-full min-h-0">
@@ -371,6 +375,7 @@ export function BillingDetailsPage() {
               >
                 {visibleFields.has("user") && (
                   <BillingUserSearch
+                    managed
                     userID={draft.user_id ?? ""}
                     query={draft.user ?? ""}
                     onChange={({ userID, query }) =>
@@ -570,7 +575,7 @@ export function BillingDetailsPage() {
                       </TableHead>
                       <TableHead className="text-start">积分变动</TableHead>
                       <TableHead className="text-start">剩余积分</TableHead>
-                      <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
+                      <TableHead className="w-20 whitespace-nowrap pe-[var(--card-spacing)]">
                         {t("pages.operationLogs.columns.operations")}
                       </TableHead>
                     </TableRow>
@@ -580,14 +585,15 @@ export function BillingDetailsPage() {
                   >
                     {entries?.items.map((e) => (
                       <TableRow key={e.id}>
-                        <TableCell className="ps-[var(--card-spacing)] whitespace-nowrap text-muted-foreground">
+                        <TableCell className="whitespace-nowrap ps-[var(--card-spacing)] text-muted-foreground">
                           {dateTime(e.occurred_at, TABLE_DATE_TIME_OPTIONS)}
                         </TableCell>
                         <TableCell>
                           <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring account-user-link"
+                            className="account-user-link flex cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                             title={e.user_email}
+                            disabled={!canOpenDetails}
                             onClick={() => setAccountUserID(e.user_id)}
                           >
                             <UserAvatar src={e.user_avatar_url} />
@@ -602,17 +608,20 @@ export function BillingDetailsPage() {
                         <TableCell
                           className={`text-start font-medium tabular-nums ${e.credit_delta.startsWith("-") ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}
                         >
-                          {e.category === "environment" ? credits(e.credit_delta, i18n.language) : changedCredits(e.credit_delta, i18n.language)}
+                          {e.category === "environment"
+                            ? credits(e.credit_delta, i18n.language)
+                            : changedCredits(e.credit_delta, i18n.language)}
                         </TableCell>
-                        <TableCell className="text-start text-yellow-600 tabular-nums dark:text-yellow-400">
+                        <TableCell className="text-start tabular-nums text-yellow-600 dark:text-yellow-400">
                           {balanceCredits(e.balance_after, i18n.language)}
                         </TableCell>
-                        <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
+                        <TableCell className="w-20 whitespace-nowrap pe-[var(--card-spacing)]">
                           {e.transaction_id ? (
                             <Button
                               type="button"
                               variant="outline"
                               size="xs"
+                              disabled={!canOpenDetails}
                               onClick={() => setSelected(e.transaction_id)}
                             >
                               {t("pages.operationLogs.details")}
@@ -632,7 +641,10 @@ export function BillingDetailsPage() {
                           {loading ? (
                             <TableLoading />
                           ) : loadError ? (
-                            <TableLoadError error={loadError} onRetry={reload} />
+                            <TableLoadError
+                              error={loadError}
+                              onRetry={reload}
+                            />
                           ) : (
                             t("pages.billingDetails.empty")
                           )}
@@ -718,7 +730,7 @@ export function BillingDetailsPage() {
                       <TableHead>状态</TableHead>
                       <TableHead>原因</TableHead>
                       <TableHead className="text-end">预留积分</TableHead>
-                      <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
+                      <TableHead className="w-20 whitespace-nowrap pe-[var(--card-spacing)]">
                         {t("pages.operationLogs.columns.operations")}
                       </TableHead>
                     </TableRow>
@@ -728,13 +740,13 @@ export function BillingDetailsPage() {
                   >
                     {pending?.items.map((tx) => (
                       <TableRow key={tx.id}>
-                        <TableCell className="ps-[var(--card-spacing)] whitespace-nowrap text-muted-foreground">
+                        <TableCell className="whitespace-nowrap ps-[var(--card-spacing)] text-muted-foreground">
                           {dateTime(tx.started_at, TABLE_DATE_TIME_OPTIONS)}
                         </TableCell>
                         <TableCell>
                           <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring account-user-link"
+                            className="account-user-link flex cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                             title={tx.user_email}
                             onClick={() => setAccountUserID(tx.user_id)}
                           >
@@ -754,7 +766,7 @@ export function BillingDetailsPage() {
                         <TableCell className="text-end tabular-nums">
                           {billingCredits(tx.reserve, i18n.language)}
                         </TableCell>
-                        <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
+                        <TableCell className="w-20 whitespace-nowrap pe-[var(--card-spacing)]">
                           <Button
                             type="button"
                             variant="outline"
@@ -775,7 +787,10 @@ export function BillingDetailsPage() {
                           {loading ? (
                             <TableLoading />
                           ) : loadError ? (
-                            <TableLoadError error={loadError} onRetry={reload} />
+                            <TableLoadError
+                              error={loadError}
+                              onRetry={reload}
+                            />
                           ) : (
                             "暂无待处理交易"
                           )}
@@ -790,14 +805,14 @@ export function BillingDetailsPage() {
           </Card>
         </TabsContent>
       </Tabs>
-      {selected && (
+      {canOpenDetails && selected && (
         <TransactionDialog
           id={selected}
           onClose={() => setSelected(null)}
           onChanged={reload}
         />
       )}
-      {accountUserID && (
+      {canOpenDetails && accountUserID && (
         <AccountDialog
           key={accountUserID}
           userId={accountUserID}
@@ -916,7 +931,10 @@ function TransactionDialog({
           : []),
         {
           label: "结算积分",
-          value: data.category === "environment" ? credits(data.amount, i18n.language) : billingCredits(data.amount, i18n.language),
+          value:
+            data.category === "environment"
+              ? credits(data.amount, i18n.language)
+              : billingCredits(data.amount, i18n.language),
         },
         { label: "交易 ID", value: data.id },
         {
@@ -1059,7 +1077,7 @@ function TransactionDialog({
                     <dt className="w-32 shrink-0 break-words text-muted-foreground sm:w-44">
                       {label}
                     </dt>
-                    <dd className="min-w-0 text-right break-all tabular-nums">
+                    <dd className="min-w-0 break-all text-right tabular-nums">
                       {value}
                     </dd>
                   </div>

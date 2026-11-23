@@ -3,6 +3,7 @@ package billing
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -59,7 +60,7 @@ func filters(r *http.Request) (sqlc.CountEntriesParams, error) {
 		GroupID:      q.Get("group_id"),
 	}, nil
 }
-func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
+func (s *Service) entries(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	filter, err := filters(r)
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
@@ -82,7 +83,7 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 	q := sqlc.New(s.pool)
 	var data [][]byte
 	if userID == "" {
-		data, err = q.ListEntries(r.Context(), sqlc.ListEntriesParams{
+		data, err = q.ListEntries(r.Context(), sqlc.ListEntriesParams{VisibleUsers: scope.IDs(),
 			UserQuery:    filter.UserQuery,
 			ContentQuery: filter.ContentQuery,
 			Category:     filter.Category,
@@ -96,7 +97,7 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 		})
 	} else {
 		// Keep the UUID predicate unconditional so prepared plans can use the user/time index.
-		data, err = q.ListEntriesByUser(r.Context(), sqlc.ListEntriesByUserParams{
+		data, err = q.ListEntriesByUser(r.Context(), sqlc.ListEntriesByUserParams{VisibleUsers: scope.IDs(),
 			UserID:       userID,
 			UserQuery:    filter.UserQuery,
 			ContentQuery: filter.ContentQuery,
@@ -119,6 +120,13 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 	if hasNext {
 		rows = rows[:size]
 	}
+	if scope.Viewer() != "" {
+		for _, row := range rows {
+			row["metadata"] = resource.Object{}
+			row["external_reference"] = nil
+		}
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
 	resource.JSON(r.Context(), w, 200, map[string]any{
 		"items": rows, "has_next": hasNext, "page": page, "page_size": size,
 		"from": filter.FromTime, "until": filter.UntilTime,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -21,7 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func (s *Service) RegisterAdmin(r chi.Router) {
+func (s *Service) RegisterAdmin(r chi.Router, get memberscope.Get) {
 	r.Get("/billing/settings", s.settings)
 	r.Patch("/billing/settings/{section}", s.saveSettings)
 	r.Get("/billing/quotas", s.quotas)
@@ -44,7 +45,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		}
 		w.WriteHeader(204)
 	})
-	r.Get("/billing/entries", s.entries)
+	get("/billing/entries", s.entries)
 	r.Get("/billing/summary", s.summary)
 	r.Get("/billing/transactions/{id}", s.transaction)
 	r.Get("/billing/reconciliation", s.reconciliation)

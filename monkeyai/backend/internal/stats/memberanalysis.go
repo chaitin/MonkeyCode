@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
 	"github.com/go-chi/chi/v5"
@@ -12,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func (s *Service) memberAnalysis(w http.ResponseWriter, r *http.Request) {
+func (s *Service) memberAnalysis(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	var id pgtype.UUID
 	if err := id.Scan(chi.URLParam(r, "id")); err != nil || !id.Valid || id.Bytes == [16]byte{} {
@@ -31,7 +32,9 @@ func (s *Service) memberAnalysis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollbackStats(ctx, tx, "member_analysis")
-	out, err := resource.DecodeObject(sqlc.New(tx).ReportingMemberAnalysis(ctx, sqlc.ReportingMemberAnalysisParams{UserID: chi.URLParam(r, "id"), At: s.now().UTC()}))
+	out, err := resource.DecodeObject(sqlc.New(tx).ReportingMemberAnalysis(ctx, sqlc.ReportingMemberAnalysisParams{
+		UserID: id.String(), VisibleUsers: scope.IDs(), At: s.now().UTC(),
+	}))
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

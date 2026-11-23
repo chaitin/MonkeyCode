@@ -16,7 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit/sqlc"
-	"github.com/go-chi/chi/v5"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -85,8 +85,8 @@ func uuid(value string) *string {
 	return new(value)
 }
 
-func (s *Service) RegisterAdmin(router chi.Router) {
-	router.Get("/audits", s.list)
+func (s *Service) RegisterMemberReads(get memberscope.Get) {
+	get("/audits", s.list)
 }
 
 func filters(r *http.Request) (sqlc.PageParams, int, error) {
@@ -144,7 +144,7 @@ func filters(r *http.Request) (sqlc.PageParams, int, error) {
 	return in, page, nil
 }
 
-func (s *Service) list(w http.ResponseWriter, r *http.Request) {
+func (s *Service) list(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	in, page, err := filters(r)
 	if err != nil {
@@ -153,6 +153,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
+	in.VisibleUsers = scope.IDs()
 	data, err := sqlc.New(s.pool).Page(ctx, in)
 	if err != nil {
 		logging.Event(r.Context(), s.logger, slog.LevelError, "audit.operation.error", "读取操作审计失败", "module", "audit", "operation", "list", "request_id", logging.RequestID(r.Context()), "error", err)

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -49,7 +50,7 @@ func TestAdminDeviceInventory(t *testing.T) {
 	service := NewService(NewPostgres(pool), nil, nil, "")
 	router := chi.NewRouter()
 	router.Use(identity.NewService(pool, nil, "").RequireAdmin)
-	service.RegisterAdmin(router)
+	service.RegisterMemberReads(memberscope.AdminOnly(router.Get))
 	for _, id := range []string{admin, user} {
 		hash := sha256.Sum256([]byte(id))
 		exec(`INSERT INTO browser_sessions(token_hash,user_id,authentication_method,expires_at) VALUES($1,$2,'password',now()+interval '1 hour')`, hex.EncodeToString(hash[:]), id)

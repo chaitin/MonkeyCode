@@ -5,6 +5,10 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
+	"github.com/jackc/pgx/v5/pgtype"
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
@@ -19,7 +23,7 @@ import (
 func (s *Service) RegisterSharedAdminReads(get func(string, http.HandlerFunc)) {
 	get("/users", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
-		if query.Has("q") || query.Has("id") || query.Has("limit") || query.Has("include_deleted") {
+		if query.Has("q") || query.Has("id") || query.Has("limit") || query.Has("include_deleted") || query.Has("scope") {
 			s.userCandidates(w, r, query)
 			return
 		}
@@ -39,7 +43,6 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		writeJSON(r.Context(), w, http.StatusOK, user)
 	})
 	router.Post("/users", s.createUser)
-	router.Get("/users/{userID}", s.getUser)
 	router.Patch("/users/{userID}", s.patchUser)
 	router.Delete("/users/{userID}", s.deleteUser)
 	router.Post("/users/{userID}/reset-password", s.resetUserPassword)
@@ -53,8 +56,20 @@ func (s *Service) RegisterAgent(router chi.Router) {
 	})
 }
 
-func (s *Service) getUser(w http.ResponseWriter, r *http.Request) {
-	userID := chi.URLParam(r, "userID")
+func (s *Service) RegisterMemberReads(get memberscope.Get) { get("/users/{userID}", s.getUser) }
+
+func (s *Service) getUser(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	var id pgtype.UUID
+	if err := id.Scan(chi.URLParam(r, "userID")); err != nil || !id.Valid {
+		writeError(r.Context(), w, http.StatusBadRequest, "invalid_request", "用户 ID 无效")
+		return
+	}
+	userID := id.String()
+	if ids := scope.IDs(); ids != nil && !slices.Contains(ids, userID) {
+		writeError(r.Context(), w, 404, "user_not_found", "用户不存在")
+		return
+	}
 	user, err := s.adminUserByID(r.Context(), userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(r.Context(), w, http.StatusNotFound, "user_not_found", "用户不存在")

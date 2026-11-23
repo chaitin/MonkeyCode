@@ -47,17 +47,26 @@ func (q *Queries) AttachmentForDownload(ctx context.Context, arg AttachmentForDo
 const countFeedbacks = `-- name: CountFeedbacks :one
 SELECT count(*)
 FROM feedbacks
-WHERE ($1::text = '' OR feedbacks.category = $1::text)
-  AND ($2::text = '' OR feedbacks.state = $2::text)
+WHERE ($1::uuid[] IS NULL OR feedbacks.user_id = ANY($1::uuid[]))
+ AND ($2::uuid IS NULL OR feedbacks.user_id=$2::uuid)
+ AND ($3::text = '' OR feedbacks.category = $3::text)
+  AND ($4::text = '' OR feedbacks.state = $4::text)
 `
 
 type CountFeedbacksParams struct {
-	Category string
-	State    string
+	VisibleUsers []string
+	UserID       *string
+	Category     string
+	State        string
 }
 
 func (q *Queries) CountFeedbacks(ctx context.Context, arg CountFeedbacksParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countFeedbacks, arg.Category, arg.State)
+	row := q.db.QueryRow(ctx, countFeedbacks,
+		arg.VisibleUsers,
+		arg.UserID,
+		arg.Category,
+		arg.State,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -304,21 +313,27 @@ const listFeedbacks = `-- name: ListFeedbacks :many
 SELECT id, user_id, category, content, rating, platform, client_version,
        state, request_id, idempotency_key, request_hash, created_at, updated_at
 FROM feedbacks
-WHERE ($1::text = '' OR feedbacks.category = $1::text)
-  AND ($2::text = '' OR feedbacks.state = $2::text)
+WHERE ($1::uuid[] IS NULL OR feedbacks.user_id = ANY($1::uuid[]))
+ AND ($2::uuid IS NULL OR feedbacks.user_id=$2::uuid)
+ AND ($3::text = '' OR feedbacks.category = $3::text)
+  AND ($4::text = '' OR feedbacks.state = $4::text)
 ORDER BY created_at DESC, id DESC
-LIMIT $4::int OFFSET $3::int
+LIMIT $6::int OFFSET $5::int
 `
 
 type ListFeedbacksParams struct {
-	Category   string
-	State      string
-	PageOffset int32
-	PageLimit  int32
+	VisibleUsers []string
+	UserID       *string
+	Category     string
+	State        string
+	PageOffset   int32
+	PageLimit    int32
 }
 
 func (q *Queries) ListFeedbacks(ctx context.Context, arg ListFeedbacksParams) ([]Feedback, error) {
 	rows, err := q.db.Query(ctx, listFeedbacks,
+		arg.VisibleUsers,
+		arg.UserID,
 		arg.Category,
 		arg.State,
 		arg.PageOffset,

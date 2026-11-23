@@ -30,6 +30,7 @@ export function NavMain({
     title: string
     url: string
     icon: React.ReactNode
+    disabled?: boolean
     items?: {
       title: string
       url: string
@@ -62,7 +63,14 @@ export function NavMain({
   return (
     <SidebarGroup>
       <SidebarMenu>
-        {items.map((item) => (
+        {items.map((item) => item.disabled ? (
+          <SidebarMenuItem key={item.title}>
+            <SidebarMenuButton className={mainItemClassName} disabled>
+              {item.icon}
+              <span>{item.title}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : (
           <Collapsible
             key={item.title}
             open={openSection === item.url}

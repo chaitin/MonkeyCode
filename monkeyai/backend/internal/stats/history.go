@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -13,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func (s *Service) history(w http.ResponseWriter, r *http.Request) {
+func (s *Service) history(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	q := r.URL.Query()
 	title, user := strings.TrimSpace(q.Get("task")), strings.TrimSpace(q.Get("user"))
 	if len(title) > 200 || len(user) > 200 {
@@ -61,7 +62,7 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	items, err := resource.DecodeObjects(sqlc.New(s.pool).ListHistory(ctx, sqlc.ListHistoryParams{
+	items, err := resource.DecodeObjects(sqlc.New(s.pool).ListHistory(ctx, sqlc.ListHistoryParams{VisibleUsers: scope.IDs(),
 		TitleQuery: title,
 		UserQuery:  user,
 		UserID:     userID,

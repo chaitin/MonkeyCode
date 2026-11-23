@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
@@ -56,16 +57,16 @@ func period(r *http.Request, now time.Time) (window, error) {
 	return window{from: now.Add(-duration), until: now}, nil
 }
 
-func (s *Service) RegisterAdmin(r chi.Router) {
+func (s *Service) RegisterAdmin(r chi.Router, get memberscope.Get) {
 	r.Get("/statistics/realtime", s.read(realtime))
-	r.Get("/statistics/session-reporting/sessions/overview", s.sessionOverview)
-	r.Get("/statistics/session-reporting/members/overview", s.membersOverview)
-	r.Get("/statistics/session-reporting/members/{id}", s.memberAnalysis)
+	get("/statistics/session-reporting/sessions/overview", s.sessionOverview)
+	get("/statistics/session-reporting/members/overview", s.membersOverview)
+	get("/statistics/session-reporting/members/{id}", s.memberAnalysis)
 	r.Get("/statistics/models/overview", s.modelsOverview)
-	r.Get("/statistics/history", s.history)
-	r.Get("/statistics/conversations", s.conversations)
+	get("/statistics/history", s.history)
+	get("/statistics/conversations", s.conversations)
 	r.Get("/statistics/session-reporting/sessions/{id}", s.reportingDetail)
-	r.Get("/statistics/session-reporting/resources", s.reportingResources)
+	get("/statistics/session-reporting/resources", s.reportingResources)
 	r.Get("/statistics/session-reporting/clients", s.reportingClients)
 	r.Get("/statistics/session-reporting/clients/overview", s.reportingClientsOverview)
 }

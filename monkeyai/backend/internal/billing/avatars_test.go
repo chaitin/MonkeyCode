@@ -2,6 +2,7 @@ package billing
 
 import (
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ func TestQuotaUserAvatars(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
-	s.RegisterAdmin(router)
+	s.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	for _, tc := range []struct {
 		name   string
 		stored any
@@ -85,7 +86,7 @@ func TestAdminListUserAvatars(t *testing.T) {
 			VALUES($1,$2,'model',$3,'avatar-test','快照名称','snapshot@example.com','local','running',0,'{}',$4)`, owner, a.ID, model, at)
 	}
 	router := chi.NewRouter()
-	s.RegisterAdmin(router)
+	s.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	for _, tc := range []struct {
 		name   string
 		stored any

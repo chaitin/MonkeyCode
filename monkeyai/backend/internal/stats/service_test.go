@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"math"
 	"math/big"
 	"net/http"
@@ -77,7 +78,7 @@ func exec(t *testing.T, s *Service, query string, args ...any) {
 func request(t *testing.T, s *Service, path string, code int) resource.Object {
 	t.Helper()
 	r := chi.NewRouter()
-	s.RegisterAdmin(r)
+	s.RegisterAdmin(r, memberscope.AdminOnly(r.Get))
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 	if w.Code != code {
@@ -105,7 +106,7 @@ func call(t *testing.T, s *Service, user, model, status string, start, end time.
 }
 func TestOldModelsEndpointRemoved(t *testing.T) {
 	r := chi.NewRouter()
-	(&Service{}).RegisterAdmin(r)
+	(&Service{}).RegisterAdmin(r, memberscope.AdminOnly(r.Get))
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("GET", "/statistics/models?range=24h", nil))
 	if w.Code != http.StatusNotFound {
@@ -303,7 +304,7 @@ func TestRealtime(t *testing.T) {
 }
 func TestUsersOverviewEndpointRemoved(t *testing.T) {
 	router := chi.NewRouter()
-	(&Service{}).RegisterAdmin(router)
+	(&Service{}).RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	for _, path := range []string{"/statistics/users", "/statistics/users?range=7d"} {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
@@ -315,7 +316,7 @@ func TestUsersOverviewEndpointRemoved(t *testing.T) {
 
 func TestTasksOverviewRemoved(t *testing.T) {
 	r := chi.NewRouter()
-	(&Service{}).RegisterAdmin(r)
+	(&Service{}).RegisterAdmin(r, memberscope.AdminOnly(r.Get))
 	for _, path := range []string{"/statistics/tasks/overview", "/statistics/tasks/overview?range=7d"} {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
@@ -391,7 +392,7 @@ func TestHistory(t *testing.T) {
 }
 func TestRemovedStatisticsEndpoints(t *testing.T) {
 	router := chi.NewRouter()
-	(&Service{}).RegisterAdmin(router)
+	(&Service{}).RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	for _, path := range []string{
 		"/statistics/session-reporting/sessions", "/statistics/session-reporting/sessions?limit=1",
 		"/statistics/session-reporting/overview", "/statistics/session-reporting/overview?from=2026-09-08T00:00:00Z",

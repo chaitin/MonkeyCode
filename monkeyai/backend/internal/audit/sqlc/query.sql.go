@@ -100,18 +100,21 @@ func (q *Queries) Create(ctx context.Context, arg CreateParams) error {
 const page = `-- name: Page :one
 WITH filtered AS NOT MATERIALIZED (
     SELECT id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id, request_params, source_ip, user_agent, result, error_message, occurred_at, created_at, request_id FROM audits
-    WHERE ($1::text = '' OR category = $1)
-      AND ($2::text = '' OR result = $2)
-      AND ($3::text = '' OR strpos(lower(actor_name || ' ' || coalesce(actor_email, '')), lower($3)) > 0)
-      AND ($4::uuid IS NULL OR actor_user_id = $4::uuid)
-      AND ($5::text = '' OR strpos(coalesce(host(source_ip), ''), $5) > 0)
-      AND ($6::text = '' OR strpos(lower(request_params::text), lower($6)) > 0)
-      AND ($7::timestamptz IS NULL OR occurred_at >= $7)
-      AND ($8::timestamptz IS NULL OR occurred_at < $8)
+    WHERE ($1::uuid[] IS NULL OR actor_user_id = ANY($1::uuid[])) AND ($2::text = '' OR category = $2)
+      AND ($3::text = '' OR result = $3)
+      AND ($4::text = '' OR strpos(lower(actor_name || ' ' || coalesce(actor_email, '')), lower($4)) > 0)
+      AND ($5::uuid IS NULL OR actor_user_id = $5::uuid)
+      AND ($6::text = '' OR strpos(coalesce(host(source_ip), ''), $6) > 0)
+      AND ($7::text = '' OR ($1::uuid[] IS NULL AND strpos(lower(request_params::text), lower($7)) > 0))
+      AND ($8::timestamptz IS NULL OR occurred_at >= $8)
+      AND ($9::timestamptz IS NULL OR occurred_at < $9)
 ), page AS (
-    SELECT id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
-        request_params, host(source_ip) AS source_ip, user_agent, result, error_message, occurred_at, request_id
-    FROM filtered ORDER BY occurred_at DESC, id DESC LIMIT $10 OFFSET $9
+    SELECT id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type,
+        CASE WHEN $1::uuid[] IS NULL THEN target_id END AS target_id,
+        CASE WHEN $1::uuid[] IS NULL THEN request_params ELSE '{}'::jsonb END AS request_params,
+        host(source_ip) AS source_ip, user_agent, result,
+        CASE WHEN $1::uuid[] IS NULL THEN error_message END AS error_message, occurred_at, request_id
+    FROM filtered ORDER BY occurred_at DESC, id DESC LIMIT $11 OFFSET $10
 ), enriched AS (
     SELECT page.id, page.actor_type, page.actor_user_id, page.actor_name, page.actor_email, page.action, page.category, page.target_type, page.target_id, page.request_params, page.source_ip, page.user_agent, page.result, page.error_message, page.occurred_at, page.request_id, coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), '')) AS actor_avatar_url
     FROM page LEFT JOIN users u ON u.id = page.actor_user_id
@@ -121,20 +124,22 @@ SELECT jsonb_build_object('total', (SELECT count(*) FROM filtered), 'items',
 `
 
 type PageParams struct {
-	Category    string
-	Result      string
-	Actor       string
-	ActorUserID *string
-	Ip          string
-	Params      string
-	Since       *time.Time
-	Until       *time.Time
-	PageOffset  int32
-	PageSize    int32
+	VisibleUsers []string
+	Category     string
+	Result       string
+	Actor        string
+	ActorUserID  *string
+	Ip           string
+	Params       string
+	Since        *time.Time
+	Until        *time.Time
+	PageOffset   int32
+	PageSize     int32
 }
 
 func (q *Queries) Page(ctx context.Context, arg PageParams) ([]byte, error) {
 	row := q.db.QueryRow(ctx, page,
+		arg.VisibleUsers,
 		arg.Category,
 		arg.Result,
 		arg.Actor,

@@ -1,7 +1,6 @@
 package billing
 
 import (
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -13,6 +12,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"math/big"
@@ -140,7 +141,7 @@ func walletAdmin(t *testing.T, s *Service, user string) func(string, string, any
 		u, _ := identity.UserFromContext(r.Context())
 		return auditlog.Actor{ID: u.ID, Name: u.Name, Email: u.Email}
 	}))
-	s.RegisterAdmin(router)
+	s.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	settings.RegisterAdmin(router)
 	return func(method, path string, input any, status int) []byte {
 		t.Helper()

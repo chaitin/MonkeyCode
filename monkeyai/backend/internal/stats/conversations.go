@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -95,7 +96,7 @@ func parseConversationFilter(r *http.Request) (conversationFilter, error) {
 	return f, nil
 }
 
-func (s *Service) conversations(w http.ResponseWriter, r *http.Request) {
+func (s *Service) conversations(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	f, err := parseConversationFilter(r)
 	if err != nil {
@@ -106,6 +107,7 @@ func (s *Service) conversations(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	q := sqlc.New(s.pool)
 	params := f.params
+	params.VisibleUsers = scope.IDs()
 	params.Limit, params.Offset = int32(f.size+1), int32((f.page-1)*f.size)
 	var rows [][]byte
 	if params.TaskID == "" {
@@ -148,6 +150,12 @@ func (s *Service) taskConversationRows(ctx context.Context, params sqlc.ListConv
 }
 
 func taskConversationParams(ctx context.Context, q *sqlc.Queries, params sqlc.ListConversationsParams) (*sqlc.ListTaskConversationsParams, error) {
+	if params.VisibleUsers != nil {
+		ok, err := q.IsManagedTask(ctx, sqlc.IsManagedTaskParams{TaskID: params.TaskID, VisibleUsers: params.VisibleUsers})
+		if err != nil || !ok {
+			return nil, err
+		}
+	}
 	raw, err := q.TaskTurnBounds(ctx, params.TaskID)
 	if err != nil {
 		return nil, err
@@ -164,7 +172,7 @@ func taskConversationParams(ctx context.Context, q *sqlc.Queries, params sqlc.Li
 		return nil, nil
 	}
 	return &sqlc.ListTaskConversationsParams{
-		TaskID: params.TaskID, TitleQuery: params.TitleQuery, UserQuery: params.UserQuery, UserID: params.UserID, ContentQuery: params.ContentQuery,
+		VisibleUsers: params.VisibleUsers, TaskID: params.TaskID, TitleQuery: params.TitleQuery, UserQuery: params.UserQuery, UserID: params.UserID, ContentQuery: params.ContentQuery,
 		FromTime: params.FromTime, UntilTime: params.UntilTime, FirstTurnTime: bounds.First, LastTurnTime: bounds.Last,
 		Limit: params.Limit, Offset: params.Offset,
 	}, nil

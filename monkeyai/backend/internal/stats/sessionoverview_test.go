@@ -2,6 +2,7 @@ package stats
 
 import (
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,7 +17,7 @@ func TestSessionOverviewRejectsFilters(t *testing.T) {
 	for _, query := range []string{"?range=7d", "?model_id=x", "?from=", "?%zz"} {
 		t.Run(query, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			(&Service{}).sessionOverview(w, httptest.NewRequest("GET", sessionOverviewPath+query, nil))
+			(&Service{}).sessionOverview(w, httptest.NewRequest("GET", sessionOverviewPath+query, nil), memberscope.All())
 			if w.Code != http.StatusBadRequest || w.Header().Get("Cache-Control") != "private, no-store" {
 				t.Fatalf("invalid query: %d %v %s", w.Code, w.Header(), w.Body)
 			}

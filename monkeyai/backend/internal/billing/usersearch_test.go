@@ -2,6 +2,7 @@ package billing
 
 import (
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -37,7 +38,7 @@ func TestBillingUserSelectionHistory(t *testing.T) {
 	}
 	ledgerExec(t, s, `UPDATE users SET status='disabled',deleted_at=now() WHERE id=$1`, deleted)
 	router := chi.NewRouter()
-	s.RegisterAdmin(router)
+	s.RegisterAdmin(router, memberscope.AdminOnly(router.Get))
 	call := func(t *testing.T, path string, status int) map[string]any {
 		t.Helper()
 		w := httptest.NewRecorder()

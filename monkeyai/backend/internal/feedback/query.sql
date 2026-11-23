@@ -23,7 +23,9 @@ WHERE user_id = $1 AND idempotency_key = $2 AND idempotency_key <> '';
 SELECT id, user_id, category, content, rating, platform, client_version,
        state, request_id, idempotency_key, request_hash, created_at, updated_at
 FROM feedbacks
-WHERE (sqlc.arg(category)::text = '' OR feedbacks.category = sqlc.arg(category)::text)
+WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR feedbacks.user_id = ANY(sqlc.arg(visible_users)::uuid[]))
+ AND (sqlc.narg(user_id)::uuid IS NULL OR feedbacks.user_id=sqlc.narg(user_id)::uuid)
+ AND (sqlc.arg(category)::text = '' OR feedbacks.category = sqlc.arg(category)::text)
   AND (sqlc.arg(state)::text = '' OR feedbacks.state = sqlc.arg(state)::text)
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_limit)::int OFFSET sqlc.arg(page_offset)::int;
@@ -36,7 +38,9 @@ WHERE id = ANY(sqlc.arg(user_ids)::uuid[]);
 -- name: CountFeedbacks :one
 SELECT count(*)
 FROM feedbacks
-WHERE (sqlc.arg(category)::text = '' OR feedbacks.category = sqlc.arg(category)::text)
+WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR feedbacks.user_id = ANY(sqlc.arg(visible_users)::uuid[]))
+ AND (sqlc.narg(user_id)::uuid IS NULL OR feedbacks.user_id=sqlc.narg(user_id)::uuid)
+ AND (sqlc.arg(category)::text = '' OR feedbacks.category = sqlc.arg(category)::text)
   AND (sqlc.arg(state)::text = '' OR feedbacks.state = sqlc.arg(state)::text);
 
 -- name: ListAttachments :many

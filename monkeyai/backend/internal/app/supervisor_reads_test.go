@@ -91,13 +91,15 @@ func TestSupervisorSharedReads(t *testing.T) {
 		get("POST", p, "lead", 403)
 		get("HEAD", p, "lead", 403)
 	}
-	for _, test := range [][2]string{{"GET", "/users/" + outsider}, {"GET", "/groups/"}, {"GET", "/me"}, {"PATCH", "/users/" + outsider}, {"DELETE", "/groups/test"}, {"PUT", "/groups/test/supervisors"}, {"POST", "/license/import"}, {"POST", "/license/downgrade"}} {
+	get("GET", "/users/"+outsider, "lead", 404)
+	for _, test := range [][2]string{{"GET", "/groups/"}, {"GET", "/me"}, {"PATCH", "/users/" + outsider}, {"DELETE", "/groups/test"}, {"PUT", "/groups/test/supervisors"}, {"POST", "/license/import"}, {"POST", "/license/downgrade"}} {
 		get(test[0], test[1], "lead", 403)
 	}
 	t.Run("成员搜索", func(t *testing.T) { testAdminUserCandidates(t, pool, h) })
 	get("GET", "/billing/users?q=", "admin", 404)
 	get("GET", "/private-extension-status", "admin", 204)
 	get("GET", "/private-extension-status", "lead", 403)
+	t.Run("管辖员工读取", func(t *testing.T) { testScopedReads(t, pool, get, admin, lead, outsider) })
 	h = makeHandler()
 	get("GET", "/license/status", "admin", 404)
 	get("GET", "/license/status", "lead", 404)
@@ -105,4 +107,6 @@ func TestSupervisorSharedReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	get("GET", "/users", "lead", 403)
+	get("GET", "/feedback", "lead", 403)
+	get("GET", "/statistics/session-reporting/members/"+lead, "lead", 403)
 }
