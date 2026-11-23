@@ -847,6 +847,8 @@ export const ruRU = {
       memberDisabled: "Отключён",
       makeAdministrator: "Назначить администратором",
       removeAdministrator: "Отменить права администратора",
+      deleteMember: "Удалить участника",
+      confirmDeleteMember: "Удалить участника {{member}} ({{email}})? Вход с этой учётной записью станет невозможен. История сохранится.",
       remainingCredits: "Осталось кредитов: {{count}}",
       joinedAt: "Дата добавления: {{date}}",
       groupActions: "Действия с группой",

@@ -831,6 +831,8 @@ export const jaJP = {
       memberDisabled: "無効",
       makeAdministrator: "管理者に設定",
       removeAdministrator: "管理者を解除",
+      deleteMember: "メンバーを削除",
+      confirmDeleteMember: "{{member}}（{{email}}）を削除しますか？削除後はこのアカウントでログインできなくなります。履歴は保持されます。",
       remainingCredits: "残り {{count}} クレジット",
       joinedAt: "参加日：{{date}}",
       groupActions: "グループ操作",

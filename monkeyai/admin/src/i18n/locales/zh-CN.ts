@@ -2047,6 +2047,8 @@ export const zhCN = {
       memberDisabled: "禁用",
       makeAdministrator: "设为超级管理员",
       removeAdministrator: "取消超级管理员",
+      deleteMember: "删除成员",
+      confirmDeleteMember: "确定删除 {{member}}（{{email}}）吗？删除后此成员将无法使用原账号登录，其历史记录会保留。",
       remainingCredits: "剩余 {{count}} 积分",
       joinedAt: "{{year}} 年 {{month}} 月 {{day}} 日加入",
       groupActions: "分组操作",

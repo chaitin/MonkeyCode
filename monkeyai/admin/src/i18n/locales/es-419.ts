@@ -846,6 +846,8 @@ export const es419 = {
       memberDisabled: "Deshabilitado",
       makeAdministrator: "Hacer administrador",
       removeAdministrator: "Quitar como administrador",
+      deleteMember: "Eliminar miembro",
+      confirmDeleteMember: "¿Eliminar a {{member}} ({{email}})? Ya no podrá iniciar sesión con esta cuenta. Se conservarán los registros históricos.",
       remainingCredits: "{{count}} créditos restantes",
       joinedAt: "Se unió el {{date}}",
       groupActions: "Acciones del grupo",

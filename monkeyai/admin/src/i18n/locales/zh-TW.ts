@@ -827,6 +827,8 @@ export const zhTW = {
       memberDisabled: "已停用",
       makeAdministrator: "設為超級管理員",
       removeAdministrator: "取消超級管理員",
+      deleteMember: "刪除成員",
+      confirmDeleteMember: "確定刪除 {{member}}（{{email}}）嗎？刪除後，此成員將無法使用原帳號登入，歷史記錄將保留。",
       remainingCredits: "剩餘 {{count}} 點積分",
       joinedAt: "{{year}} 年 {{month}} 月 {{day}} 日加入",
       groupActions: "群組操作",

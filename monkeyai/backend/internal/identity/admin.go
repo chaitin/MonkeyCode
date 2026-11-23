@@ -33,6 +33,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Post("/users", s.createUser)
 	router.Get("/users/{userID}", s.getUser)
 	router.Patch("/users/{userID}", s.patchUser)
+	router.Delete("/users/{userID}", s.deleteUser)
 	router.Post("/users/{userID}/reset-password", s.resetUserPassword)
 }
 

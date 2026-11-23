@@ -1,5 +1,6 @@
 import { useState } from "react"
 import {
+  Delete02Icon,
   MoreHorizontalIcon,
   PowerIcon,
   PowerOffIcon,
@@ -40,6 +41,7 @@ export function MemberActions({
   onToggleStatus,
   onToggleRole,
   onResetPassword,
+  onDelete,
 }: {
   user: MemberActionUser
   savingID: string
@@ -50,6 +52,7 @@ export function MemberActions({
   onToggleStatus: (user: MemberActionUser) => void
   onToggleRole: (user: MemberActionUser) => void
   onResetPassword: (user: MemberActionUser) => void
+  onDelete: (user: MemberActionUser) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -125,6 +128,14 @@ export function MemberActions({
                 ? "pages.membersAndGroups.removeAdministrator"
                 : "pages.membersAndGroups.makeAdministrator"
             )}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={isCurrentUser}
+            onClick={() => onDelete(user)}
+          >
+            <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+            {t("pages.membersAndGroups.deleteMember")}
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

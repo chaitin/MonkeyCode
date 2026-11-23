@@ -857,6 +857,8 @@ export const deDE = {
       memberDisabled: "Deaktiviert",
       makeAdministrator: "Zum Administrator machen",
       removeAdministrator: "Administratorrechte entziehen",
+      deleteMember: "Mitglied löschen",
+      confirmDeleteMember: "{{member}} ({{email}}) löschen? Die Anmeldung mit diesem Konto ist danach nicht mehr möglich. Verlaufsdaten bleiben erhalten.",
       remainingCredits: "{{count}} Credits verbleibend",
       joinedAt: "Beigetreten am {{date}}",
       groupActions: "Gruppenaktionen",

@@ -2639,6 +2639,32 @@ paths:
           $ref: '#/components/responses/ResourceError404'
         '500':
           $ref: '#/components/responses/ResourceError500'
+    delete:
+      summary: 删除成员
+      description: 仅管理员可操作，不能删除当前登录账号。删除后成员不再出现在成员列表与分组中，旧登录凭据失效，历史记录保留。
+      responses:
+        '204':
+          description: 已删除成员。
+        '400':
+          description: 成员 UUID 无效（invalid_request）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          description: 不能删除自己的账号（cannot_delete_self）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
   /api/admin/v1/users/{userID}/reset-password:
     parameters:
       - in: path
