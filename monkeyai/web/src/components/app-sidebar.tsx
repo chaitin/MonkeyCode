@@ -158,6 +158,7 @@ export function AppSidebar({
         {
           title: t("pages.otherSettings.title"),
           url: CONSOLE_ROUTES.otherSettings,
+          disabled: user?.role === "group_admin",
         },
       ],
     },

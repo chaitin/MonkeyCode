@@ -33,6 +33,7 @@ export function NavMain({
     items?: {
       title: string
       url: string
+      disabled?: boolean
     }[]
   }[]
 }) {
@@ -114,7 +115,13 @@ export function NavMain({
                           className="h-10 translate-x-0 text-sidebar-foreground/65 hover:bg-sidebar-foreground/[0.03] hover:text-sidebar-foreground/85 data-active:bg-sidebar-accent data-active:font-medium data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground [&>svg]:text-sidebar-foreground/40 data-active:[&>svg]:text-foreground [[dir=rtl]_&]:translate-x-0"
                           isActive={isActiveSubItem(subItem.url)}
                           size="md"
-                          render={<NavLink to={subItem.url} />}
+                          render={
+                            subItem.disabled ? (
+                              <button type="button" disabled />
+                            ) : (
+                              <NavLink to={subItem.url} />
+                            )
+                          }
                         >
                           <HugeiconsIcon
                             aria-hidden="true"
