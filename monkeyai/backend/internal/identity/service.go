@@ -363,7 +363,7 @@ func (s *Service) Refresh(ctx context.Context, clientID, refreshToken string) (T
 	}
 	token.GrantID, token.Scope = grant.ID, strings.Join(grant.Scopes, " ")
 	if grant.Purpose == "runtime" {
-		token.Scope = strings.Join(runtimeScopes, " ")
+		token.Scope = runtimeTokenScope
 		if s.deviceEnabled() {
 			token.ServerID = s.device.serverID
 		}

@@ -33,7 +33,9 @@ import (
 const RuntimeClientID = "monkeyai-runtime"
 const DeviceGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 
-var runtimeScopes = []string{AccountResources, "device:bind", "device:publish", "session:report"}
+const runtimeTokenScope = "device:bind device:publish session:report"
+
+var runtimeScopes = append([]string{AccountResources}, strings.Fields(runtimeTokenScope)...)
 
 type DeviceRegistry interface {
 	VerifyDeviceRequest(context.Context, pgx.Tx, string, string, []byte) (bool, error)
@@ -464,7 +466,7 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, clientID, code string)
 	if err != nil {
 		return Token{}, err
 	}
-	token := Token{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer", ExpiresIn: int64(s.accessTTL.Seconds()), ExpiresAt: now.Add(s.accessTTL), GrantID: grant.ID, Scope: strings.Join(grant.Scopes, " "), ServerID: s.device.serverID, MachineID: request.MachineID}
+	token := Token{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer", ExpiresIn: int64(s.accessTTL.Seconds()), ExpiresAt: now.Add(s.accessTTL), GrantID: grant.ID, Scope: runtimeTokenScope, ServerID: s.device.serverID, MachineID: request.MachineID}
 	if _, err = q.CreateToken(ctx, sqlc.CreateTokenParams{UserID: grant.UserID, ClientID: RuntimeClientID, GrantID: grant.ID, AccessTokenHash: tokenHash(access), RefreshTokenHash: tokenHash(refresh), AccessExpiresAt: token.ExpiresAt, RefreshExpiresAt: grant.ExpiresAt}); err != nil {
 		return Token{}, err
 	}
