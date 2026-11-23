@@ -46,11 +46,15 @@ func PrincipalFromContext(ctx context.Context) (Principal, bool) {
 }
 
 func (p Principal) Has(scope string) bool {
-	return p.Audience == Audience && slices.Contains(p.Scopes, scope)
+	return p.Purpose != "runtime" && p.Audience == Audience && slices.Contains(p.Scopes, scope)
+}
+
+func (p Principal) IsRuntime() bool {
+	return p.Purpose == "runtime" && p.ClientID == RuntimeClientID && p.Audience == Audience
 }
 
 func (p Principal) CanIssueRuntimeKey() bool {
-	return p.Purpose == "runtime" && p.MachineID != "" && p.Has("device:publish") && p.Has(AccountResources)
+	return p.IsRuntime() && p.MachineID != "" && p.KeyID != ""
 }
 
 func RequireScope(scope string) func(http.Handler) http.Handler {
@@ -77,9 +81,6 @@ func parseScopes(clientID, value string) ([]string, error) {
 	for _, scope := range scopes {
 		if _, ok := scopeNames[scope]; !ok {
 			return nil, oauthError("invalid_scope", "不支持请求的权限")
-		}
-		if clientID == RuntimeClientID && !slices.Contains(runtimeScopes, scope) {
-			return nil, oauthError("invalid_scope", "设备不能申请此权限")
 		}
 		if scope == AccountResources && clientID != RuntimeClientID {
 			return nil, oauthError("invalid_scope", "此委托权限仅用于设备授权")

@@ -166,8 +166,8 @@ func (e *Execution) Enroll(ctx context.Context, p identity.Principal, in Enrollm
 		return ExecutionState{}, executionFailure(http.StatusBadRequest, "invalid_request")
 	}
 	managed := p.ClientID == "monkeyai-desktop" && p.Purpose == "user" && in.DeploymentMode == "desktop_managed"
-	standalone := p.ClientID == identity.RuntimeClientID && p.Purpose == "runtime" && in.DeploymentMode == "standalone"
-	if !p.Has("device:bind") || (in.Intent == "publish" && (!p.Has("device:publish") || !managed && !standalone)) {
+	standalone := p.IsRuntime() && in.DeploymentMode == "standalone"
+	if !standalone && (!p.Has("device:bind") || in.Intent == "publish" && (!p.Has("device:publish") || !managed)) {
 		return ExecutionState{}, executionFailure(http.StatusForbidden, "permission_denied")
 	}
 	tx, err := e.pool.Begin(ctx)
@@ -276,8 +276,9 @@ func (e *Execution) AuthenticateHost(ctx context.Context, tx pgx.Tx, p identity.
 		return false, err
 	}
 	scope := ""
-	if p.Purpose == "runtime" || len(p.Scopes) > 0 {
-		if !p.Has("session:report") {
+	verified := p.IsRuntime() || len(p.Scopes) > 0
+	if verified {
+		if !p.IsRuntime() && !p.Has("session:report") {
 			return false, executionFailure(http.StatusForbidden, "permission_denied")
 		}
 		if p.MachineID == "" {
@@ -293,13 +294,13 @@ func (e *Execution) AuthenticateHost(ctx context.Context, tx pgx.Tx, p identity.
 		return false, executionFailure(http.StatusForbidden, "permission_denied")
 	}
 	row, err := q.Get(ctx, sqlc.GetParams{UserID: p.UserID, MachineID: machineID})
-	if errors.Is(err, pgx.ErrNoRows) && len(p.Scopes) == 0 {
+	if errors.Is(err, pgx.ErrNoRows) && !verified {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if len(p.Scopes) == 0 && row.KeyID == nil {
+	if !verified && row.KeyID == nil {
 		return false, nil
 	}
 	if p.MachineID != machineID || row.KeyID == nil || p.KeyID != *row.KeyID {

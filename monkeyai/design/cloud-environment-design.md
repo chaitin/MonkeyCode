@@ -143,7 +143,7 @@ sequenceDiagram
     B-->>C: 环境可连接
 ```
 
-登录操作本身可以是异步环境操作；如果后台授权策略不满足、请求过期或宿主断线，后台保留结构化失败原因及已有 state-dir，核实授权和身份状态后重试，不因超时删除唯一设备身份。自动批准只允许由已认证用户创建的环境操作触发，绑定 user、environment、host 和 machine 公钥，并设置很短的有效期；不能做成按 machine ID 无条件自动批准。权限固定为 `account:ai-resources device:bind device:publish session:report`；旧宿主显式请求设备三项时只批准原范围。重复重试先检查已有 `machine_id` 和授权状态，不能为同一个环境并行启动两个 login。
+登录操作本身可以是异步环境操作；如果后台授权策略不满足、请求过期或宿主断线，后台保留结构化失败原因及已有 state-dir，核实授权和身份状态后重试，不因超时删除唯一设备身份。自动批准只允许由已认证用户创建的环境操作触发，绑定 user、environment、host 和 machine 公钥，并设置很短的有效期；不能做成按 machine ID 无条件自动批准。批准授予固定运行端能力，不读取旧客户端的 scope 参数。重复重试先检查已有 `machine_id` 和授权状态，不能为同一个环境并行启动两个 login。
 
 首期要持久化整个 runtime state-dir，而不只是项目目录，因为现有 standalone 模式的设备密钥、凭据、账号映射、profile 和会话资料都通过该目录关联。宿主将用户项目卷挂载到固定路径，并在客户端能力说明中约定工作区路径；runtime 本身不需要知道该路径是云盘还是本地目录。
 

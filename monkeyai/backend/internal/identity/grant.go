@@ -177,6 +177,9 @@ func (s *Service) VerifyGrant(ctx context.Context, p Principal) (bool, error) {
 	if p.MachineID != "" && (g.MachineID == nil || *g.MachineID != p.MachineID || g.KeyID == nil || *g.KeyID != p.KeyID) {
 		return false, nil
 	}
+	if p.Purpose == "runtime" {
+		return p.IsRuntime(), nil
+	}
 	for _, scope := range p.Scopes {
 		if !slices.Contains(g.Scopes, scope) {
 			return false, nil

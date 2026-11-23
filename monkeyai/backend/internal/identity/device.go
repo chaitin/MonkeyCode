@@ -156,15 +156,6 @@ func (s *Service) deviceAuthorization(w http.ResponseWriter, r *http.Request) {
 		s.writeOAuthError(r.Context(), w, oauthError("invalid_client", "仅独立 runtime 使用设备授权"))
 		return
 	}
-	scope := r.PostForm.Get("scope")
-	if scope == "" {
-		scope = strings.Join(runtimeScopes, " ")
-	}
-	scopes, err := parseScopes(RuntimeClientID, scope)
-	if err != nil {
-		s.writeOAuthError(r.Context(), w, err)
-		return
-	}
 	machine, display, platform, arch := r.PostForm.Get("machine_id"), r.PostForm.Get("display_name"), r.PostForm.Get("platform"), r.PostForm.Get("arch")
 	public, err := base64.RawURLEncoding.Strict().DecodeString(r.PostForm.Get("execution_public_key"))
 	if err != nil || len(public) != ed25519.PublicKeySize || !deviceUUID(machine) || !deviceText(display, 128) || !deviceText(arch, 32) || !slices.Contains([]string{"macos", "windows", "linux"}, platform) {
@@ -185,7 +176,7 @@ func (s *Service) deviceAuthorization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fingerprint := sha256.Sum256(public)
-	_, err = sqlc.New(s.db).CreateDeviceRequest(r.Context(), sqlc.CreateDeviceRequestParams{ClientID: RuntimeClientID, DeviceCodeHash: tokenHash(deviceCode), UserCodeHash: s.userCodeHash(userCode), MachineID: machine, ExecutionPublicKey: public, KeyID: base64.RawURLEncoding.EncodeToString(fingerprint[:]), DisplayName: display, Platform: platform, Arch: arch, RequestedScopes: scopes, ExpiresAt: s.now().Add(10 * time.Minute)})
+	_, err = sqlc.New(s.db).CreateDeviceRequest(r.Context(), sqlc.CreateDeviceRequestParams{ClientID: RuntimeClientID, DeviceCodeHash: tokenHash(deviceCode), UserCodeHash: s.userCodeHash(userCode), MachineID: machine, ExecutionPublicKey: public, KeyID: base64.RawURLEncoding.EncodeToString(fingerprint[:]), DisplayName: display, Platform: platform, Arch: arch, RequestedScopes: runtimeScopes, ExpiresAt: s.now().Add(10 * time.Minute)})
 	if err != nil {
 		s.writeOAuthError(r.Context(), w, err)
 		return
@@ -259,7 +250,7 @@ func (s *Service) deviceRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(r.Context(), w, 200, map[string]any{"requires_restore": requiresRestore, "registration_conflict": conflict, "purpose": "device", "request_id": request.ID, "client": Clients[RuntimeClientID], "authenticated": authenticated, "user": nullableUser(user, authenticated), "providers": publicConnections(connections), "machine_id": request.MachineID, "display_name": request.DisplayName, "platform": request.Platform, "arch": request.Arch, "key_fingerprint": request.KeyID, "scopes": request.RequestedScopes, "scope_descriptions": scopeNames, "expires_at": request.ExpiresAt, "status": request.Status, "csrf_token": consentToken(r, request.ID)})
+	writeJSON(r.Context(), w, 200, map[string]any{"requires_restore": requiresRestore, "registration_conflict": conflict, "purpose": "device", "request_id": request.ID, "client": Clients[RuntimeClientID], "authenticated": authenticated, "user": nullableUser(user, authenticated), "providers": publicConnections(connections), "machine_id": request.MachineID, "display_name": request.DisplayName, "platform": request.Platform, "arch": request.Arch, "key_fingerprint": request.KeyID, "scopes": runtimeScopes, "scope_descriptions": scopeNames, "expires_at": request.ExpiresAt, "status": request.Status, "csrf_token": consentToken(r, request.ID)})
 }
 
 type deviceDecision struct {
@@ -342,15 +333,7 @@ func (s *Service) deviceDecision(w http.ResponseWriter, r *http.Request) {
 	status := "denied"
 	scopes := []string{}
 	if in.Decision == "approve" {
-		if in.Scopes == nil {
-			writeError(r.Context(), w, 400, "invalid_scope", "请明确批准权限")
-			return
-		}
-		scopes, err = approvedScopes(request.RequestedScopes, *in.Scopes)
-		if err != nil {
-			writeError(r.Context(), w, 400, "invalid_scope", err.Error())
-			return
-		}
+		scopes = runtimeScopes
 		revoked, checkErr := s.device.registry.VerifyDeviceRequest(r.Context(), tx, user.ID, request.MachineID, request.ExecutionPublicKey)
 		if checkErr != nil {
 			if errors.Is(checkErr, ErrDeviceBindingConflict) {
@@ -477,7 +460,7 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, clientID, code string)
 	if err != nil {
 		return Token{}, err
 	}
-	grant, err := q.CreateRuntimeGrant(ctx, sqlc.CreateRuntimeGrantParams{UserID: *request.OwnerUserID, Scopes: request.ApprovedScopes, RequestedMachineID: new(request.MachineID), RequestedKeyID: new(request.KeyID), RestoreApproved: request.RestoreRevoked, ExpiresAt: now.Add(s.refreshTTL)})
+	grant, err := q.CreateRuntimeGrant(ctx, sqlc.CreateRuntimeGrantParams{UserID: *request.OwnerUserID, Scopes: runtimeScopes, RequestedMachineID: new(request.MachineID), RequestedKeyID: new(request.KeyID), RestoreApproved: request.RestoreRevoked, ExpiresAt: now.Add(s.refreshTTL)})
 	if err != nil {
 		return Token{}, err
 	}
