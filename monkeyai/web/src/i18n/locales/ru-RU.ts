@@ -46,6 +46,16 @@ export const ruRU = {
   resources: enUS.resources,
   app: {
     documentTitle: "Администрирование MonkeyAI",
+    chooseAppHint: "Откройте веб-клиент для работы или панель администратора для управления командой.",
+    chooseApp: "Выберите приложение",
+    workspaceTitle: "Моё рабочее пространство",
+    workspaceDescription: "Пользуйтесь {{productName}} прямо в браузере без скачивания клиента.",
+    teamConsoleTitle: "Панель управления командой",
+    teamConsoleDescription: "Управляйте ИИ-ресурсами команды {{teamName}}.",
+    enterApp: "Открыть",
+    openWorkspace: "Открыть моё рабочее пространство",
+    openTeamConsole: "Открыть панель управления командой",
+    webClient: "Веб-клиент",
     adminConsole: "Панель администратора",
   },
   landing: {
@@ -142,6 +152,7 @@ export const ruRU = {
     system: "Системная",
   },
   login: {
+    sessionFailed: "Не удалось проверить состояние входа. Попробуйте ещё раз.",
     adminPanelSubtitle: "Войдите в панель администратора {{teamName}}",
     adminPanelDocumentTitle:
       "Панель администратора {{toolName}} - {{teamName}}",

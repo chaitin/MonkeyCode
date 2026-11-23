@@ -45,6 +45,16 @@ export const koKR = {
   resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI 관리자 콘솔",
+    chooseAppHint: "웹 클라이언트에서 작업하거나 관리 콘솔에서 팀을 관리하세요.",
+    chooseApp: "앱 선택",
+    workspaceTitle: "내 작업 공간",
+    workspaceDescription: "클라이언트를 다운로드하지 않고 브라우저에서 바로 {{productName}}을(를) 사용할 수 있습니다.",
+    teamConsoleTitle: "팀 관리 콘솔",
+    teamConsoleDescription: "{{teamName}}의 AI 리소스를 관리합니다.",
+    enterApp: "열기",
+    openWorkspace: "내 작업 공간 열기",
+    openTeamConsole: "팀 관리 콘솔 열기",
+    webClient: "웹 클라이언트",
     adminConsole: "관리자 콘솔",
   },
   landing: {
@@ -133,6 +143,7 @@ export const koKR = {
     system: "시스템 설정",
   },
   login: {
+    sessionFailed: "로그인 상태를 확인할 수 없습니다. 다시 시도해 주세요.",
     adminPanelSubtitle: "{{teamName}} 관리자 패널에 로그인",
     adminPanelDocumentTitle: "{{toolName}} 관리자 패널 - {{teamName}}",
     email: "이메일",

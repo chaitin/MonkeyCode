@@ -68,6 +68,7 @@ func (s *Service) AuthRouter() http.Handler {
 	router.Get("/client-requests/{requestID}", s.clientRequest)
 	router.With(s.RequireBrowser).Post("/client-requests/{requestID}/complete", s.completeClientRequest)
 	router.Get("/oauth/{connectionID}/start", s.startUpstream)
+	router.Get("/oauth/{connectionID}/web-start", func(w http.ResponseWriter, r *http.Request) { s.beginUpstream(w, r, "", loginPurposeWeb) })
 	router.Get("/oauth/{connectionID}/admin-start", s.startAdminUpstream)
 	router.Get("/oauth/callback", s.upstreamCallback)
 	return router
@@ -228,6 +229,14 @@ func (s *Service) providers(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) session(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.BrowserUser(r)
+	if ok {
+		var err error
+		user, err = s.webUser(r.Context(), user)
+		if err != nil {
+			writeError(r.Context(), w, 500, "server_error", "读取会话失败")
+			return
+		}
+	}
 	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"authenticated": ok, "user": nullableUser(user, ok)})
 }
 
@@ -452,7 +461,7 @@ func (s *Service) upstreamResultURL(state LoginState, errorCode string) string {
 		}
 		return s.publicURL + "/device?" + query.Encode()
 	}
-	if state.Purpose == loginPurposeAdmin {
+	if state.Purpose == loginPurposeAdmin || state.Purpose == loginPurposeWeb {
 		query := url.Values{}
 		if errorCode != "" {
 			query.Set("oauth_error", errorCode)

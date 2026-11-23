@@ -49,23 +49,13 @@ import { ToolsPage } from "@/pages/admin/tools-page"
 const KbDocumentPage = lazy(() => import("@/pages/admin/kb-document-page"))
 const KbDetailPage = lazy(() => import("@/pages/admin/kb-detail-page"))
 
-function RequireAuth() {
+function RequireAuth({ client = false }: { client?: boolean }) {
   const { isLoading, user } = useAuth()
-  const location = useLocation()
-
   if (isLoading) return <PageLoading />
-
-  if (user?.role !== "admin") {
-    return (
-      <Navigate
-        to={LOGIN_PATH}
-        replace
-        state={{
-          from: `${location.pathname}${location.search}${location.hash}`,
-        }}
-      />
-    )
-  }
+  if (!user) return <Navigate to={LOGIN_PATH} replace />
+  if (client) return <Outlet />
+  if (user.role === "group_admin") return <SkillTagsProvider><Outlet /></SkillTagsProvider>
+  if (user.role !== "admin") return <Navigate to="/client" replace />
 
   return (
     <LicenseGuard>
@@ -109,7 +99,9 @@ export function App() {
         <Route path={LOGIN_PATH} element={<LoginPage />} />
         <Route path="/device" element={<DeviceAuthorizationPage />} />
         <Route path="/client-login" element={<ClientLoginPage />} />
-        <Route path={CLIENT_ROUTE} element={<ClientPage />} />
+        <Route element={<RequireAuth client />}>
+          <Route path={CLIENT_ROUTE} element={<ClientPage />} />
+        </Route>
         <Route element={<RequireAuth />}>
           <Route path={CONSOLE_PATH} element={<Dashboard />}>
             <Route

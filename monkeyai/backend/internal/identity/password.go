@@ -135,6 +135,11 @@ func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User
 		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}
+	user, err = s.webUser(r.Context(), user)
+	if err != nil {
+		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "登录失败")
+		return
+	}
 	audit.Identify(r.Context(), audit.Actor{ID: user.ID, Name: user.Name, Email: user.Email})
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: token, Path: "/", HttpOnly: true,

@@ -46,6 +46,16 @@ export const jaJP = {
   resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI 管理コンソール",
+    chooseAppHint: "Web クライアントで作業するか、管理コンソールでチームを管理できます。",
+    chooseApp: "アプリを選択",
+    workspaceTitle: "個人ワークスペース",
+    workspaceDescription: "クライアントをダウンロードせずに、ブラウザーで直接{{productName}}を利用できます。",
+    teamConsoleTitle: "チーム管理画面",
+    teamConsoleDescription: "{{teamName}}の AI リソースを管理します。",
+    enterApp: "開く",
+    openWorkspace: "自分のワークスペースを開く",
+    openTeamConsole: "チーム管理画面を開く",
+    webClient: "Web クライアント",
     adminConsole: "管理コンソール",
   },
   landing: {
@@ -138,6 +148,7 @@ export const jaJP = {
     system: "システム設定",
   },
   login: {
+    sessionFailed: "ログイン状態を確認できませんでした。もう一度お試しください。",
     adminPanelSubtitle: "{{teamName}} の管理パネルにログイン",
     adminPanelDocumentTitle: "{{toolName}} 管理パネル - {{teamName}}",
     email: "メールアドレス",

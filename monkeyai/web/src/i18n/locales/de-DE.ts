@@ -47,6 +47,16 @@ export const deDE = {
   resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI-Administration",
+    chooseAppHint: "Öffne den Webclient zum Arbeiten oder die Verwaltungskonsole für dein Team.",
+    chooseApp: "Anwendung wählen",
+    workspaceTitle: "Mein Arbeitsbereich",
+    workspaceDescription: "Nutze {{productName}} direkt im Browser, ohne den Client herunterzuladen.",
+    teamConsoleTitle: "Teamverwaltung",
+    teamConsoleDescription: "KI-Ressourcen für {{teamName}} verwalten.",
+    enterApp: "Öffnen",
+    openWorkspace: "Meinen Arbeitsbereich öffnen",
+    openTeamConsole: "Teamverwaltung öffnen",
+    webClient: "Webclient",
     adminConsole: "Administrationskonsole",
   },
   landing: {
@@ -143,6 +153,7 @@ export const deDE = {
     system: "System",
   },
   login: {
+    sessionFailed: "Der Anmeldestatus konnte nicht geprüft werden. Bitte erneut versuchen.",
     adminPanelSubtitle:
       "Melden Sie sich beim Administrationsbereich von {{teamName}} an",
     adminPanelDocumentTitle:

@@ -198,6 +198,21 @@ func (s *Service) revokeToken(ctx context.Context, hash, clientID string) error 
 	return s.RevokeGrant(ctx, id, "client_logout")
 }
 
+// webUser 仅投影浏览器响应，不改变会话或管理接口的鉴权角色。
+func (s *Service) webUser(ctx context.Context, user User) (User, error) {
+	if user.Role == "admin" {
+		return user, nil
+	}
+	groups, err := sqlc.New(s.db).GetUserSupervisedGroups(ctx, user.ID)
+	if err != nil {
+		return User{}, err
+	}
+	if len(groups) > 0 {
+		user.Role = "group_admin"
+	}
+	return user, nil
+}
+
 type supervisedGroup struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`

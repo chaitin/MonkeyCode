@@ -3,6 +3,8 @@ import { createContext } from "react"
 export type AuthContextValue = {
   isAuthenticated: boolean
   isLoading: boolean
+  sessionFailed: boolean
+  acceptLogin: (user: AuthUser) => void
   user: AuthUser | null
   refresh: () => Promise<void>
   updateUser: (user: AuthUser) => void
@@ -15,7 +17,7 @@ export type AuthUser = {
   email: string
   avatar_url?: string
   last_login_at?: string | null
-  role: "admin" | "user"
+  role: "admin" | "group_admin" | "user"
   status: "active" | "disabled"
 }
 

@@ -45,6 +45,16 @@ export const ar = {
   resources: enUS.resources,
   app: {
     documentTitle: "إدارة MonkeyAI",
+    chooseAppHint: "افتح عميل الويب للعمل أو لوحة الإدارة لإدارة فريقك.",
+    chooseApp: "اختر تطبيقًا",
+    workspaceTitle: "مساحة عملي",
+    workspaceDescription: "استخدم {{productName}} مباشرة في متصفحك دون تنزيل تطبيق العميل.",
+    teamConsoleTitle: "لوحة إدارة الفريق",
+    teamConsoleDescription: "إدارة موارد الذكاء الاصطناعي لفريق {{teamName}}.",
+    enterApp: "دخول",
+    openWorkspace: "فتح مساحة عملي",
+    openTeamConsole: "فتح لوحة إدارة الفريق",
+    webClient: "عميل الويب",
     adminConsole: "لوحة الإدارة",
   },
   landing: {
@@ -133,6 +143,7 @@ export const ar = {
     system: "حسب النظام",
   },
   login: {
+    sessionFailed: "تعذر التحقق من حالة تسجيل الدخول. يرجى المحاولة مجددًا.",
     adminPanelSubtitle: "سجّل الدخول إلى لوحة إدارة {{teamName}}",
     adminPanelDocumentTitle: "لوحة إدارة {{toolName}} - {{teamName}}",
     email: "البريد الإلكتروني",

@@ -46,6 +46,16 @@ export const es419 = {
   resources: enUS.resources,
   app: {
     documentTitle: "Administración de MonkeyAI",
+    chooseAppHint: "Abre el cliente web para trabajar o el panel para administrar tu equipo.",
+    chooseApp: "Elegir aplicación",
+    workspaceTitle: "Mi espacio de trabajo",
+    workspaceDescription: "Usa {{productName}} directamente en tu navegador sin descargar el cliente.",
+    teamConsoleTitle: "Administración del equipo",
+    teamConsoleDescription: "Administra los recursos de IA de {{teamName}}.",
+    enterApp: "Abrir",
+    openWorkspace: "Abrir mi espacio de trabajo",
+    openTeamConsole: "Abrir el panel de administración del equipo",
+    webClient: "Cliente web",
     adminConsole: "Panel de administración",
   },
   landing: {
@@ -138,6 +148,7 @@ export const es419 = {
     system: "Sistema",
   },
   login: {
+    sessionFailed: "No se pudo comprobar tu sesión. Vuelve a intentarlo.",
     adminPanelSubtitle:
       "Inicia sesión en el panel de administración de {{teamName}}",
     adminPanelDocumentTitle:

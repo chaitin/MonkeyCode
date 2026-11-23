@@ -99,7 +99,7 @@ export function LandingPage() {
               <ThemeToggle variant="ghost" />
             </div>
             <Button nativeButton={false} render={<Link to={LOGIN_PATH} />}>
-              {t("app.adminConsole")}
+              {t("login.submit")}
               <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden="true" />
             </Button>
           </div>
@@ -131,7 +131,7 @@ export function LandingPage() {
                 nativeButton={false}
                 render={<Link to={LOGIN_PATH} />}
               >
-                {t("app.adminConsole")}
+                {t("login.submit")}
                 <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden="true" />
               </Button>
             </div>

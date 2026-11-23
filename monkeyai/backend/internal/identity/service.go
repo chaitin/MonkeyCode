@@ -100,6 +100,7 @@ const (
 	loginPurposeClient = "client"
 	loginPurposeDevice = "device"
 	loginPurposeAdmin  = "admin"
+	loginPurposeWeb    = "web"
 )
 
 type Token struct {

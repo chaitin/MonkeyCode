@@ -654,6 +654,16 @@ export const enUS = {
   },
   app: {
     documentTitle: "MonkeyAI Admin",
+    chooseAppHint: "Open the web client to work, or the admin console to manage your team.",
+    chooseApp: "Choose an app",
+    workspaceTitle: "My workspace",
+    workspaceDescription: "Use {{productName}} directly in your browser without downloading the client.",
+    teamConsoleTitle: "Team admin console",
+    teamConsoleDescription: "Manage AI resources for {{teamName}}.",
+    enterApp: "Open",
+    openWorkspace: "Open my workspace",
+    openTeamConsole: "Open team admin console",
+    webClient: "Web client",
     adminConsole: "Admin Console",
   },
   version: {
@@ -753,6 +763,7 @@ export const enUS = {
     system: "System",
   },
   login: {
+    sessionFailed: "Could not check your sign-in status. Please try again.",
     codeSent:
       "If this email is eligible, a verification code will be sent. Please check your inbox.",
     passwordReset: "Password reset. Sign in with your new password.",

@@ -617,6 +617,16 @@ export const zhCN = {
   },
   app: {
     documentTitle: "MonkeyAI 管理后台",
+    chooseAppHint: "你已登录，请选择需要访问的平台",
+    chooseApp: "选择应用",
+    workspaceTitle: "个人工作台",
+    workspaceDescription: "无需客户端，直接在浏览器中使用{{productName}}。",
+    teamConsoleTitle: "团队管理后台",
+    teamConsoleDescription: "管理{{teamName}}的 AI 资源。",
+    enterApp: "进入",
+    openWorkspace: "进入个人工作台",
+    openTeamConsole: "进入团队管理后台",
+    webClient: "Web 客户端",
     adminConsole: "管理后台",
   },
   version: {
@@ -708,6 +718,7 @@ export const zhCN = {
     system: "跟随系统",
   },
   login: {
+    sessionFailed: "无法确认登录状态，请重试。",
     codeSent: "如果该邮箱符合条件，验证码将发送至邮箱，请检查收件箱。",
     passwordReset: "密码已重置，请使用新密码登录。",
     register: "邮箱注册",

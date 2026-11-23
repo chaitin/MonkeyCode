@@ -25,7 +25,7 @@ type LoginFormProps = React.ComponentProps<"div"> & {
   providers: LoginProvider[]
   teamName: string
   toolName: string
-  onAuthenticated: (user: AuthUser) => Promise<void>
+  onAuthenticated: (user: AuthUser) => void
   onOAuthLogin: (provider: LoginProvider) => void
 }
 
@@ -55,11 +55,10 @@ export function LoginForm({
                 />
                 <h1 className="text-2xl font-bold">{toolName}</h1>
                 <p className="text-balance text-muted-foreground">
-                  {t("login.adminPanelSubtitle", { teamName })}
+                  {teamName}
                 </p>
               </div>
               <EmailAuthForm
-                admin
                 disabled={Boolean(oauthSubmitting)}
                 hasProviders={providers.length > 0}
                 onAuthenticated={onAuthenticated}

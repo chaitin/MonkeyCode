@@ -49,6 +49,16 @@ export const frFR = {
   resources: enUS.resources,
   app: {
     documentTitle: "Administration MonkeyAI",
+    chooseAppHint: "Ouvrez le client web pour travailler ou la console pour gérer votre équipe.",
+    chooseApp: "Choisir une application",
+    workspaceTitle: "Mon espace de travail",
+    workspaceDescription: "Utilisez {{productName}} dans votre navigateur sans télécharger le client.",
+    teamConsoleTitle: "Administration de l’équipe",
+    teamConsoleDescription: "Gérez les ressources IA de {{teamName}}.",
+    enterApp: "Ouvrir",
+    openWorkspace: "Ouvrir mon espace de travail",
+    openTeamConsole: "Ouvrir la console d’administration de l’équipe",
+    webClient: "Client web",
     adminConsole: "Console d’administration",
   },
   landing: {
@@ -145,6 +155,7 @@ export const frFR = {
     system: "Système",
   },
   login: {
+    sessionFailed: "Impossible de vérifier votre session. Veuillez réessayer.",
     adminPanelSubtitle:
       "Connectez-vous au panneau d’administration de {{teamName}}",
     adminPanelDocumentTitle:

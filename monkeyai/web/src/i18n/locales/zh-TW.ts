@@ -43,6 +43,16 @@ export const zhTW = {
   resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI 管理後台",
+    chooseAppHint: "進入用戶端開始工作，或前往後台管理團隊。",
+    chooseApp: "選擇應用程式",
+    workspaceTitle: "個人工作台",
+    workspaceDescription: "不用下載用戶端，直接在瀏覽器中使用{{productName}}。",
+    teamConsoleTitle: "團隊管理後台",
+    teamConsoleDescription: "管理{{teamName}}的 AI 資源。",
+    enterApp: "進入",
+    openWorkspace: "進入個人工作台",
+    openTeamConsole: "進入團隊管理後台",
+    webClient: "Web 用戶端",
     adminConsole: "管理後台",
   },
   landing: {
@@ -128,6 +138,7 @@ export const zhTW = {
     system: "跟隨系統",
   },
   login: {
+    sessionFailed: "無法確認登入狀態，請重試。",
     adminPanelSubtitle: "登入 {{teamName}} 的管理員面板",
     adminPanelDocumentTitle: "{{toolName}} 管理員面板 - {{teamName}}",
     email: "電子郵件",
