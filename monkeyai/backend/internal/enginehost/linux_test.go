@@ -97,7 +97,7 @@ sudo systemctl daemon-reload`)
 		t.Fatal(err)
 	}
 	serverURL := fmt.Sprintf("https://monkeyai-engine-test.local:%d", listener.Addr().(*net.TCPAddr).Port)
-	s := NewService(pool).WithInstallation(serverURL, releases, version)
+	s := NewService(pool).WithInstallation(serverURL, releases, version).WithLicense(installationLicense(true))
 	admin, host := chi.NewRouter(), chi.NewRouter()
 	registerAdmin(admin, s)
 	s.Register(host)

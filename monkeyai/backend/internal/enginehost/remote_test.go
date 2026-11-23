@@ -55,7 +55,7 @@ func TestRemoteUpgradeLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s := NewService(pool).WithInstallation("https://console.example", root, target)
+	s := NewService(pool).WithInstallation("https://console.example", root, target).WithLicense(installationLicense(true))
 	r := chi.NewRouter()
 	registerAdmin(r, s)
 	s.Register(r)

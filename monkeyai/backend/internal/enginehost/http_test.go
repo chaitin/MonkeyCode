@@ -12,7 +12,7 @@ import (
 )
 
 func TestServerHTTPUpgradeScript(t *testing.T) {
-	service := NewService(nil).WithInstallation("http://server.example:8080", fixture(t), "v1")
+	service := NewService(nil).WithInstallation("http://server.example:8080", fixture(t), "v1").WithLicense(installationLicense(true))
 	router := chi.NewRouter()
 	registerAdmin(router, service)
 	service.Register(router)
