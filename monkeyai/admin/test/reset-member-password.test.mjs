@@ -23,7 +23,7 @@ test("all member menus open the one-time password reset dialog", async () => {
     "utf8"
   )
   const page = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
   const dialog = await readFile(

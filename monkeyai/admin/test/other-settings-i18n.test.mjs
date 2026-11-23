@@ -27,7 +27,7 @@ function getLeafPaths(value, prefix = "") {
 
 test("other settings use toasts for transient operation feedback", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -58,7 +58,7 @@ test("other settings use toasts for transient operation feedback", async () => {
 
 test("email sender identity fields appear at the bottom of the dialog", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
   const fields = source
@@ -98,7 +98,7 @@ test("email sender identity fields appear at the bottom of the dialog", async ()
 
 test("settings cards place tags after email and omit knowledge settings", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -110,7 +110,7 @@ test("settings cards place tags after email and omit knowledge settings", async 
 
 test("skill tags use an auto-fit grid without fixed item widths", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
   const tags = source
@@ -162,7 +162,7 @@ test("settings cards use abstract purpose-oriented descriptions", () => {
 
 test("email summary hides email-dependent controls when unconfigured", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
   const summary = source
@@ -208,7 +208,7 @@ test("email summary hides email-dependent controls when unconfigured", async () 
 
 test("global registration is removed and password uses an item with confirmation", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
   const loginCard = source
@@ -242,7 +242,7 @@ test("global registration is removed and password uses an item with confirmation
 
 test("per-method auto-registration persists only after confirmation", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -284,7 +284,7 @@ test("standalone email registration is removed", async () => {
 
 test("email code sign-in changes require confirmation", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -312,7 +312,7 @@ test("email code sign-in changes require confirmation", async () => {
 
 test("other settings configuration buttons use the secondary style", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
 

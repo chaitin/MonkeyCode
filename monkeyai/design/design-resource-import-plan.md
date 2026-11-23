@@ -199,7 +199,7 @@ MONKEYAI_DESIGN_MEDIA_JWT_SECRET       本地媒体专用，与respub密钥分�
 
 ## M6. 管理台导入设计分区展示
 
-**文件：** 修改 `admin/src/pages/resource-imports-page.tsx`、`admin/src/components/resource-import-dialog.tsx`；新增 `admin/src/lib/design-import.ts`、`admin/test/design-import.test.mjs`；更新已有 i18n 文件时沿用项目语言结构，不插入中文硬编码到多语 key。
+**文件：** 修改 `admin/src/pages/admin/resource-imports-page.tsx`、`admin/src/components/resource-import-dialog.tsx`；新增 `admin/src/lib/design-import.ts`、`admin/test/design-import.test.mjs`；更新已有 i18n 文件时沿用项目语言结构，不插入中文硬编码到多语 key。
 
 - [x] 写纯函数测试：设计包统计展示四类数量；Agent-only 不显示设计已清空；设计未支持或失败不能展示成功。运行 admin 的 `npm test`，先确认新测试失败。
 - [x] 从页面提取设计预览解析和分区选择函数，保留 Agent 现有 UI，新增 Agent/设计分区选择及设计激活说明。

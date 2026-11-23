@@ -448,6 +448,9 @@ export const koKR = {
         '"{{model}}" 모델을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
     },
     knowledgeBases: {
+      icon: "아이콘",
+      uploadIcon: "아이콘 업로드",
+      replaceIcon: "아이콘 교체",
       noDescription: "설명 없음",
       noTags: "태그 없음",
       createDocument: "문서 만들기",

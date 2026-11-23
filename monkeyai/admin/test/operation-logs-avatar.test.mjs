@@ -4,7 +4,7 @@ import test from "node:test"
 
 test("operation log card keeps its top ring inside the clipped viewport", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /flex-col p-4 pt-px md:h-\[calc\(100vh-5rem\)\]/)
@@ -13,7 +13,7 @@ test("operation log card keeps its top ring inside the clipped viewport", async 
 
 test("operation logs inherit the shared table height, header and dividers", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   const table = await readFile(
@@ -67,7 +67,7 @@ test("connector credentials have audit target translations in every locale", asy
 
 test("operation logs show 50 rows per page by default", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /const DEFAULT_PAGE_SIZE = 50/)
@@ -75,7 +75,7 @@ test("operation logs show 50 rows per page by default", async () => {
 
 test("operation log filters use shared date pickers and local day boundaries", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   assert.equal((source.match(/<DatePickerField/g) ?? []).length, 2)
@@ -131,7 +131,7 @@ test("operation log filters use shared date pickers and local day boundaries", a
 
 test("operation log search only loads inside its button and preserves current rows", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   const searchHandler = source
@@ -162,7 +162,7 @@ test("operation log pagination uses matching arrow icons", async () => {
 
 test("operation log actors use their avatar with the bundled image as fallback", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /<UserAvatar src=\{log\.actor_avatar_url\}/)
@@ -184,7 +184,7 @@ test("operation log actors use their avatar with the bundled image as fallback",
 
 test("operation log action uses target-action order without a second ID line", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(
@@ -201,7 +201,7 @@ test("operation log action uses target-action order without a second ID line", a
 
 test("operation log operator appears before the result with regular text", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   const header = source.split("<TableHeader")[1].split("</TableHeader>")[0]
@@ -226,7 +226,7 @@ test("operation log operator appears before the result with regular text", async
 
 test("operation log details are opened from the last actions column", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   const header = source.split("<TableHeader")[1].split("</TableHeader>")[0]
@@ -274,7 +274,7 @@ test("operation log details are opened from the last actions column", async () =
 
 test("only the operation log table scrolls and its header stays visible", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(

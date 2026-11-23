@@ -69,7 +69,7 @@ test("model UI has translations in all supported locales", () => {
 test("resource editors retain and save tags", async () => {
   for (const page of ["models", "experts", "tools"]) {
     const source = await readFile(
-      new URL(`../src/pages/${page}-page.tsx`, import.meta.url),
+      new URL(`../src/pages/admin/${page}-page.tsx`, import.meta.url),
       "utf8"
     )
     assert.match(source, /<SkillTagSelect/, `${page} is missing tag selection`)
@@ -95,7 +95,7 @@ test("resource cards show configured tag names", async () => {
     ["tools", "server"],
   ]) {
     const source = await readFile(
-      new URL(`../src/pages/${page}-page.tsx`, import.meta.url),
+      new URL(`../src/pages/admin/${page}-page.tsx`, import.meta.url),
       "utf8"
     )
     assert.match(
@@ -107,7 +107,7 @@ test("resource cards show configured tag names", async () => {
   }
 
   const models = await readFile(
-    new URL("../src/pages/models-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/models-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(models, /tags\.filter\(\(tag\) => tagIds\.includes\(tag\.id\)\)/)
@@ -124,7 +124,7 @@ test("resource cards show configured tag names", async () => {
 
 test("models page uses backend models and authorization subjects", async () => {
   const source = await readFile(
-    new URL("../src/pages/models-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/models-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -163,7 +163,7 @@ test("models page uses backend models and authorization subjects", async () => {
 
 test("model kinds use text tabs and collapsible section icons", async () => {
   const source = await readFile(
-    new URL("../src/pages/models-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/models-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -196,7 +196,7 @@ test("model kinds use text tabs and collapsible section icons", async () => {
 
 test("embedding models expose the same probe dialog with vector results", async () => {
   const source = await readFile(
-    new URL("../src/pages/models-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/models-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -211,7 +211,7 @@ test("embedding models expose the same probe dialog with vector results", async 
 
 test("image settings automatically enable all supported options and preserve valid defaults", async () => {
   const page = await readFile(
-    new URL("../src/pages/models-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/models-page.tsx", import.meta.url),
     "utf8"
   )
   const selector = await readFile(

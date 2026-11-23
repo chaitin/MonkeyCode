@@ -19,7 +19,7 @@ test("billing credits can be rounded to integers without losing large values", (
 
 test("billing detail user columns match the operation log actor presentation", async () => {
   const source = await readFile(
-    new URL("../src/pages/billing-details-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /<UserAvatar src=\{e\.user_avatar_url\}/)
@@ -37,7 +37,7 @@ test("billing detail user columns match the operation log actor presentation", a
 
 test("billing views use tabs and tables scroll inside the available page height", async () => {
   const source = await readFile(
-    new URL("../src/pages/billing-details-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /md:h-\[calc\(100vh-5rem\)\]/)
@@ -104,7 +104,7 @@ test("billing views use tabs and tables scroll inside the available page height"
 
 test("billing filters match the compact operation-log interaction", async () => {
   const source = await readFile(
-    new URL("../src/pages/billing-details-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
   const filters = source.split("onSubmit={search}")[1].split("</form>")[0]
@@ -130,7 +130,7 @@ test("billing filters match the compact operation-log interaction", async () => 
 
 test("billing search only loads inside its button and reports the result by toast", async () => {
   const source = await readFile(
-    new URL("../src/pages/billing-details-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
   const searchHandler = source
@@ -147,7 +147,7 @@ test("billing search only loads inside its button and reports the result by toas
 
 test("billing details pagination matches operation logs and defaults to 50 rows", async () => {
   const source = await readFile(
-    new URL("../src/pages/billing-details-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /tableQueryState\(params\.toString\(\), \[\]\)/)
@@ -180,7 +180,7 @@ test("billing details pagination matches operation logs and defaults to 50 rows"
 
 test("billing transaction details follow the credit account key-value layout", async () => {
   const billingSource = await readFile(
-    new URL("../src/pages/billing-details-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
   const accountSource = await readFile(
@@ -224,7 +224,7 @@ test("billing transaction details follow the credit account key-value layout", a
 
 test("billing entries preserve existing rounding and exact environment credits", async () => {
   const source = await readFile(
-    new URL("../src/pages/billing-details-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /=>\s*credits\(value, locale, 0\)/)

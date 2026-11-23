@@ -39,7 +39,7 @@ test("experts are fully translated in every supported language", () => {
 
 test("experts support prompts and every required association", async () => {
   const source = await readFile(
-    new URL("../src/pages/experts-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/experts-page.tsx", import.meta.url),
     "utf8"
   )
 

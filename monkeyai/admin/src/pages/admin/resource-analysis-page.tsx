@@ -49,7 +49,7 @@ import {
   ReportKind,
   ReportNumber,
   ReportValue,
-} from "@/pages/session-reporting-page"
+} from "./session-reporting-page"
 
 const key = "pages.sessionReporting"
 const columns = [

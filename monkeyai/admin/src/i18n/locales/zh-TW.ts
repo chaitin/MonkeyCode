@@ -454,6 +454,9 @@ export const zhTW = {
       deleteDialogDescription: "確定刪除「{{model}}」嗎？此操作無法復原。",
     },
     knowledgeBases: {
+      icon: "圖示",
+      uploadIcon: "上傳圖示",
+      replaceIcon: "替換圖示",
       noDescription: "暫無描述",
       noTags: "暫無標籤",
       createDocument: "建立文件",

@@ -468,6 +468,9 @@ export const ruRU = {
         "Удалить «{{model}}»? Это действие нельзя отменить.",
     },
     knowledgeBases: {
+      icon: "Значок",
+      uploadIcon: "Загрузить значок",
+      replaceIcon: "Заменить значок",
       noDescription: "Нет описания",
       noTags: "Нет тегов",
       createDocument: "Создать документ",

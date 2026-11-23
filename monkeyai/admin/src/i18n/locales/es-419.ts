@@ -466,6 +466,9 @@ export const es419 = {
         '¿Eliminar "{{model}}"? Esta acción no se puede deshacer.',
     },
     knowledgeBases: {
+      icon: "Ícono",
+      uploadIcon: "Subir ícono",
+      replaceIcon: "Reemplazar ícono",
       noDescription: "Sin descripción",
       noTags: "Sin etiquetas",
       createDocument: "Crear documento",

@@ -6,7 +6,7 @@ import ts from "typescript"
 
 test("login method switches persist with authentication settings", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -23,7 +23,7 @@ test("login method switches persist with authentication settings", async () => {
 
 test("third-party sign-in uses items, an action menu, and confirmations", async () => {
   const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/other-settings-page.tsx", import.meta.url),
     "utf8"
   )
   const list = source
@@ -215,7 +215,7 @@ test("DCR 发起授权后立即同步连接，取消或关闭弹窗不影响版�
 
 test("动态 Client 仅提交模式，传统配置不混入自动发现字段", async () => {
   const source = await readFile(
-    new URL("../src/pages/tools-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/tools-page.tsx", import.meta.url),
     "utf8"
   )
   const tree = ts.createSourceFile(

@@ -8,7 +8,7 @@ const source = (path) => readFile(new URL(path, root), "utf8")
 test("about card shows the current version at the end of other settings", async () => {
   const [sidebar, settings, component, provider] = await Promise.all([
     source("src/components/app-sidebar.tsx"),
-    source("src/pages/other-settings-page.tsx"),
+    source("src/pages/admin/other-settings-page.tsx"),
     source("src/components/about-card.tsx"),
     source("src/components/version-provider.tsx"),
   ])

@@ -474,6 +474,9 @@ export const frFR = {
         "Supprimer « {{model}} » ? Cette action est irréversible.",
     },
     knowledgeBases: {
+      icon: "Icône",
+      uploadIcon: "Importer une icône",
+      replaceIcon: "Remplacer l’icône",
       noDescription: "Aucune description",
       noTags: "Aucune étiquette",
       createDocument: "Créer un document",

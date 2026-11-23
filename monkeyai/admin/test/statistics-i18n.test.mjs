@@ -34,7 +34,7 @@ test("统计反馈在每种语言中提供相同字段", () => {
 
 test("billing details describe the item and usage in one content column", async () => {
   const source = await readFile(
-    new URL("../src/pages/billing-details-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
 

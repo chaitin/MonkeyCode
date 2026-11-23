@@ -19,7 +19,7 @@ test("paid license card exposes all license management operations", async () => 
 
 test("paid license card is last in other settings without a standalone page", async () => {
   const [settings, routes, app, sidebar] = await Promise.all([
-    source("src/pages/other-settings-page.tsx"),
+    source("src/pages/admin/other-settings-page.tsx"),
     source("src/lib/routes.ts"),
     source("src/App.tsx"),
     source("src/components/app-sidebar.tsx"),

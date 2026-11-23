@@ -458,6 +458,9 @@ export const jaJP = {
         "「{{model}}」を削除しますか？この操作は元に戻せません。",
     },
     knowledgeBases: {
+      icon: "アイコン",
+      uploadIcon: "アイコンをアップロード",
+      replaceIcon: "アイコンを変更",
       noDescription: "説明なし",
       noTags: "タグなし",
       createDocument: "ドキュメントを作成",

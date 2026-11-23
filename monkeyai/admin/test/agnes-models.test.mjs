@@ -4,7 +4,7 @@ import test from "node:test"
 
 test("Agnes models are available in the model management selectors", async () => {
   const source = await readFile(
-    new URL("../src/pages/models-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/models-page.tsx", import.meta.url),
     "utf8"
   )
   const videoModels = await readFile(

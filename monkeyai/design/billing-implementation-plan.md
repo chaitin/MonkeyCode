@@ -35,7 +35,7 @@
 | 身份与分组 | 有真实用户、分组及多对多关系；现有授权对象接口没有返回成员归属 | 补齐必要的分组维护、成员归属及计费归属查询 |
 | 百智云 | 页面仍按地址 + API Key 设计，后端没有 opensdk 依赖 | 改为服务端 opensdk + mTLS，身份绑定、预扣确认、重试和对账 |
 
-现状依据：`admin/src/pages/billing-settings-page.tsx`、`billing-details-page.tsx`、`backend/internal/app/app.go`、`internal/proxy/usage.go`、`internal/mcp/service.go`、`internal/setting/service.go`、`migrations/000001_initial_create_schema.up.sql`。
+现状依据：`admin/src/pages/admin/billing-settings-page.tsx`、`billing-details-page.tsx`、`backend/internal/app/app.go`、`internal/proxy/usage.go`、`internal/mcp/service.go`、`internal/setting/service.go`、`migrations/000001_initial_create_schema.up.sql`。
 
 ## 3. 推荐业务口径
 

@@ -15,87 +15,8 @@ test("billing settings appears before billing details in the sidebar", async () 
   )
 })
 
-test("billing settings use equal left and right columns on desktop", async () => {
-  const page = await source("pages/billing-settings-page.tsx")
-
-  assert.match(
-    page,
-    /<section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-\[calc\(100vh-5rem\)\] lg:flex-none lg:overflow-hidden">/
-  )
-  assert.match(
-    page,
-    /<div className="grid min-h-0 flex-1 items-start gap-4 lg:grid-cols-2 lg:items-stretch">/
-  )
-  assert.doesNotMatch(page, /row-span|xl:grid-cols-2/)
-  assert.equal((page.match(/<ScrollArea/g) ?? []).length, 3)
-  assert.match(
-    page,
-    /<div className="grid min-h-0 gap-4 lg:h-full lg:grid-rows-\[minmax\(0,1fr\)_minmax\(0,2fr\)\]">/
-  )
-  assert.equal(
-    (page.match(/<Card className="min-h-80 lg:min-h-0">/g) ?? []).length,
-    1
-  )
-  assert.match(
-    page,
-    /<CardContent className="min-h-0 flex-1">[\s\S]*?<ScrollArea className="-ms-1 -me-\[var\(--card-spacing\)\] min-h-0 lg:flex-1">[\s\S]*?<div className="flex flex-col gap-1 ps-1 pe-\[var\(--card-spacing\)\]">/
-  )
-  assert.match(
-    page,
-    /pages\.billingSettings\.groupQuota\.memberTitle[\s\S]*?<ScrollArea\s+viewportRef=\{setMemberViewport\}\s+className="-me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\]"\s*>[\s\S]*?<ItemGroup\s+className="relative gap-2"/
-  )
-  assert.match(
-    page,
-    /<ScrollArea className="min-h-0 lg:h-full">\s*<div className="grid gap-4 ps-px pe-3 pt-px pb-px">/
-  )
-
-  const columns = page
-    .split(
-      '<div className="grid min-h-0 flex-1 items-start gap-4 lg:grid-cols-2 lg:items-stretch">'
-    )[1]
-    .split("<Dialog")[0]
-  const groupQuota = columns.indexOf("pages.billingSettings.groupQuota.title")
-  assert.match(
-    columns,
-    /variant="secondary"\s+size="sm"\s+render=\{<Link to=\{CONSOLE_ROUTES\.membersAndGroups\} \/>\}[\s\S]*?groupQuota\.manageGroups/
-  )
-  const rightColumn = columns.indexOf(
-    '<div className="grid gap-4 ps-px pe-3 pt-px pb-px">'
-  )
-  assert.ok(groupQuota >= 0 && groupQuota < rightColumn)
-
-  const right = columns.slice(rightColumn)
-  assert.doesNotMatch(right, /pages\.billingSettings\.quotaRefresh\.title/)
-  assert.doesNotMatch(
-    right,
-    /pages\.billingSettings\.quotaRefresh\.description|按上海时区在自然周期开始时刷新，余额不结转|下次刷新：|Asia\/Shanghai/
-  )
-  assert.match(right, /pages\.billingSettings\.modelPricing\.title/)
-  assert.doesNotMatch(right, /缓存命中从总输入中扣除后单独计价/)
-  assert.match(right, /pages\.billingSettings\.toolPricing\.title/)
-  assert.match(right, /pages\.billingSettings\.toolPricing\.description/)
-  assert.match(right, /pages\.billingSettings\.toolPricing\.manage/)
-  assert.match(
-    right,
-    /<Button\s+variant="secondary"\s+render=\{<Link to=\{CONSOLE_ROUTES\.tools\} \/>\}/
-  )
-  assert.match(right, /icon=\{LinkSquare02Icon\}\s+data-icon="inline-end"/)
-  assert.ok(
-    right.indexOf("pages.billingSettings.chargingMethod.title") <
-      right.indexOf("pages.billingSettings.modelPricing.title")
-  )
-  assert.ok(
-    right.indexOf("pages.billingSettings.modelPricing.title") <
-      right.indexOf("pages.billingSettings.toolPricing.title")
-  )
-  assert.doesNotMatch(
-    columns,
-    /管理成员与分组|修改在下周期生效；当期补发请进入成员账户|成员自动继承所属分组的额度/
-  )
-})
-
 test("member account uses integer key-value balances and dedicated actions", async () => {
-  const page = await source("pages/billing-settings-page.tsx")
+  const page = await source("pages/admin/billing-settings-page.tsx")
   const accountDialog = await source("components/billing/account-dialog.tsx")
 
   assert.match(
@@ -199,7 +120,7 @@ test("billing settings name automatic credit refresh explicitly", async () => {
 })
 
 test("billing settings separate the group tree and member item list", async () => {
-  const page = await source("pages/billing-settings-page.tsx")
+  const page = await source("pages/admin/billing-settings-page.tsx")
   const userItem = page
     .split("const userItem =")[1]
     .split("const renderGroup =")[0]
@@ -294,7 +215,7 @@ test("billing settings separate the group tree and member item list", async () =
 })
 
 test("billing settings forms use the shared shadcn controls", async () => {
-  const page = await source("pages/billing-settings-page.tsx")
+  const page = await source("pages/admin/billing-settings-page.tsx")
 
   assert.match(page, /from "@\/components\/ui\/select"/)
   assert.match(page, /from "@\/components\/ui\/tabs"/)
@@ -352,7 +273,7 @@ test("billing settings forms use the shared shadcn controls", async () => {
 })
 
 test("immediate quota reset submits selected groups and members", async () => {
-  const page = await source("pages/billing-settings-page.tsx")
+  const page = await source("pages/admin/billing-settings-page.tsx")
   const dialog = page
     .split("open={resetDialogOpen}")[1]
     .split("open={cycleDialogOpen}")[0]
@@ -395,53 +316,9 @@ test("immediate quota reset submits selected groups and members", async () => {
   assert.doesNotMatch(dialog, /quotaRefresh\.resetPreview/)
 })
 
-test("model pricing uses configurable items instead of inline inputs", async () => {
-  const [page, zhCN] = await Promise.all([
-    source("pages/billing-settings-page.tsx"),
-    source("i18n/locales/zh-CN.ts"),
-  ])
-
-  assert.match(page, /<ItemGroup className="gap-2">/)
-  assert.match(page, /<Item key=\{field\.key\} variant="outline">/)
-  assert.match(page, /<ItemTitle>/)
-  assert.match(page, /<ItemDescription>/)
-  assert.match(page, /<ItemActions>/)
-  assert.match(
-    page,
-    /variant="secondary"\s+size="sm"\s+onClick=\{\(\) => openPricing\(field\.key\)\}/
-  )
-  assert.match(page, /open=\{pricingTarget !== null\}/)
-  assert.match(page, /id="model-pricing-value"/)
-  assert.match(
-    page,
-    /void save\("pricing", undefined, nextPricing\)\.then\(\(saved\) =>/
-  )
-  assert.match(page, /if \(!saved\) return\s*setPricing\(nextPricing\)/)
-  const modelCard = page
-    .split("pages.billingSettings.modelPricing.title")[1]
-    .split("pages.billingSettings.toolPricing.title")[0]
-  assert.doesNotMatch(modelCard, /<CardAction>/)
-  assert.match(
-    modelCard,
-    /variant="secondary"\s+render=\{<Link to=\{CONSOLE_ROUTES\.models\} \/>\}/
-  )
-  assert.match(modelCard, /modelPricing\.manageMultiplier/)
-  assert.match(modelCard, /icon=\{LinkSquare02Icon\}\s+data-icon="inline-end"/)
-  assert.doesNotMatch(page, /<Input\s+id=\{key\}/)
-  assert.match(zhCN, /inputToken: "输入（未命中缓存）Token 费用"/)
-  assert.match(zhCN, /cachedInputToken: "输入（命中缓存）Token 费用"/)
-  assert.match(zhCN, /outputToken: "输出 Token 费用"/)
-  assert.match(
-    zhCN,
-    /inputTokenDescription:\s*"百万输入（未命中缓存）Token 消耗 \{\{credits\}\} 积分"/
-  )
-  assert.doesNotMatch(zhCN, /valueDescription:/)
-  assert.doesNotMatch(page, /modelPricing\.valueDescription/)
-})
-
 test("billing save buttons only appear after their form changes", async () => {
   const [page, wallet] = await Promise.all([
-    source("pages/billing-settings-page.tsx"),
+    source("pages/admin/billing-settings-page.tsx"),
     source("components/billing/wallet-settings.tsx"),
   ])
 

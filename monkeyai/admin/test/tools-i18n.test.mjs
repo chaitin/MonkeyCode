@@ -39,7 +39,7 @@ test("tools are fully translated in every supported language", () => {
 
 test("tools only configure remote MCP servers with client or centralized auth", async () => {
   const source = await readFile(
-    new URL("../src/pages/tools-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/tools-page.tsx", import.meta.url),
     "utf8"
   )
 

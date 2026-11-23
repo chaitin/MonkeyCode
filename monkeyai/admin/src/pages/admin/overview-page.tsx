@@ -1,6 +1,6 @@
-import { MemberAnalysisPage } from "@/pages/member-analysis-page"
-import { RealtimeStatusPage } from "@/pages/realtime-status-page"
-import { TaskAnalysisPage } from "@/pages/task-analysis-page"
+import { MemberAnalysisPage } from "./member-analysis-page"
+import { RealtimeStatusPage } from "./realtime-status-page"
+import { TaskAnalysisPage } from "./task-analysis-page"
 
 export function OverviewPage() {
   return (

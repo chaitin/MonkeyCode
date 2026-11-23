@@ -73,7 +73,7 @@ test("批量分组不能放入自身或后代，也不能原地移动", () => {
 
 test("拖放只创建待保存操作，点击保存才请求接口", async () => {
   const source = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
   const drop = source.split("const dropOn =")[1].split("const saveMove =")[0]
@@ -92,7 +92,7 @@ test("拖放只创建待保存操作，点击保存才请求接口", async () =>
 
 test("拖拽预览使用整行的原生快照", async () => {
   const source = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
   const drag = source
@@ -123,7 +123,7 @@ test("多选模式仅显示成员复选框，分组永远不能勾选", async ()
       "utf8"
     ),
     readFile(
-      new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+      new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
       "utf8"
     ),
   ])

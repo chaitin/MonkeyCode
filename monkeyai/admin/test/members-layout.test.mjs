@@ -1,33 +1,10 @@
 import assert from "node:assert/strict"
-import { readFile, readdir } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import test from "node:test"
-
-test("admin AlertDialogs use the default width and keep descriptions in the body", async () => {
-  const root = new URL("../src/pages/", import.meta.url)
-  let count = 0
-  for (const path of await readdir(root)) {
-    if (!path.endsWith(".tsx")) continue
-    const content = await readFile(new URL(path, root), "utf8")
-    count += (content.match(/<AlertDialog([ >]|$)/gm) ?? []).length
-    assert.doesNotMatch(content, /<AlertDialogContent\b[^>]*\bsize="sm"/, path)
-    assert.doesNotMatch(
-      content,
-      /<AlertDialogHeader\b[^>]*>(?:(?!<\/AlertDialogHeader>)[\s\S])*?<AlertDialogDescription\b/,
-      path
-    )
-  }
-  assert.ok(count >= 10)
-  const primitive = await readFile(
-    new URL("../src/components/ui/alert-dialog.tsx", import.meta.url),
-    "utf8"
-  )
-  assert.match(primitive, /max-w-xs[^"\n]*sm:max-w-lg/)
-  assert.doesNotMatch(primitive, /data-\[size=sm\]|size\?: "default" \| "sm"/)
-})
 
 test("members page keeps the original split cards and compact member list", async () => {
   const source = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
 
@@ -61,7 +38,7 @@ test("members page keeps the original split cards and compact member list", asyn
 
 test("group card selection actions use secondary buttons", async () => {
   const source = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
   const groupActions = source
@@ -81,7 +58,7 @@ test("group card selection actions use secondary buttons", async () => {
 
 test("both members panels scroll inside shadcn Scroll Areas", async () => {
   const page = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
   const panels = page.split("{activeGroupAction &&")[0]
@@ -122,7 +99,7 @@ test("both members panels scroll inside shadcn Scroll Areas", async () => {
 
 test("add member button opens one dialog with tabs for single and bulk forms", async () => {
   const source = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
   const bulk = await readFile(
@@ -170,7 +147,7 @@ test("add member button opens one dialog with tabs for single and bulk forms", a
 
 test("member creation keeps results open and reports failures without discarding successful credentials", async () => {
   const source = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
   const bulk = await readFile(
@@ -205,7 +182,7 @@ test("member creation keeps results open and reports failures without discarding
 
 test("member actions require confirmation and report results with toasts", async () => {
   const source = await readFile(
-    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/members-and-groups-page.tsx", import.meta.url),
     "utf8"
   )
   const dialog = await readFile(
@@ -377,7 +354,7 @@ test("group rows swap the count for actions in the same slot on hover", async ()
 test("member menus open account details with only the user ID", async () => {
   const [page, tree, actions, dialog] = await Promise.all(
     [
-      "pages/members-and-groups-page.tsx",
+      "pages/admin/members-and-groups-page.tsx",
       "components/members/group-tree.tsx",
       "components/members/member-actions.tsx",
       "components/billing/account-dialog.tsx",

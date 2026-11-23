@@ -4,7 +4,7 @@ import test from "node:test"
 
 test("客户端平台筛选允许自由输入而非固定枚举", () => {
   const page = readFileSync(
-    new URL("../src/pages/client-analysis-page.tsx", import.meta.url),
+    new URL("../src/pages/admin/client-analysis-page.tsx", import.meta.url),
     "utf8"
   )
   assert.match(

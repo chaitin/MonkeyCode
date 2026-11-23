@@ -442,6 +442,9 @@ export const ar = {
         "هل تريد حذف «{{model}}»؟ لا يمكن التراجع عن هذا الإجراء.",
     },
     knowledgeBases: {
+      icon: "أيقونة",
+      uploadIcon: "رفع أيقونة",
+      replaceIcon: "استبدال الأيقونة",
       noDescription: "لا يوجد وصف",
       noTags: "لا توجد وسوم",
       createDocument: "إنشاء مستند",

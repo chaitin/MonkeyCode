@@ -31,12 +31,12 @@ test("specialized admin forms use the matching shadcn control", async () => {
     credentials,
   ] = await Promise.all(
     [
-      "pages/tools-page.tsx",
+      "pages/admin/tools-page.tsx",
       "components/image-generation-test.tsx",
-      "pages/billing-details-page.tsx",
-      "pages/models-page.tsx",
+      "pages/admin/billing-details-page.tsx",
+      "pages/admin/models-page.tsx",
       "components/image-capability-selector.tsx",
-      "pages/experts-page.tsx",
+      "pages/admin/experts-page.tsx",
       "components/connector-credentials.tsx",
     ].map(async (path) => [
       path,
@@ -53,18 +53,18 @@ test("specialized admin forms use the matching shadcn control", async () => {
     credentials,
   ])
 
-  assert.match(sources["pages/tools-page.tsx"], /<Select/)
+  assert.match(sources["pages/admin/tools-page.tsx"], /<Select/)
   assert.match(sources["components/image-generation-test.tsx"], /<Textarea/)
   assert.match(sources["components/image-generation-test.tsx"], /<Select/)
   assert.match(
-    sources["pages/billing-details-page.tsx"],
+    sources["pages/admin/billing-details-page.tsx"],
     /items=\{resultItems\}/
   )
-  assert.match(sources["pages/models-page.tsx"], /<CollapsibleTrigger/)
+  assert.match(sources["pages/admin/models-page.tsx"], /<CollapsibleTrigger/)
   assert.match(
     sources["components/image-capability-selector.tsx"],
     /<ToggleGroup/
   )
-  assert.match(sources["pages/experts-page.tsx"], /<Checkbox/)
+  assert.match(sources["pages/admin/experts-page.tsx"], /<Checkbox/)
   assert.match(sources["components/connector-credentials.tsx"], /<Input/)
 })

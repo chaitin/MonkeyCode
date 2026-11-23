@@ -5,7 +5,7 @@ import test from "node:test"
 const root = new URL("../src/", import.meta.url)
 
 test("session statistics purge requires a root session and exact ID confirmation", async () => {
-  const page = await readFile(new URL("pages/session-detail-page.tsx", root), "utf8")
+  const page = await readFile(new URL("pages/admin/session-detail-page.tsx", root), "utf8")
   assert.match(page, /!data\.parent_session_id/)
   assert.match(page, /confirmID !== sessionId/)
   assert.match(page, /"X-Confirm-Session-ID": sessionId/)

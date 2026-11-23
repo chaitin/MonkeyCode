@@ -471,6 +471,9 @@ export const deDE = {
         "„{{model}}“ löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     },
     knowledgeBases: {
+      icon: "Symbol",
+      uploadIcon: "Symbol hochladen",
+      replaceIcon: "Symbol ersetzen",
       noDescription: "Keine Beschreibung",
       noTags: "Keine Tags",
       createDocument: "Dokument erstellen",

@@ -1,6 +1,6 @@
 import { useState } from "react"
-import { EngineHostsPage } from "@/pages/engine-hosts-page"
-import { EnvironmentsPage } from "@/pages/environments-page"
+import { EngineHostsPage } from "./engine-hosts-page"
+import { EnvironmentsPage } from "./environments-page"
 
 export function CloudHostsPage() {
   const [revision, setRevision] = useState(0)
