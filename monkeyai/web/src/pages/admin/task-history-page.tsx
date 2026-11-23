@@ -4,6 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
+import { TableLoadError } from "@/components/table-load-error"
 import { formatLastActivity, TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { Link } from "react-router-dom"
 
@@ -14,7 +15,6 @@ import { useAppToast } from "@/components/animated-toast-provider"
 import { useStatistics } from "@/hooks/use-statistics"
 import { useTableQuery } from "@/hooks/use-table-query"
 import { queryDate, queryDateValue } from "@/lib/table-query"
-import { StatisticsFeedback } from "@/components/statistics-feedback"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -135,7 +135,9 @@ export function TaskHistoryPage() {
   if (filters.from) query.set("from", filters.from)
   if (filters.until) query.set("until", filters.until)
   const request = useStatistics<TaskHistory>(
-    `/api/admin/v1/statistics/history?${query}`
+    `/api/admin/v1/statistics/history?${query}`,
+    0,
+    { retryAction: false }
   )
   const currentPage = request.data?.page ?? page
   useEffect(() => {
@@ -211,7 +213,6 @@ export function TaskHistoryPage() {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
-      <StatisticsFeedback {...request} />
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form onSubmit={applySearch} className="px-[var(--card-spacing)]">
@@ -243,6 +244,7 @@ export function TaskHistoryPage() {
                   </FieldLabel>
                   <UserSearch
                     id="task-history-user"
+                    includeDeleted
                     selectionOnly
                     userID={filterInput.userId}
                     query={filterInput.userName}
@@ -445,7 +447,10 @@ export function TaskHistoryPage() {
                       {request.loading ? (
                         <TableLoading />
                       ) : request.error ? (
-                        "—"
+                        <TableLoadError
+                          error={request.error}
+                          onRetry={request.reload}
+                        />
                       ) : (
                         t("pages.taskHistory.empty")
                       )}

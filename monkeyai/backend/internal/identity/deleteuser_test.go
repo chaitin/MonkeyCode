@@ -39,6 +39,7 @@ func TestAdminDeleteUser(t *testing.T) {
 	router := chi.NewRouter()
 	router.Use(service.RequireAdmin)
 	service.RegisterAdmin(router)
+	service.RegisterSharedAdminReads(router.Get)
 	call := func(method, path, session string, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, path, nil)

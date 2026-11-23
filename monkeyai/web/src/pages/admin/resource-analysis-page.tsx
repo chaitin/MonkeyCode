@@ -9,6 +9,7 @@ import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
+import { TableLoadError } from "@/components/table-load-error"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -161,6 +162,7 @@ export function ResourceAnalysisPage() {
           : reason instanceof Error
             ? reason.message
             : String(reason)
+        setData(undefined)
         setError(message)
         showToast({ status: "error", title: message })
       })
@@ -435,17 +437,6 @@ export function ResourceAnalysisPage() {
               </p>
             )}
           </form>
-          {error && (
-            <div className="px-[var(--card-spacing)]">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setRevision((value) => value + 1)}
-              >
-                {t("statistics.retry")}
-              </Button>
-            </div>
-          )}
           <ScrollArea
             horizontal
             className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
@@ -496,7 +487,10 @@ export function ResourceAnalysisPage() {
                       {loading || searching ? (
                         <TableLoading />
                       ) : error ? (
-                        "—"
+                        <TableLoadError
+                          error={error}
+                          onRetry={() => setRevision((value) => value + 1)}
+                        />
                       ) : (
                         t("statistics.empty")
                       )}

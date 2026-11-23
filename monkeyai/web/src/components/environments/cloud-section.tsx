@@ -7,6 +7,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Card } from "@/components/ui/card"
+import { TableLoadError } from "@/components/table-load-error"
 import { LoadState } from "./common"
 import { cn } from "@/lib/utils"
 
@@ -79,12 +80,13 @@ export function CloudGrid({
 }) {
   return (
     <section aria-label={title} aria-busy={loading}>
-      <LoadState
-        loading={loading}
-        error={error}
-        empty={empty}
-        refresh={refresh}
-      />
+      {error ? (
+        <div className="py-12">
+          <TableLoadError error={error} onRetry={refresh} />
+        </div>
+      ) : (
+        <LoadState loading={loading} empty={empty} refresh={refresh} />
+      )}
       {!empty && (
         <div
           className={cn(

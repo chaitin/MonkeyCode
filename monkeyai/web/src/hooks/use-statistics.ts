@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { api } from "@/lib/api"
+import { requestErrorToast } from "@/lib/request-error-toast"
 
 export function useStatistics<T>(
   path: string,
@@ -40,13 +41,12 @@ export function useStatistics<T>(
           setResult({ path, revision, error: message })
           if (lastErrorRef.current !== message) {
             lastErrorRef.current = message
-            showToast({
-              status: "error",
-              title: message,
-              ...(retryAction
-                ? { action: { label: t("statistics.retry"), onClick: reload } }
-                : {}),
-            })
+            showToast(
+              requestErrorToast(error, retryAction ? {
+                label: t("statistics.retry"),
+                onClick: reload,
+              } : undefined)
+            )
           }
         }
       } finally {

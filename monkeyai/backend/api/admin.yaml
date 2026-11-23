@@ -2122,64 +2122,6 @@ paths:
                   type: string
               required:
               - external_user_id
-  /api/admin/v1/billing/users:
-    get:
-      summary: 按需搜索扣费筛选的用户候选
-      description: 搜索当前用户姓名、邮箱或 ID，包含停用和已删除用户，以便查询其历史流水。返回有界候选而非全量成员；选中后向 entries 或 summary 传 user_id。未选中时仍可通过 user 搜索历史姓名和邮箱。
-      parameters:
-      - in: query
-        name: q
-        description: 不区分大小写的字面子串，去除首尾空格后最多 200 个字符。
-        schema:
-          type: string
-          maxLength: 200
-      - in: query
-        name: id
-        description: 用于恢复 URL 中已选用户的显示信息；可与 q 同时提供，取交集。
-        schema:
-          type: string
-          format: uuid
-      - in: query
-        name: limit
-        schema:
-          type: integer
-          default: 20
-          minimum: 1
-          maximum: 50
-      responses:
-        '200':
-          description: 返回姓名、邮箱、头像和删除标记，不返回账户、角色或登录等信息。
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items, has_next]
-                properties:
-                  has_next:
-                    type: boolean
-                  items:
-                    type: array
-                    items:
-                      type: object
-                      required: [id, name, email, avatar_url, deleted]
-                      properties:
-                        id:
-                          type: string
-                          format: uuid
-                        name:
-                          type: string
-                        email:
-                          type: string
-                        avatar_url:
-                          type: [string, 'null']
-                        deleted:
-                          type: boolean
-        '400':
-          description: 参数不合法
-        '401':
-          description: 未登录
-        '403':
-          description: 权限不足
   /api/admin/v1/billing/entries:
     get:
       summary: 分页查询不可变积分流水
@@ -2549,20 +2491,69 @@ paths:
               - reason
   /api/admin/v1/users:
     get:
-      summary: 查询管理端成员列表
-      description: 返回未删除的成员及其直接负责的有效分组，不继承子分组，不改变成员的全局角色。
+      summary: 查询管理端成员列表或搜索用户候选
+      description: 全局管理员和分组主管均可访问，不按受管分组过滤。无搜索参数时按加入时间降序返回全部未删除成员及其直接负责的有效分组。提供 q（含空字符串）、id、limit 或 include_deleted 中任一参数时，按姓名、邮箱、ID 排序返回轻量候选，包含停用成员，默认排除已删除成员。
+      parameters:
+      - in: query
+        name: q
+        description: 不区分大小写的字面子串，去除首尾空格后最多 200 个字符。
+        schema:
+          type: string
+          maxLength: 200
+      - in: query
+        name: id
+        description: 用于恢复 URL 中已选用户的显示信息；可与 q 同时提供，取交集。
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 50
+      - in: query
+        name: include_deleted
+        description: 仅全局管理员可设为 true，用于历史记录搜索和按 ID 回显；不影响完整列表。
+        schema: {type: boolean, default: false}
       responses:
         '200':
-          description: 成员列表
+          description: 无参数返回完整成员列表；搜索只返回候选基础字段和 has_next。
           content:
             application/json:
               schema:
-                type: object
-                required: [users]
-                properties:
-                  users:
-                    type: array
-                    items: {$ref: '#/components/schemas/AdminListUser'}
+                oneOf:
+                  - type: object
+                    required: [users]
+                    properties:
+                      users:
+                        type: array
+                        items: {$ref: '#/components/schemas/AdminListUser'}
+                  - type: object
+                    required: [items, has_next]
+                    properties:
+                      has_next:
+                        type: boolean
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, name, email, avatar_url, deleted]
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                            email:
+                              type: string
+                            avatar_url:
+                              type: [string, 'null']
+                            deleted:
+                              type: boolean
+        '400':
+          description: 搜索参数不合法
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2708,7 +2699,7 @@ paths:
   /api/admin/v1/groups:
     get:
       summary: 查询成员分组
-      description: 返回全零 UUID 的虚拟根分组和全部未删除子分组。根节点不入库，名称来自 branding.workspace_name，直属成员为未直接加入其他有效分组的用户；真实顶层分组的 parent_id 在响应中为根分组 UUID，数据库中仍为 null。actions 和 allow_add_members 由后端决定。
+      description: 全局管理员和分组主管均可读取完整列表，不按受管分组过滤。返回全零 UUID 的虚拟根分组和全部未删除子分组。根节点不入库，名称来自 branding.workspace_name，直属成员为未直接加入其他有效分组的用户；真实顶层分组的 parent_id 在响应中为根分组 UUID，数据库中仍为 null。actions 和 allow_add_members 由后端决定。
       responses:
         "200":
           description: 分组列表

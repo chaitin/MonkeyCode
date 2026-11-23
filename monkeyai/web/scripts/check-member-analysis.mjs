@@ -269,15 +269,17 @@ try {
               json: { error: { message: "成员不存在" } },
             })
           body = user.id === users[1].id ? emptyDetail : detail(user)
-        } else if (p.endsWith("/billing/users")) {
+        } else if (
+          p === "/api/admin/v1/users" &&
+          (url.searchParams.has("q") || url.searchParams.has("id"))
+        ) {
           const id = url.searchParams.get("id"),
             term = url.searchParams.get("q")?.toLowerCase() || ""
           body = {
-            items: users.filter((user) =>
-              id
-                ? user.id === id
-                : `${user.name} ${user.email}`.toLowerCase().includes(term)
-            ),
+            items: users.filter((user) => {
+              if (user.deleted && url.searchParams.get("include_deleted") !== "true") return false
+              return id ? user.id === id : `${user.name} ${user.email}`.toLowerCase().includes(term)
+            }),
             has_next: false,
           }
         } else if (

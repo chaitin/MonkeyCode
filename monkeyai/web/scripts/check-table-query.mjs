@@ -249,7 +249,10 @@ try {
             }
           else if (url.pathname.endsWith("/branding"))
             body = { product_name: "百智办公" }
-          else if (url.pathname === "/api/admin/v1/billing/users")
+          else if (
+            url.pathname === "/api/admin/v1/users" &&
+            (url.searchParams.has("q") || url.searchParams.has("id"))
+          )
             body = {
               items: [
                 {
@@ -530,16 +533,13 @@ try {
           }
         } else {
           await click(page, '[role="combobox"]', zhCN.pages.feedback.category)
-          pending = response(
-            (q) => q.get("category") === "feature" && q.get("page") === "1"
-          )
           await click(
             page,
             '[role="option"]',
             zhCN.pages.feedback.categories.feature
           )
-          await pending
-          await ready()
+          assert.equal(new URL(page.url()).searchParams.get("category"), "bug")
+          await search("category", "feature")
           assert.equal(
             new URL(page.url()).searchParams.get("category"),
             "feature"
@@ -557,10 +557,9 @@ try {
           await pending
           await ready()
           await click(page, '[role="combobox"]', zhCN.pages.feedback.state)
-          pending = response((q) => !q.has("state"))
           await click(page, '[role="option"]', zhCN.pages.feedback.allStates)
-          await pending
-          await ready()
+          assert.equal(new URL(page.url()).searchParams.get("state"), "new")
+          await search("state", "")
           assert.equal(new URL(page.url()).searchParams.has("state"), false)
         }
         assert.equal(

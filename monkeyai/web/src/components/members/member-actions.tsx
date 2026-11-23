@@ -91,7 +91,7 @@ export function MemberActions({
           strokeWidth={2}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="min-w-40">
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={() => onViewDetails(user.id)}>
             <HugeiconsIcon icon={ViewIcon} strokeWidth={2} />

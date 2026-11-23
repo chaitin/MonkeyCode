@@ -2120,44 +2120,6 @@ func (q *Queries) ScheduleRetry(ctx context.Context, id string) (pgconn.CommandT
 	return q.db.Exec(ctx, scheduleRetry, id)
 }
 
-const searchBillingUsers = `-- name: SearchBillingUsers :many
-SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,
- 'avatar_url',coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')),'deleted',u.deleted_at IS NOT NULL)
-FROM users u
-WHERE ($1::text = '' OR u.id = nullif($1::text,'')::uuid)
- AND ($2::text = '' OR strpos(lower(u.name),lower($2::text))>0
-      OR strpos(lower(u.email),lower($2::text))>0
-      OR strpos(u.id::text,lower($2::text))>0)
-ORDER BY lower(u.name),lower(u.email),u.id
-LIMIT $3
-`
-
-type SearchBillingUsersParams struct {
-	UserID      string
-	Query       string
-	ResultLimit int32
-}
-
-func (q *Queries) SearchBillingUsers(ctx context.Context, arg SearchBillingUsersParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, searchBillingUsers, arg.UserID, arg.Query, arg.ResultLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var jsonb_build_object []byte
-		if err := rows.Scan(&jsonb_build_object); err != nil {
-			return nil, err
-		}
-		items = append(items, jsonb_build_object)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const sessionOwned = `-- name: SessionOwned :one
 SELECT
     EXISTS (

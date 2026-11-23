@@ -16,19 +16,27 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func (s *Service) RegisterAdmin(router chi.Router) {
-	router.Get("/me", func(w http.ResponseWriter, r *http.Request) {
-		user, _ := UserFromContext(r.Context())
-		writeJSON(r.Context(), w, http.StatusOK, user)
-	})
-	router.Get("/users", func(w http.ResponseWriter, r *http.Request) {
+func (s *Service) RegisterSharedAdminReads(get func(string, http.HandlerFunc)) {
+	get("/users", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if query.Has("q") || query.Has("id") || query.Has("limit") || query.Has("include_deleted") {
+			s.userCandidates(w, r, query)
+			return
+		}
 		users, err := s.listUsers(r.Context())
 		if err != nil {
-			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取用户列表失败", "module", "identity", "operation", "RegisterAdmin", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取用户列表失败", "module", "identity", "operation", "listUsers", "error", err)
 			writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "读取用户失败")
 			return
 		}
 		writeJSON(r.Context(), w, http.StatusOK, map[string]any{"users": users})
+	})
+}
+
+func (s *Service) RegisterAdmin(router chi.Router) {
+	router.Get("/me", func(w http.ResponseWriter, r *http.Request) {
+		user, _ := UserFromContext(r.Context())
+		writeJSON(r.Context(), w, http.StatusOK, user)
 	})
 	router.Post("/users", s.createUser)
 	router.Get("/users/{userID}", s.getUser)

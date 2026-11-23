@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
+import { TableLoadError } from "@/components/table-load-error"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -243,7 +244,9 @@ export function ConversationHistoryPage() {
     pageSize
   )
   const request = useStatistics<ConversationPage>(
-    `/api/admin/v1/statistics/conversations?${query}`
+    `/api/admin/v1/statistics/conversations?${query}`,
+    0,
+    { retryAction: false }
   )
   const currentPage = request.data?.page ?? page
   useEffect(() => {
@@ -411,6 +414,7 @@ export function ConversationHistoryPage() {
             {visibleFields.has("user") && (
               <UserSearch
                 id="conversation-history-user"
+                includeDeleted
                 selectionOnly
                 userID={draft.userId}
                 query={draft.user}
@@ -594,13 +598,10 @@ export function ConversationHistoryPage() {
                       {request.loading ? (
                         <TableLoading />
                       ) : request.error ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={request.reload}
-                        >
-                          {t("statistics.retry")}
-                        </Button>
+                        <TableLoadError
+                          error={request.error}
+                          onRetry={request.reload}
+                        />
                       ) : (
                         copy.empty
                       )}

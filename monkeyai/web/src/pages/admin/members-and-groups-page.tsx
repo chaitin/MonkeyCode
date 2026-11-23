@@ -77,6 +77,7 @@ import {
 } from "@/components/ui/item"
 import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
+import { requestErrorToast } from "@/lib/request-error-toast"
 import { compareMembers } from "@/lib/member-sorting"
 import {
   canMoveTo,
@@ -207,17 +208,15 @@ export function MembersAndGroupsPage() {
       })
       .catch((reason: Error) => {
         if (!active) return
-        showToast({
-          status: "error",
-          title: reason.message,
-          action: {
+        showToast(
+          requestErrorToast(reason, {
             label: t("statistics.retry"),
             onClick: () => {
               setLoading(true)
               setLoadRevision((value) => value + 1)
             },
-          },
-        })
+          })
+        )
       })
       .finally(() => {
         if (active) setLoading(false)

@@ -9,6 +9,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
+import { TableLoadError } from "@/components/table-load-error"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { tableQueryState, tableQueryParams } from "@/lib/table-query"
 import { billingExclusiveUntil, billingPageParams } from "@/lib/billing-range"
@@ -172,11 +173,13 @@ export function BillingDetailsPage() {
     if (params.get("entry_type")) initial.push("entryType")
     return new Set(initial)
   })
-  const [entries, setEntries] = useState<Entries | null>(null)
-  const [pending, setPending] = useState<Pending | null>(null)
+  const [entriesData, setEntries] = useState<Entries | null>(null)
+  const [pendingData, setPending] = useState<Pending | null>(null)
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
-  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadError, setLoadError] = useState("")
+  const entries = loading || loadError ? null : entriesData
+  const pending = loading || loadError ? null : pendingData
   const [refresh, setRefresh] = useState(0)
   const searchRefreshRef = useRef<number | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
@@ -209,7 +212,7 @@ export function BillingDetailsPage() {
     const controller = new AbortController()
     if (!isSearch) {
       setLoading(true)
-      setLoadFailed(false)
+      setLoadError("")
     }
     const request =
       view === "entries"
@@ -234,7 +237,7 @@ export function BillingDetailsPage() {
       })
       .catch((e: Error) => {
         if (!cancelled) {
-          if (!isSearch) setLoadFailed(true)
+          setLoadError(e.message)
           showToast({ status: "error", title: e.message })
         }
       })
@@ -257,7 +260,7 @@ export function BillingDetailsPage() {
     Object.entries(change).forEach(([key, value]) =>
       value ? next.set(key, value) : next.delete(key)
     )
-    setLoadFailed(false)
+    setLoadError("")
     setLoading(true)
     setSearching(false)
     searchRefreshRef.current = null
@@ -266,7 +269,7 @@ export function BillingDetailsPage() {
     else setRefresh((v) => v + 1)
   }
   const reload = () => {
-    setLoadFailed(false)
+    setLoadError("")
     setLoading(true)
     setSearching(false)
     searchRefreshRef.current = null
@@ -275,7 +278,7 @@ export function BillingDetailsPage() {
   const search = (e: FormEvent) => {
     e.preventDefault()
     if (searching) return
-    setLoadFailed(false)
+    setLoadError("")
     const next = new URLSearchParams({ view: "entries" })
     for (const [key, value] of Object.entries(draft)) {
       if (
@@ -335,7 +338,7 @@ export function BillingDetailsPage() {
           : undefined
       }
       loading={loading || searching}
-      error={loadFailed}
+      error={Boolean(loadError)}
       onPageSizeChange={(size) => {
         setPageSize(size)
       }}
@@ -359,13 +362,6 @@ export function BillingDetailsPage() {
           <TabsTrigger value="entries">积分流水</TabsTrigger>
           <TabsTrigger value="pending">待处理与对账</TabsTrigger>
         </TabsList>
-        {loadFailed && (
-          <div>
-            <Button variant="outline" onClick={reload}>
-              重试
-            </Button>
-          </div>
-        )}
         <TabsContent value="entries" className="min-h-0 flex-1">
           <Card className="h-full min-h-0">
             <CardContent className="min-h-0 flex-1 gap-4 px-0">
@@ -635,6 +631,8 @@ export function BillingDetailsPage() {
                         >
                           {loading ? (
                             <TableLoading />
+                          ) : loadError ? (
+                            <TableLoadError error={loadError} onRetry={reload} />
                           ) : (
                             t("pages.billingDetails.empty")
                           )}
@@ -774,7 +772,13 @@ export function BillingDetailsPage() {
                           colSpan={7}
                           className="h-full text-center text-muted-foreground"
                         >
-                          {loading ? <TableLoading /> : "暂无待处理交易"}
+                          {loading ? (
+                            <TableLoading />
+                          ) : loadError ? (
+                            <TableLoadError error={loadError} onRetry={reload} />
+                          ) : (
+                            "暂无待处理交易"
+                          )}
                         </TableCell>
                       </TableRow>
                     )}

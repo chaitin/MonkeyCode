@@ -61,6 +61,13 @@ type Bindings struct {
 	RuntimeAccess RuntimeAccess
 	Commands      Commands
 }
+
+// SharedAdminReads is optional. Register only GET handlers that may return the
+// same data to global administrators and current group supervisors.
+type SharedAdminReads interface {
+	RegisterSharedAdminReads(get func(string, http.HandlerFunc))
+}
+
 type Module interface {
 	Initialize(context.Context, Services) (Bindings, error)
 	RegisterAdmin(chi.Router)

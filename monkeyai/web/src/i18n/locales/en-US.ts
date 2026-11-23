@@ -534,6 +534,7 @@ export const enUS = {
     denyTools: "Denied tools, comma separated",
     loading: "Loading…",
     tableLoading: "Loading",
+    tableLoadError: "Failed to load: {{error}}",
     saving: "Saving…",
     operationCompleted: "Operation completed.",
     availableScope: "Available to",

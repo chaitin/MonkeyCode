@@ -268,16 +268,19 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	models.WithEmbeddingChangeHook(knowledgeBases.SyncEmbeddingModels)
 	resources := agentconfig.NewResources(store, connectors, skills)
 
-	admin := chi.NewRouter()
-	admin.Use(identities.RequireAdmin)
-	admin.Use(rootgroup.Middleware(settings))
 	audits := audit.NewService(pool, logger)
-	admin.Use(audits.Middleware(func(r *http.Request) audit.Actor {
+	auditAdmin := audits.Middleware(func(r *http.Request) audit.Actor {
 		user, _ := identity.UserFromContext(r.Context())
 		return audit.Actor{ID: user.ID, Name: user.Name, Email: user.Email}
-	}))
+	})
+	rootGroup := rootgroup.Middleware(settings)
+	admin := chi.NewRouter()
+	admin.Use(identities.RequireAdmin, rootGroup, auditAdmin)
+	console := chi.NewRouter()
+	shared := console.With(identities.RequireAdminOrGroupSupervisor, rootGroup, auditAdmin)
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
+	identities.RegisterSharedAdminReads(shared.Get)
 	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion)
 	if cfg.EngineReleaseDir != "" && cfg.Role != config.RoleControl {
 		stateDir := cfg.RuntimeStateDir
@@ -293,6 +296,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	engineHosts.RegisterAdmin(admin)
 	groupService := group.NewService(pool).WithAccountPreserver(charges).WithMemberWriter(groups)
 	groupService.RegisterAdmin(admin)
+	groupService.RegisterSharedAdminReads(shared.Get)
 	settings.RegisterAdmin(admin)
 	charges.RegisterAdmin(admin)
 	stats.NewService(pool).RegisterAdmin(admin)
@@ -454,8 +458,17 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	for _, registrar := range registrars {
 		if registrar != nil {
 			registrar.RegisterAdmin(admin)
+			if reads, ok := registrar.(extension.SharedAdminReads); ok {
+				reads.RegisterSharedAdminReads(shared.Get)
+			}
 		}
 	}
+	// A host without license support returns 404 to both console roles.
+	if !admin.Match(chi.NewRouteContext(), http.MethodGet, "/license/status") && !console.Match(chi.NewRouteContext(), http.MethodGet, "/license/status") {
+		shared.Get("/license/status", web.NotFound)
+	}
+	// Everything not explicitly registered as a shared read goes through RequireAdmin.
+	console.Mount("/", admin)
 	for _, module := range modules {
 		module.RegisterAgent(interactive)
 		module.RegisterPublic(router)
@@ -474,7 +487,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 			return audit.Actor{}
 		}
 	})(authRouter)
-	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
+	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, console, agent, auth))
 	return &applicationHandler{modules: modules, Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, knowledgeBases: knowledgeBases, resourceImports: resourceImports}, nil
 }
 

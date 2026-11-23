@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { api } from "@/lib/api"
 
 export function useEnvironmentData<T>(
@@ -48,4 +49,18 @@ export function useEnvironmentData<T>(
     loading: path !== null && !current,
     refresh,
   }
+}
+
+// Only the two primary cloud lists notify; detail and filter requests stay quiet.
+export function useCloudListData<T>(
+  path: string,
+  loadData?: (path: string, init?: RequestInit) => Promise<T>
+) {
+  const result = useEnvironmentData<T>(path, true, loadData)
+  const { showToast } = useAppToast()
+  const { error } = result
+  useEffect(() => {
+    if (error) showToast({ status: "error", title: error })
+  }, [error, showToast])
+  return result
 }

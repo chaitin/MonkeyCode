@@ -1,17 +1,13 @@
 package billing
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
 )
@@ -94,55 +90,7 @@ func TestBillingUserSelectionHistory(t *testing.T) {
 	t.Run("backfill", check)
 	ledgerCutover(t, s)
 	t.Run("partitioned", check)
-	out := call(t, "/billing/users?q="+url.QueryEscape("张三")+"&limit=1", 200)
-	if len(out["items"].([]any)) != 1 || out["has_next"] != true {
-		t.Fatalf("bounded duplicate-name options: %#v", out)
-	}
-	out = call(t, "/billing/users?q=EXAMPLE.TEST", 200)
-	if len(out["items"].([]any)) != 3 {
-		t.Fatalf("case-insensitive email: %#v", out)
-	}
-	out = call(t, "/billing/users?id="+user, 200)
-	item := out["items"].([]any)[0].(map[string]any)
-	if len(item) != 5 || item["avatar_url"] != "/avatar.png" || item["name"] != "张三" {
-		t.Fatalf("unexpected directory fields: %#v", item)
-	}
-	out = call(t, "/billing/users?id="+deleted, 200)
-	if out["items"].([]any)[0].(map[string]any)["deleted"] != true {
-		t.Fatalf("deleted user unavailable: %#v", out)
-	}
-	for _, query := range []string{"q=%25", "q=%5F", "id=" + resource.ID()} {
-		out = call(t, "/billing/users?"+query, 200)
-		if len(out["items"].([]any)) != 0 {
-			t.Fatalf("literal search or missing ID: %#v", out)
-		}
-	}
-	for _, path := range []string{"/billing/entries?user_id=bad", "/billing/summary?user_id=bad", "/billing/users?id=bad", "/billing/users?limit=0", "/billing/users?limit=51", "/billing/users?limit=no", "/billing/users?q=" + url.QueryEscape(strings.Repeat("张", 201))} {
+	for _, path := range []string{"/billing/entries?user_id=bad", "/billing/summary?user_id=bad"} {
 		call(t, path, 400)
-	}
-
-	protected := chi.NewRouter()
-	protected.Use(identity.NewService(s.pool, nil, "").RequireAdmin)
-	s.RegisterAdmin(protected)
-	for _, id := range []string{user, other} {
-		hash := sha256.Sum256([]byte(id))
-		ledgerExec(t, s, `INSERT INTO browser_sessions(token_hash,user_id,authentication_method,expires_at) VALUES($1,$2,'password',now()+interval '1 hour')`, hex.EncodeToString(hash[:]), id)
-	}
-	for _, tc := range []struct {
-		token  string
-		status int
-	}{{"", 401}, {other, 403}, {user, 200}} {
-		request := httptest.NewRequest("GET", "/billing/users", nil)
-		if tc.token != "" {
-			request.AddCookie(&http.Cookie{Name: "monkeyai_session", Value: tc.token})
-		}
-		w := httptest.NewRecorder()
-		protected.ServeHTTP(w, request)
-		if w.Code != tc.status {
-			t.Fatalf("user directory permissions: %d %s", w.Code, w.Body)
-		}
-		if tc.status == 200 && w.Header().Get("Cache-Control") != "private, no-store" {
-			t.Fatal("user directory must not be cached")
-		}
 	}
 }

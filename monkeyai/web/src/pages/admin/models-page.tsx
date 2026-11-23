@@ -106,6 +106,7 @@ import { useResourceList } from "@/hooks/use-resource-list"
 import { Iconfont } from "@/components/iconfont"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
+import { requestErrorToast } from "@/lib/request-error-toast"
 import { deleteModelBatch } from "@/lib/model-batch-delete"
 import { SystemProxySelect } from "@/components/proxy-settings"
 import { loadProxies, type SystemProxy } from "@/lib/proxy-settings"
@@ -502,14 +503,12 @@ export function ModelsPage() {
       })
       .catch((reason: Error) => {
         if (active) {
-          showToast({
-            status: "error",
-            title: reason.message,
-            action: {
+          showToast(
+            requestErrorToast(reason, {
               label: t("statistics.retry"),
               onClick: () => setLoadRevision((value) => value + 1),
-            },
-          })
+            })
+          )
         }
       })
     return () => {

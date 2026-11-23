@@ -284,7 +284,7 @@ const server = createServer(async (req, res) => {
       if (url.pathname.endsWith("/branding"))
         return send({ product_name: "MonkeyAI", workspace_name: "本地测试" })
       if (route === "resources/authorization-subjects") return send({groups:[{id:uuid(0),name:"本地测试",parent_id:null},{id:uuid(920),name:"研发组",parent_id:uuid(0)},{id:uuid(921),name:"平台组",parent_id:uuid(920)}],users:[{id:userID,name:"环境测试用户",email:"user@example.test",group_id:[uuid(921)]},{id:uuid(902),name:"开发用户",email:"developer@example.test",group_id:[uuid(920)]}]})
-      if (route === "billing/users")
+      if (route === "users" && (url.searchParams.has("q") || url.searchParams.has("id")))
         return send({
           items: [
             {

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { UserAvatar } from "@/components/user-avatar"
+import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -33,7 +34,7 @@ export type UserSearchProps = {
   selectionOnly?: boolean
   searchInPopup?: boolean
   searchPlaceholder?: string
-  excludeDeleted?: boolean
+  includeDeleted?: boolean
   /** Local options; omitting this keeps the paginated user lookup. */
   users?: readonly User[]
 }
@@ -48,10 +49,13 @@ export function UserSearch({
   selectionOnly = false,
   searchInPopup = false,
   searchPlaceholder,
-  excludeDeleted = false,
+  includeDeleted = false,
   users,
 }: UserSearchProps) {
   const { t } = useTranslation()
+  const { user } = useAuth()
+  const showDeleted = includeDeleted && user?.role === "admin"
+  const deletedParam = showDeleted ? "&include_deleted=true" : ""
   const generatedID = useId()
   const inputPlaceholder =
     placeholder ?? t("pages.billingDetails.filters.userPlaceholder")
@@ -68,17 +72,18 @@ export function UserSearch({
     (Result & { key: string; error?: string }) | null
   >(null)
   const term = searchInPopup ? popupQuery.trim() : userID ? "" : query.trim()
-  const requestKey = JSON.stringify([term, generation, retry])
+  const requestKey = JSON.stringify([term, generation, retry, showDeleted])
+  const resolvedUser = resolved?.deleted && !showDeleted ? null : resolved
   const selected = useMemo(
     () =>
       users
         ? (users.find((user) => user.id === userID) ?? null)
-        : resolved?.id === userID
-          ? resolved
+        : resolvedUser?.id === userID
+          ? resolvedUser
           : userID
             ? { id: userID, name: userID, email: "", deleted: false }
             : null,
-    [resolved, userID, users]
+    [resolvedUser, userID, users]
   )
 
   useEffect(() => {
@@ -88,10 +93,10 @@ export function UserSearch({
   }, [needsSelection, t])
 
   useEffect(() => {
-    if (users || !userID || resolved?.id === userID) return
+    if (users || !userID || resolvedUser?.id === userID) return
     const controller = new AbortController()
     void api<Result>(
-      `/api/admin/v1/billing/users?id=${encodeURIComponent(userID)}`,
+      `/api/admin/v1/users?id=${encodeURIComponent(userID)}${deletedParam}`,
       { signal: controller.signal }
     )
       .then((data) => {
@@ -102,14 +107,14 @@ export function UserSearch({
         /* The UUID remains usable if its display lookup fails. */
       })
     return () => controller.abort()
-  }, [userID, resolved?.id, users])
+  }, [userID, resolvedUser?.id, users, deletedParam])
 
   useEffect(() => {
     if (users || !open) return
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       void api<Result>(
-        `/api/admin/v1/billing/users?q=${encodeURIComponent(term)}&limit=20`,
+        `/api/admin/v1/users?q=${encodeURIComponent(term)}&limit=20${deletedParam}`,
         { signal: controller.signal }
       )
         .then((data) => {
@@ -130,7 +135,7 @@ export function UserSearch({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [open, term, requestKey, users])
+  }, [open, term, requestKey, users, deletedParam])
 
   const current = users
     ? {
@@ -153,9 +158,7 @@ export function UserSearch({
           ...(current?.items ?? []).filter((user) => user.id !== selected.id),
         ]
       : (current?.items ?? [])
-  const visibleItems = excludeDeleted
-    ? items.filter((user) => !user.deleted)
-    : items
+  const visibleItems = showDeleted ? items : items.filter((user) => !user.deleted)
   return (
     <Combobox.Root<User>
       items={visibleItems}

@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
+import { TableLoadError } from "@/components/table-load-error"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { useTableQuery } from "@/hooks/use-table-query"
 import { queryDate, queryDateValue } from "@/lib/table-query"
@@ -225,17 +226,9 @@ export function OperationLogsPage() {
         if (controller.signal.aborted) return
         const message =
           reason instanceof Error ? reason.message : String(reason)
-        if (!isSearch) setError(message)
-        showToast({
-          status: "error",
-          title: message,
-          ...(!isSearch && {
-            action: {
-              label: t("statistics.retry"),
-              onClick: () => setRevision((value) => value + 1),
-            },
-          }),
-        })
+        setData(undefined)
+        setError(message)
+        showToast({ status: "error", title: message })
       })
       .finally(() => {
         if (controller.signal.aborted) return
@@ -317,6 +310,7 @@ export function OperationLogsPage() {
             {visibleFields.has("operator") && (
               <UserSearch
                 id="audit-operator"
+                includeDeleted
                 selectionOnly
                 userID={operatorID}
                 query={operatorInput}
@@ -491,16 +485,6 @@ export function OperationLogsPage() {
               </p>
             )}
           </form>
-          {error && (
-            <div className="px-[var(--card-spacing)]">
-              <Button
-                variant="outline"
-                onClick={() => setRevision((value) => value + 1)}
-              >
-                {t("statistics.retry")}
-              </Button>
-            </div>
-          )}
           <ScrollArea
             horizontal
             className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
@@ -656,7 +640,10 @@ export function OperationLogsPage() {
                       {loading ? (
                         <TableLoading />
                       ) : error ? (
-                        "—"
+                        <TableLoadError
+                          error={error}
+                          onRetry={() => setRevision((value) => value + 1)}
+                        />
                       ) : (
                         t("pages.operationLogs.empty")
                       )}

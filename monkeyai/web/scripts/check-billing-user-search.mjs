@@ -120,7 +120,11 @@ try {
           }
         else if (url.pathname.endsWith("/branding"))
           body = { product_name: "百智办公", workspace_name: "测试" }
-        else if (url.pathname === "/api/admin/v1/billing/users") {
+        else if (
+            url.pathname === "/api/admin/v1/users" &&
+            (url.searchParams.has("q") || url.searchParams.has("id"))
+          ) {
+          assert.equal(url.searchParams.get("include_deleted"), "true")
           lookups.push(url.searchParams)
           const query = url.searchParams.get("q") || "",
             id = url.searchParams.get("id")

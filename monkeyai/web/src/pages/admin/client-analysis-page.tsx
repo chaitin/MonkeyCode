@@ -14,6 +14,7 @@ import { ClientDistributionCards } from "@/components/client-distribution-cards"
 import { DatePickerField } from "@/components/date-picker-field"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
+import { TableLoadError } from "@/components/table-load-error"
 import { UserAvatar } from "@/components/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -205,11 +206,12 @@ export function ClientAnalysisPage() {
           setOverviewResponse({ key: overviewKey, data: result })
       })
       .catch((reason: Error) => {
-        if (!controller.signal.aborted)
-          setOverviewResponse({ key: overviewKey, error: reason.message })
+        if (controller.signal.aborted) return
+        setOverviewResponse({ key: overviewKey, error: reason.message })
+        showToast({ status: "error", title: reason.message })
       })
     return () => controller.abort()
-  }, [overviewPath, overviewKey])
+  }, [overviewPath, overviewKey, showToast])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -244,17 +246,9 @@ export function ClientAnalysisPage() {
       })
       .catch((reason: Error) => {
         if (controller.signal.aborted) return
+        setData(undefined)
         setError(reason.message)
-        showToast({
-          status: "error",
-          title: reason.message,
-          ...(!isSearch && {
-            action: {
-              label: t("statistics.retry"),
-              onClick: () => setListRetry((value) => value + 1),
-            },
-          }),
-        })
+        showToast({ status: "error", title: reason.message })
       })
       .finally(() => {
         if (controller.signal.aborted || redirecting) return
@@ -629,20 +623,6 @@ export function ClientAnalysisPage() {
               </p>
             )}
           </form>
-          {error && (
-            <div
-              role="alert"
-              className="flex items-center gap-2 px-[var(--card-spacing)]"
-            >
-              <span className="text-sm text-destructive">{error}</span>
-              <Button
-                variant="outline"
-                onClick={() => setListRetry((value) => value + 1)}
-              >
-                {t("statistics.retry")}
-              </Button>
-            </div>
-          )}
           <ScrollArea
             horizontal
             className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
@@ -674,7 +654,7 @@ export function ClientAnalysisPage() {
                   ))}
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className={!items.length ? "h-full" : undefined}>
                 {items.length ? (
                   items.map((row) => (
                     <TableRow key={row.id}>
@@ -702,7 +682,10 @@ export function ClientAnalysisPage() {
                       {loading ? (
                         <TableLoading />
                       ) : error ? (
-                        "—"
+                        <TableLoadError
+                          error={error}
+                          onRetry={() => setListRetry((value) => value + 1)}
+                        />
                       ) : (
                         t("statistics.empty")
                       )}

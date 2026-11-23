@@ -180,7 +180,10 @@ try {
               wallet: { configured: true },
               external_user_id: "",
             }
-          else if (url.pathname === "/api/admin/v1/billing/users") {
+          else if (
+            url.pathname === "/api/admin/v1/users" &&
+            (url.searchParams.has("q") || url.searchParams.has("id"))
+          ) {
             const id = url.searchParams.get("id"),
               query = url.searchParams.get("q") ?? ""
             const candidates = [user, other].map((id) => ({

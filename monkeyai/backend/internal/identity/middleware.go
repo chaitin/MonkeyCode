@@ -39,6 +39,14 @@ func (s *Service) BrowserUser(r *http.Request) (User, bool) {
 }
 
 func (s *Service) RequireAdmin(next http.Handler) http.Handler {
+	return s.requireAdmin(next, false)
+}
+
+func (s *Service) RequireAdminOrGroupSupervisor(next http.Handler) http.Handler {
+	return s.requireAdmin(next, true)
+}
+
+func (s *Service) requireAdmin(next http.Handler, allowSupervisor bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(sessionCookie)
 		if err != nil || cookie.Value == "" {
@@ -57,8 +65,20 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 			return
 		}
 		if user.Role != "admin" {
-			writeError(r.Context(), w, http.StatusForbidden, "forbidden", "需要管理员权限")
-			return
+			allowed := false
+			if allowSupervisor {
+				entryUser, err := s.webUser(r.Context(), user)
+				if err != nil {
+					logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询主管身份失败", "module", "identity", "user_id", user.ID, "error", err)
+					writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "读取会话失败")
+					return
+				}
+				allowed = entryUser.Role == "group_admin"
+			}
+			if !allowed {
+				writeError(r.Context(), w, http.StatusForbidden, "forbidden", "需要管理员权限")
+				return
+			}
 		}
 		logging.Bind(r.Context(), slog.String("user_id", user.ID))
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey{}, user)))

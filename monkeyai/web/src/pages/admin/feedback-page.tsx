@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { Loading03Icon, Search02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useTableQuery } from "@/hooks/use-table-query"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
@@ -311,11 +313,16 @@ const FEEDBACK_QUERY_KEYS = ["category", "state"] as const
 
 export function FeedbackPage() {
   const { i18n, t } = useTranslation()
+  const { showToast } = useAppToast()
   const tableQuery = useTableQuery(FEEDBACK_QUERY_KEYS)
   const { filters, page, pageSize, setPage, setPageSize } = tableQuery
   const category = (filters.category ?? "all") as Category | "all"
   const state = (filters.state ?? "all") as State | "all"
   const [revision, setRevision] = useState(0)
+  const [draft, setDraft] = useState({ key: tableQuery.filterQuery, category, state })
+  if (draft.key !== tableQuery.filterQuery) {
+    setDraft({ key: tableQuery.filterQuery, category, state })
+  }
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const [response, setResponse] = useState<{
@@ -348,15 +355,23 @@ export function FeedbackPage() {
           setResponse({ key: requestKey, data: result })
       })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setResponse({
-            key: requestKey,
-            error: reason instanceof Error ? reason.message : String(reason),
-          })
-        }
+        if (controller.signal.aborted) return
+        const message = reason instanceof Error ? reason.message : String(reason)
+        setResponse({ key: requestKey, error: message })
+        showToast({ status: "error", title: message })
       })
     return () => controller.abort()
-  }, [path, requestKey])
+  }, [path, requestKey, showToast])
+
+  function applySearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (loading) return
+    const changed = tableQuery.commit({
+      category: draft.category === "all" ? "" : draft.category,
+      state: draft.state === "all" ? "" : draft.state,
+    })
+    if (!changed) setRevision((value) => value + 1)
+  }
 
   const rows = !loading && !error ? (data?.items ?? []) : []
   const total = data?.total ?? 0
@@ -366,7 +381,7 @@ export function FeedbackPage() {
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <div className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]">
+          <form onSubmit={applySearch} className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]">
             <Select
               items={[
                 { value: "all", label: t("pages.feedback.allCategories") },
@@ -375,14 +390,9 @@ export function FeedbackPage() {
                   label: t(`pages.feedback.categories.${value}`),
                 })),
               ]}
-              value={category}
+              value={draft.category}
               onValueChange={(value) => {
-                if (value) {
-                  tableQuery.commit({
-                    ...filters,
-                    category: value === "all" ? "" : value,
-                  })
-                }
+                if (value) setDraft((current) => ({ ...current, category: value }))
               }}
             >
               <SelectTrigger aria-label={t("pages.feedback.category")}>
@@ -409,14 +419,9 @@ export function FeedbackPage() {
                   label: t(`pages.feedback.states.${value}`),
                 })),
               ]}
-              value={state}
+              value={draft.state}
               onValueChange={(value) => {
-                if (value) {
-                  tableQuery.commit({
-                    ...filters,
-                    state: value === "all" ? "" : value,
-                  })
-                }
+                if (value) setDraft((current) => ({ ...current, state: value }))
               }}
             >
               <SelectTrigger aria-label={t("pages.feedback.state")}>
@@ -435,13 +440,15 @@ export function FeedbackPage() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Button
-              variant="outline"
-              onClick={() => setRevision((value) => value + 1)}
-            >
-              {t("statistics.refresh")}
+            <Button type="submit" disabled={loading}>
+              <HugeiconsIcon
+                icon={loading ? Loading03Icon : Search02Icon}
+                data-icon="inline-start"
+                className={loading ? "animate-spin motion-reduce:animate-none" : undefined}
+              />
+              {t("pages.operationLogs.filters.search")}
             </Button>
-          </div>
+          </form>
           <div className="min-h-0 flex-1 overflow-auto [&_[data-slot=table-container]]:h-full">
             <Table
               aria-label={t("pages.feedback.title")}
@@ -522,6 +529,7 @@ export function FeedbackPage() {
                           </p>
                           <Button
                             variant="outline"
+                            className="text-foreground"
                             onClick={() => setRevision((n) => n + 1)}
                           >
                             {t("pages.feedback.retry")}

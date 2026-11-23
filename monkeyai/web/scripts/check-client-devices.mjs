@@ -745,26 +745,21 @@ try {
         assert.equal(new URL(page.url()).searchParams.has("until"), false)
         overviewMode = "error"
         await submit()
-        await page.waitForFunction(
-          () =>
-            document.querySelectorAll('[role="figure"] [role="alert"]')
-              .length === 3
-        )
+        const overviewFailure = page.locator('[role="alert"]').filter({ hasText: "设备概览失败" }).filter({ has: page.getByRole("button") })
+        await overviewFailure.waitFor()
+        assert.equal(await overviewFailure.getByRole("button").count(), 1)
         const beforeRetry = lists.length
         overviewMode = "data"
-        await click(page, '[role="figure"] button')
+        await overviewFailure.getByRole("button").click()
         await ready()
         assert.equal(lists.length, beforeRetry)
         listMode = "error"
         await submit()
-        await page.waitForFunction(() =>
-          document
-            .querySelector('div[role="alert"]')
-            ?.textContent.includes("设备列表失败")
-        )
+        const listFailure = page.locator('tbody [role="alert"]').filter({ hasText: "设备列表失败" })
+        await listFailure.waitFor()
         const oldOverview = overviews.length
         listMode = "data"
-        await click(page, 'div[role="alert"] button')
+        await listFailure.getByRole("button").click()
         await ready()
         assert.equal(overviews.length, oldOverview)
         listMode = "empty"

@@ -15,6 +15,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api } from "@/lib/api"
+import { requestErrorToast } from "@/lib/request-error-toast"
 import type { AuthUser } from "@/lib/auth-context"
 
 type Methods = {
@@ -64,17 +65,15 @@ export function EmailAuthForm({
       .catch((reason: Error) => {
         if (reason.name !== "AbortError") {
           setMethodsError(reason.message)
-          showToast({
-            status: "error",
-            title: reason.message,
-            action: {
+          showToast(
+            requestErrorToast(reason, {
               label: t("statistics.retry"),
               onClick: () => {
                 setMethodsError("")
                 setMethodsRevision((value) => value + 1)
               },
-            },
-          })
+            })
+          )
         }
       })
     return () => controller.abort()

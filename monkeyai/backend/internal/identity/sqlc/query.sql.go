@@ -1556,6 +1556,51 @@ func (q *Queries) SaveEmailCode(ctx context.Context, arg SaveEmailCodeParams) er
 	return err
 }
 
+const searchAdminUserCandidates = `-- name: SearchAdminUserCandidates :many
+SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,
+ 'avatar_url',coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')),'deleted',u.deleted_at IS NOT NULL)
+FROM users u
+WHERE ($1::boolean OR u.deleted_at IS NULL)
+ AND ($2::text = '' OR u.id = nullif($2::text,'')::uuid)
+ AND ($3::text = '' OR strpos(lower(u.name),lower($3::text))>0
+      OR strpos(lower(u.email),lower($3::text))>0
+      OR strpos(u.id::text,lower($3::text))>0)
+ORDER BY lower(u.name),lower(u.email),u.id
+LIMIT $4
+`
+
+type SearchAdminUserCandidatesParams struct {
+	IncludeDeleted bool
+	UserID         string
+	Query          string
+	ResultLimit    int32
+}
+
+func (q *Queries) SearchAdminUserCandidates(ctx context.Context, arg SearchAdminUserCandidatesParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, searchAdminUserCandidates,
+		arg.IncludeDeleted,
+		arg.UserID,
+		arg.Query,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchUsers = `-- name: SearchUsers :many
 SELECT
     id,

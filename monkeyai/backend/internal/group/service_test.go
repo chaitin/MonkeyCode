@@ -75,6 +75,7 @@ func TestGroups(t *testing.T) {
 	router := chi.NewRouter()
 	router.Use(identity.NewService(pool, nil, "http://localhost").RequireAdmin)
 	service.RegisterAdmin(router)
+	service.RegisterSharedAdminReads(router.Get)
 	call := func(method, path string, body any, token string) *httptest.ResponseRecorder {
 		data, err := json.Marshal(body)
 		if err != nil {

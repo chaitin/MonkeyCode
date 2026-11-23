@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { api } from "@/lib/api"
+import { requestErrorToast } from "@/lib/request-error-toast"
 import type {
   AuthorizationSelection,
   AuthorizationGroupNode,
@@ -185,18 +186,15 @@ export function useResources<T>(
       })
       .catch((e) => {
         if (!cancelled) {
-          const message = e instanceof Error ? e.message : String(e)
-          showToast({
-            status: "error",
-            title: message,
-            action: {
+          showToast(
+            requestErrorToast(e, {
               label: t("statistics.retry"),
               onClick: () => {
                 setLoading(true)
                 setRevision((value) => value + 1)
               },
-            },
-          })
+            })
+          )
         }
       })
       .finally(() => {
@@ -257,15 +255,12 @@ export function useSubjects() {
       })
       .catch((e) => {
         if (!cancelled) {
-          const message = e instanceof Error ? e.message : String(e)
-          showToast({
-            status: "error",
-            title: message,
-            action: {
+          showToast(
+            requestErrorToast(e, {
               label: t("statistics.retry"),
               onClick: () => setRevision((value) => value + 1),
-            },
-          })
+            })
+          )
         }
       })
     return () => {

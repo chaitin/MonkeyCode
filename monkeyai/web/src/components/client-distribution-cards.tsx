@@ -9,7 +9,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { Pie, PieChart } from "recharts"
 
-import { Button } from "@/components/ui/button"
+import { TableLoadError } from "@/components/table-load-error"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   ChartContainer,
@@ -79,16 +79,12 @@ function DistributionCard({
   items,
   total,
   loading,
-  error,
-  onRetry,
 }: {
   title: string
   icon: IconSvgElement
   items: DistributionItem[]
   total?: number
   loading: boolean
-  error?: string
-  onRetry: () => void
 }) {
   const { i18n, t } = useTranslation()
   const { ref: containerRef, wide } =
@@ -140,18 +136,6 @@ function DistributionCard({
               aria-hidden="true"
             />
           </span>
-        ) : error ? (
-          <div
-            role="alert"
-            aria-label={error}
-            title={error}
-            className="flex flex-col items-center gap-2"
-          >
-            <span className="text-2xl text-muted-foreground">—</span>
-            <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-              {t("statistics.retry")}
-            </Button>
-          </div>
         ) : (
           <>
             <div className="legacy-aspect-square relative aspect-square w-32 max-w-40 shrink-0 group-data-[container-wide=true]/distribution:w-[42%]">
@@ -240,6 +224,13 @@ export function ClientDistributionCards({
   onRetry: () => void
 }) {
   const { t } = useTranslation()
+  if (error) {
+    return (
+      <Card className="shrink-0 py-12">
+        <TableLoadError error={error} onRetry={onRetry} />
+      </Card>
+    )
+  }
   return (
     <div className="grid shrink-0 gap-4 lg:grid-cols-3">
       {dimensions.map(({ field, icon }) => {
@@ -266,8 +257,6 @@ export function ClientDistributionCards({
             items={items}
             total={data?.total}
             loading={loading}
-            error={error}
-            onRetry={onRetry}
           />
         )
       })}

@@ -2,6 +2,7 @@ import { useId, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
+import { TableLoadError } from "@/components/table-load-error"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Table,
@@ -101,12 +102,11 @@ export function EnvironmentTable({
                 colSpan={columns.length}
                 className="h-full py-12 text-center text-muted-foreground"
               >
-                <LoadState
-                  loading={loading}
-                  error={error}
-                  empty
-                  refresh={refresh}
-                />
+                {error ? (
+                  <TableLoadError error={error} onRetry={refresh} />
+                ) : (
+                  <LoadState loading={loading} empty refresh={refresh} />
+                )}
               </TableCell>
             </TableRow>
           ) : (

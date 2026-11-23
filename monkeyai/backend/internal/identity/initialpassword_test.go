@@ -76,6 +76,7 @@ func TestInitialPasswordStoredAsHashAndNotInMemberReads(t *testing.T) {
 	service := newTestService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true}`)}, "http://localhost")
 	router := chi.NewRouter()
 	service.RegisterAdmin(router)
+	service.RegisterSharedAdminReads(router.Get)
 	for _, role := range []string{"user", "admin"} {
 		t.Run(role, func(t *testing.T) {
 			input, err := json.Marshal(map[string]string{"name": role, "email": role + "@example.com", "role": role, "password": "original-admin-password-123"})

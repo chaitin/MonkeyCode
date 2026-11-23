@@ -67,7 +67,7 @@ import { OSIcon } from "@/components/environments/os-icon"
 import { HostCommand } from "@/components/environments/host-command"
 import { rememberCommand } from "@/lib/host-command"
 import { useAuth } from "@/hooks/use-auth"
-import { useEnvironmentData } from "@/hooks/use-environment-data"
+import { useCloudListData } from "@/hooks/use-environment-data"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Dialog,
@@ -244,9 +244,8 @@ export function EngineHostsPage({
   const [managingSpecifications, setManagingSpecifications] = useState(false)
   const [configuring, setConfiguring] = useState<Host | null>(null)
   const [checking, setChecking] = useState<Host | null>(null)
-  const result = useEnvironmentData<{ items: Host[]; total: number }>(
+  const result = useCloudListData<{ items: Host[]; total: number }>(
     "/api/admin/v1/engine-hosts",
-    true,
     loadEngineHosts<Host>
   )
   const hosts = result.data?.items ?? []

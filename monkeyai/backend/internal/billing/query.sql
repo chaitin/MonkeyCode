@@ -1365,14 +1365,3 @@ CROSS JOIN LATERAL (
 ) e
 WHERE k.transaction_id=$1
 ORDER BY e.sequence;
-
--- name: SearchBillingUsers :many
-SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,
- 'avatar_url',coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')),'deleted',u.deleted_at IS NOT NULL)
-FROM users u
-WHERE (sqlc.arg(user_id)::text = '' OR u.id = nullif(sqlc.arg(user_id)::text,'')::uuid)
- AND (sqlc.arg(query)::text = '' OR strpos(lower(u.name),lower(sqlc.arg(query)::text))>0
-      OR strpos(lower(u.email),lower(sqlc.arg(query)::text))>0
-      OR strpos(u.id::text,lower(sqlc.arg(query)::text))>0)
-ORDER BY lower(u.name),lower(u.email),u.id
-LIMIT sqlc.arg(result_limit);

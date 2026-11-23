@@ -73,7 +73,6 @@ function MemberPicker({
       searchPlaceholder={t(`${key}.searchMembers`)}
       searchInPopup
       selectionOnly
-      excludeDeleted
       onChange={({ userID, query }) => {
         setQuery(query)
         onSelect(userID || null)

@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import { requestErrorToast } from "@/lib/request-error-toast"
 import {
   base,
   grants,
@@ -379,14 +380,12 @@ export function ExpertsPage() {
       })
       .catch((e) => {
         if (!cancelled) {
-          showToast({
-            status: "error",
-            title: e instanceof Error ? e.message : String(e),
-            action: {
+          showToast(
+            requestErrorToast(e, {
               label: t("statistics.retry"),
               onClick: () => setOptionRevision((value) => value + 1),
-            },
-          })
+            })
+          )
         }
       })
     return () => {

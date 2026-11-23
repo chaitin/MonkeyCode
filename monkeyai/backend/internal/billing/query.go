@@ -12,7 +12,20 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+func entryUserID(raw string) (string, error) {
+	id := strings.TrimSpace(raw)
+	if id == "" {
+		return "", nil
+	}
+	var value pgtype.UUID
+	if err := value.Scan(id); err != nil || !value.Valid {
+		return "", resource.Invalid("用户 ID 无效")
+	}
+	return id, nil
+}
 
 func filters(r *http.Request) (sqlc.CountEntriesParams, error) {
 	q := r.URL.Query()

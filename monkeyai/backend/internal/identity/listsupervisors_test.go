@@ -44,6 +44,7 @@ func TestAdminListUserSupervisedGroups(t *testing.T) {
 	slices.Reverse(want)
 	router := chi.NewRouter()
 	service.RegisterAdmin(router)
+	service.RegisterSharedAdminReads(router.Get)
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/users", nil))
 	var body struct{ Users []adminListUser }

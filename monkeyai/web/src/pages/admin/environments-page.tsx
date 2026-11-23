@@ -62,7 +62,7 @@ import {
   type Operation,
   type Page,
 } from "@/lib/environments"
-import { useEnvironmentData } from "@/hooks/use-environment-data"
+import { useCloudListData, useEnvironmentData } from "@/hooks/use-environment-data"
 import {
   LoadState,
   EnvironmentTable,
@@ -211,9 +211,8 @@ export function EnvironmentsPage({
   if (userID) query.set("user_id", userID)
   if (user) query.set("user", user)
   if (name) query.set("name", name)
-  const result = useEnvironmentData<Page<Environment>>(
-    `/api/admin/v1/environments?${query}`,
-    true
+  const result = useCloudListData<Page<Environment>>(
+    `/api/admin/v1/environments?${query}`
   )
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const [action, setAction] = useState<Action | null>(null)
@@ -314,6 +313,7 @@ export function EnvironmentsPage({
             {visibleFields.creator && (
               <UserSearch
                 id="environment-creator"
+                includeDeleted
                 placeholder={t("environmentAdmin.creator")}
                 userID={draft.userID}
                 query={draft.user}

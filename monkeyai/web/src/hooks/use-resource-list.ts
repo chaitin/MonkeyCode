@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { api } from "@/lib/api"
+import { requestErrorToast } from "@/lib/request-error-toast"
 import { base, type ResourceRow } from "@/lib/resources"
 
 export type ResourceType = ResourceRow["ownership_type"]
@@ -57,11 +58,12 @@ export function useResourcePage<T = ResourceRow>(
         if (disposed) return
         const error = reason instanceof Error ? reason.message : String(reason)
         setResult({ key, error })
-        showToast({
-          status: "error",
-          title: error,
-          action: { label: t("statistics.retry"), onClick: reload },
-        })
+        showToast(
+          requestErrorToast(reason, {
+            label: t("statistics.retry"),
+            onClick: reload,
+          })
+        )
       })
     return () => {
       disposed = true
