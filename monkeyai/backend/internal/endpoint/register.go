@@ -3,6 +3,7 @@ package endpoint
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"io"
 	"log/slog"
 	"net/http"
@@ -76,6 +77,10 @@ func registration(data []byte) (Registration, error) {
 
 func (s *Service) register(w http.ResponseWriter, req *http.Request) {
 	machine := chi.URLParam(req, "machine")
+	if p, ok := identity.PrincipalFromContext(req.Context()); ok && p.Purpose == "runtime" && (p.MachineID == "" || machine != p.MachineID) {
+		failure(req.Context(), w, 403, "permission_denied")
+		return
+	}
 	if !validID(machine) {
 		failure(req.Context(), w, 400, "invalid_request")
 		return

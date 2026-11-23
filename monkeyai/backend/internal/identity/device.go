@@ -33,7 +33,7 @@ import (
 const RuntimeClientID = "monkeyai-runtime"
 const DeviceGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 
-var runtimeScopes = []string{"device:bind", "device:publish", "session:report"}
+var runtimeScopes = []string{AccountResources, "device:bind", "device:publish", "session:report"}
 
 type DeviceRegistry interface {
 	VerifyDeviceRequest(context.Context, pgx.Tx, string, string, []byte) (bool, error)

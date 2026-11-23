@@ -2132,3 +2132,27 @@ ALTER TABLE group_users ADD COLUMN is_supervisor boolean NOT NULL DEFAULT false;
 ALTER TABLE hosts DROP CONSTRAINT hosts_name_check;
 
 ALTER TABLE hosts ADD CONSTRAINT hosts_name_check CHECK (octet_length(name) <= 128);
+
+CREATE TABLE images (
+ id uuid PRIMARY KEY,
+ display_name text NOT NULL CHECK (display_name=btrim(display_name) AND length(display_name) BETWEEN 1 AND 128),
+ source_type text NOT NULL CHECK(source_type IN ('builtin','pull','upload')),
+ upstream text, archive_name text, staging_key text, content_source text,
+ status text NOT NULL CHECK(status IN ('pending','importing','ready','failed')),
+ progress_stage text NOT NULL, completed_bytes bigint NOT NULL DEFAULT 0 CHECK(completed_bytes>=0),
+ total_bytes bigint CHECK(total_bytes>=completed_bytes), error_code text, error_message text,
+ created_by uuid, request_key text, request_hash text,
+ added_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz,
+ CHECK ((source_type='pull')=(upstream IS NOT NULL)), CHECK ((source_type='upload')=(archive_name IS NOT NULL)),
+ CHECK (status<>'ready' OR content_source IS NOT NULL)
+);
+
+ALTER TABLE environments ADD COLUMN image_id uuid REFERENCES images(id);
+
+ALTER TABLE oauth_grants DROP CONSTRAINT IF EXISTS oauth_grants_scopes_check;
+
+ALTER TABLE oauth_grants ADD CONSTRAINT oauth_grants_scopes_check CHECK(
+ scopes <@ ARRAY['device:bind','device:publish','device:connect','device:manage',
+ 'session:report','session:read','session:control','files:read','files:write','resources:manage',
+ 'environment:read','environment:manage','account:ai-resources']::text[]
+);

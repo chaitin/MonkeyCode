@@ -116,7 +116,11 @@ func (s *Service) RequireAgent(next http.Handler) http.Handler {
 			p.KeyID = *row.KeyID
 		}
 		if p.Purpose == "runtime" {
-			allowed, err := s.runtimeAllowed(ctx, nil, p.UserID, p.MachineID)
+			machine := p.MachineID
+			if machine == "" && row.RequestedMachineID != nil {
+				machine = *row.RequestedMachineID
+			}
+			allowed, err := s.runtimeAllowed(ctx, nil, p.UserID, machine)
 			if err != nil {
 				writeError(r.Context(), w, 503, "service_unavailable", "环境状态暂不可用")
 				return
@@ -127,40 +131,29 @@ func (s *Service) RequireAgent(next http.Handler) http.Handler {
 			}
 		}
 		ctx = context.WithValue(ctx, principalKey{}, p)
-		if p.Purpose == "runtime" && !runtimeRoute(p, r.Method, r.URL.Path) {
-			writeError(r.Context(), w, 403, "permission_denied", "独立执行授权只能访问本机执行接口")
-			return
-		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func runtimeRoute(p Principal, method, path string) bool {
-	path = strings.TrimPrefix(path, "/api/v1")
-	if method == "GET" && (path == "/me" || path == "/settings" || path == "/endpoint-bridge") {
-		return true
-	}
-	if strings.HasPrefix(path, "/api-keys") {
-		return p.MachineID != "" && p.Has("device:publish")
-	}
-	if method == "PUT" && path == "/endpoints/"+p.MachineID && p.MachineID != "" {
-		return true
-	}
-	if (method == "PUT" || method == "POST") && strings.HasPrefix(path, "/sessions/") {
-		return p.Has("session:report")
-	}
-	if method == "POST" && path == "/resources/resolve" {
-		return true
-	}
-	if method == "GET" {
-		for _, prefix := range []string{"/models", "/rules", "/skills", "/experts", "/connectors"} {
-			if path == prefix || strings.HasPrefix(path, prefix+"/") {
-				return true
+const AccountResources = "account:ai-resources"
+
+// 交互式账号沿用原有业务权限；设备授权只能使用明确委托的能力。
+func runtimePolicy(allow func(Principal) bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p, ok := PrincipalFromContext(r.Context())
+			if !ok || p.Purpose == "runtime" && !allow(p) {
+				writeError(r.Context(), w, 403, "permission_denied", "授权不包含所需权限")
+				return
 			}
-		}
+			next.ServeHTTP(w, r)
+		})
 	}
-	return false
 }
+
+var RequireInteractive = runtimePolicy(func(Principal) bool { return false })
+var RequireAccountResources = runtimePolicy(func(p Principal) bool { return p.Has(AccountResources) })
+var RequireGatewayKeys = runtimePolicy(Principal.CanIssueRuntimeKey)
 
 func writeJSON(ctx context.Context, w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

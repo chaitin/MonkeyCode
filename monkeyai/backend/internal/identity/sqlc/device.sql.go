@@ -378,17 +378,18 @@ func (q *Queries) RevokeBoundRuntimeGrant(ctx context.Context, arg RevokeBoundRu
 }
 
 const revokeRuntimeMachine = `-- name: RevokeRuntimeMachine :many
-UPDATE oauth_grants SET revoked_at=now(),revoke_reason='environment_deleted',revocation_version=revocation_version+1
+UPDATE oauth_grants SET revoked_at=now(),revoke_reason=$3::text,revocation_version=revocation_version+1
 WHERE user_id=$1 AND purpose='runtime' AND (machine_id=$2 OR requested_machine_id=$2) AND revoked_at IS NULL RETURNING id
 `
 
 type RevokeRuntimeMachineParams struct {
 	UserID    string
 	MachineID *string
+	Reason    string
 }
 
 func (q *Queries) RevokeRuntimeMachine(ctx context.Context, arg RevokeRuntimeMachineParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, revokeRuntimeMachine, arg.UserID, arg.MachineID)
+	rows, err := q.db.Query(ctx, revokeRuntimeMachine, arg.UserID, arg.MachineID, arg.Reason)
 	if err != nil {
 		return nil, err
 	}

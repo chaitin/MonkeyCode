@@ -209,6 +209,7 @@ SELECT
     g.audience,
     g.purpose,
     g.machine_id,
+    g.requested_machine_id,
     g.key_id,
     g.revocation_version
 FROM
