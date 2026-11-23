@@ -12,11 +12,11 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"path"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/llmurl"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
@@ -309,7 +309,7 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 	}
 	r.Out.URL.Scheme = ctx.upstream.Scheme
 	r.Out.URL.Host = ctx.upstream.Host
-	r.Out.URL.Path = path.Join(ctx.upstream.Path, ctx.upstreamPath)
+	r.Out.URL.Path = llmurl.JoinPath(ctx.upstream.Path, ctx.upstreamPath, protocolForPath(r.In.URL.Path) == "anthropic")
 	r.Out.URL.RawPath = ""
 	if ctx.upstream.RawQuery != "" {
 		if r.Out.URL.RawQuery == "" {
