@@ -2,16 +2,16 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { isSafeClientLaunchURL } from "../src/lib/client-callback.ts"
 
-for (const [client, redirect] of [
-  ["monkeyai-desktop", "monkeyai-desktop://oauth/callback"],
-  ["monkeyai-mobile", "monkeyai-mobile://oauth/callback"],
-  ["monkeyai-desktop", "http://127.0.0.1:54321/oauth/callback"],
-  ["monkeyai-desktop", "http://[::1]:54321/oauth/callback"],
-  ["monkeyai-desktop", "http://127.0.0.1:80/oauth/callback"],
-  ["monkeyai-desktop", "http://localhost:54321/oauth/callback"],
-  ["monkeyai-desktop", "http://localhost:80/oauth/callback"],
-]) {
-  test(`authorization launch stays bound to ${redirect}`, () => {
+test("授权链接仅允许当前客户端已登记的回调地址", () => {
+  for (const [client, redirect] of [
+    ["monkeyai-desktop", "monkeyai-desktop://oauth/callback"],
+    ["monkeyai-mobile", "monkeyai-mobile://oauth/callback"],
+    ["monkeyai-desktop", "http://127.0.0.1:54321/oauth/callback"],
+    ["monkeyai-desktop", "http://[::1]:54321/oauth/callback"],
+    ["monkeyai-desktop", "http://127.0.0.1:80/oauth/callback"],
+    ["monkeyai-desktop", "http://localhost:54321/oauth/callback"],
+    ["monkeyai-desktop", "http://localhost:80/oauth/callback"],
+  ]) {
     assert.equal(
       isSafeClientLaunchURL(
         client,
@@ -37,10 +37,10 @@ for (const [client, redirect] of [
       assert.equal(
         isSafeClientLaunchURL(client, redirect, launch),
         false,
-        launch
+        `${redirect}: ${launch}`
       )
-  })
-}
+  }
+})
 
 test("unregistered destinations and clients cannot authorize a manual launch link", () => {
   for (const redirect of [

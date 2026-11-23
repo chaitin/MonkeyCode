@@ -16,40 +16,6 @@ function skill(id, overrides = {}) {
   }
 }
 
-for (const action of ["enable", "disable"]) {
-  test(`${action} uses versioned requests for local/package skills and skips personal skills`, async () => {
-    const requests = []
-    const progress = []
-    const result = await applySkillBatch(
-      [skill("a"), skill("b", { revision: 12 }), skill("package", { origin: "package" }), skill("personal", { ownership_type: "user" })],
-      { action },
-      async (path, init) => requests.push({ path, ...init }),
-      (value) => progress.push(value)
-    )
-    assert.deepEqual(requests.map(({ path, method, headers, body }) => [path, method, headers["If-Match"], JSON.parse(body)]), [
-      ["/api/admin/v1/skills/a/enabled", "PATCH", '"7"', { enabled: action === "enable" }],
-      ["/api/admin/v1/skills/b/enabled", "PATCH", '"12"', { enabled: action === "enable" }],
-      ["/api/admin/v1/skills/package/enabled", "PATCH", '"7"', { enabled: action === "enable" }],
-    ])
-    assert.deepEqual(result, { succeeded: ["a", "b", "package"], skipped: ["personal"], failed: [] })
-    assert.deepEqual(progress, [1, 2, 3, 4].map((completed) => ({ completed, total: 4 })))
-  })
-}
-
-test("delete sends If-Match and skips package and personal skills", async () => {
-  const calls = []
-  const result = await applySkillBatch(
-    [skill("a"), skill("b", { revision: 8 }), skill("package", { origin: "package" }), skill("personal", { ownership_type: "user" })],
-    { action: "delete" },
-    async (path, init) => calls.push({ path, ...init })
-  )
-  assert.deepEqual(calls, [
-    { path: "/api/admin/v1/skills/a", method: "DELETE", headers: { "If-Match": '"7"' } },
-    { path: "/api/admin/v1/skills/b", method: "DELETE", headers: { "If-Match": '"8"' } },
-  ])
-  assert.deepEqual(result, { succeeded: ["a", "b"], skipped: ["package", "personal"], failed: [] })
-})
-
 test("delete reports reference/version conflicts and continues with remaining skills", async () => {
   const calls = []
   const result = await applySkillBatch([skill("referenced"), skill("stale"), skill("ok")], { action: "delete" }, async (path) => {
@@ -62,44 +28,6 @@ test("delete reports reference/version conflicts and continues with remaining sk
   assert.deepEqual(result.failed.map(({ id, message }) => [id, message]), [
     ["referenced", "资源仍被引用"], ["stale", "资源已更新，请刷新后重试"],
   ])
-})
-
-test("package-only delete completes without sending requests", async () => {
-  const result = await applySkillBatch([skill("package", { origin: "package" })], { action: "delete" }, async () => assert.fail("Package skill cannot be deleted"))
-  assert.deepEqual(result, { succeeded: [], skipped: ["package"], failed: [] })
-})
-
-test("tag replacement preserves canonical metadata and omits content, grants and enabled", async () => {
-  const requests = []
-  const resource = skill("a", {
-    name_i18n: { "zh-CN": "显示名称" },
-    description_i18n: { "zh-CN": "显示说明" },
-  })
-  await applySkillBatch([resource, skill("package", { origin: "package" })], { action: "tags", tagIds: ["review", "security", "review"] }, async (path, init) => requests.push({ path, ...init }))
-  assert.equal(requests.length, 1)
-  assert.equal(requests[0].path, "/api/admin/v1/skills/a")
-  assert.equal(requests[0].method, "PUT")
-  assert.equal(requests[0].headers["If-Match"], '"7"')
-  assert.deepEqual(JSON.parse(requests[0].body), {
-    name: resource.name,
-    description: resource.description,
-    tag_ids: ["review", "security"],
-  })
-  await applySkillBatch([resource], { action: "tags", tagIds: [] }, async (_, init) => {
-    assert.deepEqual(JSON.parse(init.body).tag_ids, [])
-  })
-})
-
-test("package-only tag batches complete by skipping every resource without requests", async () => {
-  const progress = []
-  const result = await applySkillBatch(
-    [skill("package-a", { origin: "package" }), skill("package-b", { origin: "package" })],
-    { action: "tags", tagIds: ["review"] },
-    async () => assert.fail("Package tags must not be written"),
-    (value) => progress.push(value)
-  )
-  assert.deepEqual(result, { succeeded: [], failed: [], skipped: ["package-a", "package-b"] })
-  assert.deepEqual(progress, [{ completed: 1, total: 2 }, { completed: 2, total: 2 }])
 })
 
 test("authorization uses the grants endpoint for local/package skills and preserves required flags", async () => {

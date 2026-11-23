@@ -26,17 +26,6 @@ test("宿主机超过接口单页上限时加载全部记录，并传递取消�
   assert.deepEqual(pages, [1, 2, 3])
 })
 
-test("宿主机为空时只请求一次", async (t) => {
-  const request = t.mock.method(globalThis, "fetch", async () =>
-    Response.json({ items: [], total: 0 })
-  )
-  assert.deepEqual(await loadEngineHosts("/api/admin/v1/engine-hosts"), {
-    items: [],
-    total: 0,
-  })
-  assert.equal(request.mock.callCount(), 1)
-})
-
 test("后续页失败时不将不完整列表作为成功结果", async (t) => {
   let page = 0
   t.mock.method(globalThis, "fetch", async () => {

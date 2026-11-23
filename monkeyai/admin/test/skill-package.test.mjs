@@ -45,8 +45,8 @@ async function expectPackageError(files, code) {
   )
 }
 
-for (const extra of [0, 1]) {
-  test(`compressed size ${extra === 0 ? "at" : "above"} 500 MiB`, async () => {
+test("压缩包接受 500 MiB，超过一字节即拒绝", async () => {
+  for (const extra of [0, 1]) {
     const file = await createArchive({ "SKILL.md": VALID_MANIFEST })
     // 覆盖声明大小，避免为大小门槛测试实际分配数百 MiB。
     Object.defineProperty(file, "size", { value: 500 * 1024 * 1024 + extra })
@@ -60,9 +60,11 @@ for (const extra of [0, 1]) {
     } else {
       assert.equal((await inspectSkillPackage(file)).name, "code-review")
     }
-  })
+  }
+})
 
-  test(`expanded size ${extra === 0 ? "at" : "above"} 1 GiB`, async () => {
+test("解压总量接受 1 GiB，超过一字节即拒绝", async () => {
+  for (const extra of [0, 1]) {
     const manifest = new File([VALID_MANIFEST], "SKILL.md")
     const data = new File([], "data.bin")
     Object.defineProperty(data, "size", {
@@ -73,18 +75,19 @@ for (const extra of [0, 1]) {
       await assert.rejects(
         inspectSkillDirectory([manifest, data]),
         (error) =>
-          error instanceof SkillPackageError && error.code === "unpackedTooLarge"
+          error instanceof SkillPackageError &&
+          error.code === "unpackedTooLarge"
       )
     } else {
       const [analysis] = await inspectSkillDirectory([manifest, data])
       assert.equal(analysis.unpackedSize, 1024 * 1024 * 1024)
     }
-  })
-}
+  }
+})
 
-for (const count of [5000, 5001]) {
-  for (const source of ["archive", "directory"]) {
-    test(`${source} accepts a skill with ${count} files`, async () => {
+test("归档和目录均支持 5000 与 5001 个文件", async () => {
+  for (const count of [5000, 5001]) {
+    for (const source of ["archive", "directory"]) {
       const files = { "SKILL.md": VALID_MANIFEST }
       for (let i = 1; i < count; i++) {
         files[`reference-${i}.md`] = "reference"
@@ -101,20 +104,23 @@ for (const count of [5000, 5001]) {
       const result = await inspection
       const analysis = source === "archive" ? result : result[0]
       assert.equal(analysis.fileCount, count)
-    })
+    }
   }
-}
+})
 
-for (const source of ["archive", "directory"]) {
-  test(`${source} 接受超过 512 KiB 的 SKILL.md`, async () => {
+test("归档和目录均支持超过 512 KiB 的入口文件", async () => {
+  for (const source of ["archive", "directory"]) {
     const content = VALID_MANIFEST + "正文\n".repeat(200000)
-    const analysis = source === "archive"
-      ? await inspectSkillPackage(await createArchive({ "SKILL.md": content }))
-      : (await inspectSkillDirectory([new File([content], "SKILL.md")]))[0]
+    const analysis =
+      source === "archive"
+        ? await inspectSkillPackage(
+            await createArchive({ "SKILL.md": content })
+          )
+        : (await inspectSkillDirectory([new File([content], "SKILL.md")]))[0]
     assert.equal(analysis.content, content)
     assert.equal(analysis.name, "code-review")
-  })
-}
+  }
+})
 
 test("recognizes a skill directory and parses SKILL.md metadata", async () => {
   const file = await createArchive({
@@ -134,11 +140,14 @@ test("recognizes a skill directory and parses SKILL.md metadata", async () => {
   assert.ok(result.unpackedSize > 0)
 })
 
-for (const root of ["", "code-review/"]) {
-  test(`以 ${root || "ZIP 根目录"} 的 SKILL.md 为入口并保留嵌套文件`, async () => {
+test("根目录或单层目录入口均保留嵌套文件", async () => {
+  for (const root of ["", "code-review/"]) {
     const files = {
       [`${root}examples/child/SKILL.md`]: "附属文件，无需有效元信息",
-      [`${root}references/SKILL.md`]: VALID_MANIFEST.replace("code-review", "nested"),
+      [`${root}references/SKILL.md`]: VALID_MANIFEST.replace(
+        "code-review",
+        "nested"
+      ),
       [`${root}SKILL.md`]: VALID_MANIFEST,
     }
     const archive = await createArchive(files)
@@ -148,7 +157,10 @@ for (const root of ["", "code-review/"]) {
     assert.equal(analysis.fileCount, 3)
     assert.equal(
       analysis.unpackedSize,
-      Object.values(files).reduce((size, content) => size + Buffer.byteLength(content), 0)
+      Object.values(files).reduce(
+        (size, content) => size + Buffer.byteLength(content),
+        0
+      )
     )
     assert.deepEqual(await inspectSkillArchive(archive), [analysis])
     const directory = Object.entries(files).map(([path, content]) => {
@@ -157,8 +169,8 @@ for (const root of ["", "code-review/"]) {
       return file
     })
     assert.deepEqual(await inspectSkillDirectory(directory), [analysis])
-  })
-}
+  }
+})
 
 test("根目录入口无效时不回退到嵌套入口", async () => {
   await expectPackageError(

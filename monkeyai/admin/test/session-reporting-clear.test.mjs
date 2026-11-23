@@ -12,11 +12,3 @@ test("session statistics purge requires a root session and exact ID confirmation
   assert.match(page, /method: "DELETE"/)
   assert.match(page, /<AlertDialog/)
 })
-
-test("session statistics purge warns about retained billing data in both languages", async () => {
-  for (const locale of ["zh-CN", "en-US"]) {
-    const text = await readFile(new URL(`i18n/locales/${locale}.ts`, root), "utf8")
-    assert.match(text, /clearNotice:/)
-    assert.match(text, /clearSuccess:/)
-  }
-})

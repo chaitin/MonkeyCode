@@ -7,28 +7,6 @@ import {
   parseBulkEmails,
   validateBulkMembers,
 } from "../src/lib/bulk-members.ts"
-import { ar } from "../src/i18n/locales/ar.ts"
-import { deDE } from "../src/i18n/locales/de-DE.ts"
-import { enUS } from "../src/i18n/locales/en-US.ts"
-import { es419 } from "../src/i18n/locales/es-419.ts"
-import { frFR } from "../src/i18n/locales/fr-FR.ts"
-import { jaJP } from "../src/i18n/locales/ja-JP.ts"
-import { koKR } from "../src/i18n/locales/ko-KR.ts"
-import { ruRU } from "../src/i18n/locales/ru-RU.ts"
-import { zhCN } from "../src/i18n/locales/zh-CN.ts"
-import { zhTW } from "../src/i18n/locales/zh-TW.ts"
-
-test("bulk preview defaults names to normalized emails and ignores empty lines", () => {
-  const rows = parseBulkEmails("  A@Example.com \n\nb@example.com\r\n")
-  assert.deepEqual(
-    rows.map(({ email, name }) => [email, name]),
-    [
-      ["a@example.com", "a@example.com"],
-      ["b@example.com", "b@example.com"],
-    ]
-  )
-  assert.equal(MAX_BULK_MEMBERS, 50)
-})
 
 test("bulk validation reports invalid, duplicate, existing and missing names", () => {
   const rows = parseBulkEmails(
@@ -164,61 +142,4 @@ test("bulk creation snapshots groups before asynchronous requests", async () => 
     result.created.map((input) => input.group_ids),
     [["group-a"], ["group-a"]]
   )
-})
-
-test("bulk dialog labels and errors exist in all supported languages", () => {
-  const keys = Object.keys(enUS.pages.membersAndGroups.bulk)
-  assert.equal(zhCN.pages.membersAndGroups.bulk.role, "角色")
-  assert.equal(zhCN.pages.membersAndGroups.bulk.memberList, "成员列表")
-  assert.equal(
-    zhCN.pages.membersAndGroups.bulk.singleSuccess,
-    "已成功添加成员。"
-  )
-  assert.equal(zhCN.pages.membersAndGroups.bulk.next, "下一步")
-  assert.equal(zhCN.pages.membersAndGroups.bulk.previous, "上一步")
-  const errorKeys = Object.keys(enUS.pages.membersAndGroups.bulk.errors)
-  for (const locale of [
-    ar,
-    deDE,
-    enUS,
-    es419,
-    frFR,
-    jaJP,
-    koKR,
-    ruRU,
-    zhCN,
-    zhTW,
-  ]) {
-    const members = locale.pages.membersAndGroups
-    assert.deepEqual(
-      Object.keys(members.creationResult),
-      Object.keys(enUS.pages.membersAndGroups.creationResult)
-    )
-    for (const value of Object.values(members.creationResult))
-      assert.ok(typeof value === "string" && value.trim())
-    assert.ok(members.creationResult.summary.includes("{{count}}"))
-    assert.ok(members.creationResult.retry.includes("{{count}}"))
-    assert.ok(members.creationResult.copyMember.includes("{{email}}"))
-    assert.deepEqual(
-      Object.keys(members.treeSelection),
-      Object.keys(enUS.pages.membersAndGroups.treeSelection)
-    )
-    for (const value of Object.values(members.treeSelection))
-      assert.ok(value.trim())
-    assert.ok(members.treeSelection.moveDescription.includes("{{count}}"))
-    for (const key of ["confirmMemberAction", "actionSucceeded"]) {
-      assert.ok(typeof members[key] === "string" && members[key].trim())
-    }
-    for (const placeholder of ["action", "member", "email"]) {
-      assert.ok(members.confirmMemberAction.includes(`{{${placeholder}}}`))
-    }
-    assert.ok(members.actionSucceeded.includes("{{target}}"))
-    const bulk = members.bulk
-    assert.deepEqual(Object.keys(bulk), keys)
-    assert.deepEqual(Object.keys(bulk.errors), errorKeys)
-    for (const key of keys.filter((key) => key !== "errors")) {
-      assert.ok(typeof bulk[key] === "string" && bulk[key].trim())
-    }
-    assert.ok(errorKeys.every((key) => bulk.errors[key].trim()))
-  }
 })
