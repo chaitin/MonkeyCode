@@ -155,7 +155,16 @@ func modelJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func modelError(ctx context.Context, w http.ResponseWriter, status int, message string) {
-	modelJSON(w, status, map[string]any{
-		"error": web.Body(ctx, "model_error", message),
-	})
+	modelErrorDetail(ctx, w, status, message, nil)
+}
+
+// modelErrorDetail 在标准错误结构外附加上游状态码、响应体等排查信息。
+func modelErrorDetail(ctx context.Context, w http.ResponseWriter, status int, message string, detail map[string]any) {
+	body := web.Body(ctx, "model_error", message)
+	for key, value := range detail {
+		if _, exists := body[key]; !exists {
+			body[key] = value
+		}
+	}
+	modelJSON(w, status, map[string]any{"error": body})
 }

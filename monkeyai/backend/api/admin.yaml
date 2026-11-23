@@ -3007,7 +3007,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '502':
-          description: 连接模型失败、代理不可用或上游返回错误。
+          description: 连接模型失败、代理不可用或上游返回错误。上游已响应时附带 upstream_status、upstream_message 和截断后的 upstream_body。
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ErrorResponse'}
@@ -8778,6 +8778,15 @@ components:
         message:
           type: string
           description: 服务端按 Accept-Language 返回的本地化错误说明，末尾附 [trace_id] 链路编号，与服务日志 trace_id 对应；可直接展示，支持 zh-CN、en-US，缺省为 zh-CN。
+        upstream_status:
+          type: integer
+          description: 仅模型测试接口在上游已响应时返回，为上游原始 HTTP 状态码。
+        upstream_message:
+          type: string
+          description: 仅模型测试接口在能从上游错误体中提取说明时返回。
+        upstream_body:
+          type: string
+          description: 仅模型测试接口在上游已响应时返回，为截断到 2000 字符的上游响应体。
         references:
           description: 原有业务恢复字段，仅按接口契约读取。
     ModelsResponse:

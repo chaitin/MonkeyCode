@@ -107,13 +107,72 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if response.StatusCode != http.StatusOK || err != nil {
-		modelError(r.Context(), w, http.StatusBadGateway, fmt.Sprintf("模型返回 HTTP %d，请检查协议和密钥", response.StatusCode))
+	data, err := io.ReadAll(io.LimitReader(response.Body, probeResponseLimit))
+	if err != nil {
+		modelErrorDetail(r.Context(), w, http.StatusBadGateway, "读取模型响应失败，请重试", map[string]any{
+			"upstream_status": response.StatusCode,
+		})
+		return
+	}
+	if response.StatusCode != http.StatusOK {
+		reason := upstreamErrorMessage(data)
+		message := fmt.Sprintf("上游返回 HTTP %d", response.StatusCode)
+		if reason != "" {
+			message += "：" + truncateRunes(reason, probeSummaryLimit)
+		} else if summary := truncateRunes(strings.TrimSpace(string(data)), 200); summary != "" {
+			message += "：" + summary
+		}
+		detail := map[string]any{
+			"upstream_status": response.StatusCode,
+			"upstream_body":   truncateRunes(string(data), probeSummaryLimit),
+		}
+		if reason != "" {
+			detail["upstream_message"] = reason
+		}
+		modelErrorDetail(r.Context(), w, http.StatusBadGateway, message, detail)
 		return
 	}
 	content, valid := probeContent(item.Protocol, data)
-	modelJSON(w, http.StatusOK, map[string]any{"content": content, "valid": valid})
+	modelJSON(w, http.StatusOK, map[string]any{
+		"content":         content,
+		"valid":           valid,
+		"upstream_status": response.StatusCode,
+		"upstream_body":   truncateRunes(string(data), probeSummaryLimit),
+	})
+}
+
+const (
+	probeResponseLimit = 1 << 20
+	probeSummaryLimit  = 2000
+)
+
+// upstreamErrorMessage 按各协议常见的错误结构提取可读说明，用于直接展示给管理员。
+func upstreamErrorMessage(data []byte) string {
+	var payload map[string]any
+	if json.Unmarshal(data, &payload) != nil {
+		return ""
+	}
+	if detail, ok := payload["error"].(map[string]any); ok {
+		for _, key := range []string{"message", "type", "code"} {
+			if value, ok := detail[key].(string); ok && strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		}
+	}
+	for _, key := range []string{"error", "message", "detail"} {
+		if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func truncateRunes(text string, limit int) string {
+	if utf8.RuneCountInString(text) <= limit {
+		return text
+	}
+	runes := []rune(text)
+	return string(runes[:limit]) + "…"
 }
 
 type probeUpstream struct {
@@ -145,7 +204,8 @@ func probeRequest(item Model, message string) (probeUpstream, error) {
 		header.Set("Authorization", "Bearer "+item.APIKey)
 		body = map[string]any{"model": item.ModelID, "stream": false, "input": message}
 	case ProtocolAnthropic:
-		endpoint = "messages"
+		// Anthropic 的 Base URL 约定不含版本段，测试时由协议层补 /v1。
+		endpoint = "v1/messages"
 		header.Set("X-Api-Key", item.APIKey)
 		header.Set("Anthropic-Version", "2023-06-01")
 		body = map[string]any{"model": item.ModelID, "stream": false, "max_tokens": 256, "messages": []map[string]string{{"role": "user", "content": message}}}
@@ -180,6 +240,25 @@ func probeContent(protocol Protocol, data []byte) (string, bool) {
 	case ProtocolOpenAIResponses:
 		if content, ok := response["output_text"].(string); ok && strings.TrimSpace(content) != "" {
 			return content, true
+		}
+		var content strings.Builder
+		output, _ := response["output"].([]any)
+		for _, entry := range output {
+			message, _ := entry.(map[string]any)
+			if message["type"] != "message" {
+				continue
+			}
+			blocks, _ := message["content"].([]any)
+			for _, block := range blocks {
+				part, _ := block.(map[string]any)
+				if part["type"] == "output_text" {
+					text, _ := part["text"].(string)
+					content.WriteString(text)
+				}
+			}
+		}
+		if strings.TrimSpace(content.String()) != "" {
+			return content.String(), true
 		}
 	case ProtocolAnthropic:
 		blocks, _ := response["content"].([]any)

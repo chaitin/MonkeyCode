@@ -607,7 +607,23 @@ export function ModelsPage() {
       )
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.error?.message ?? "模型测试失败")
+        const error = payload?.error ?? {}
+        const lines = [
+          error.message ?? "模型测试失败",
+          typeof error.upstream_status === "number"
+            ? `上游状态码：${error.upstream_status}`
+            : "",
+          error.upstream_message
+            ? `上游错误：${error.upstream_message}`
+            : "",
+        ].filter(Boolean)
+        showToast({
+          status: "error",
+          title: error.message ?? "模型测试失败",
+          description: lines.slice(1).join("\n") || undefined,
+          duration: 8000,
+        })
+        return
       }
       if (target.kind === "embedding") {
         const result = payload as EmbeddingProbeResult
@@ -630,9 +646,10 @@ export function ModelsPage() {
       }
       setTestResponse(payload?.content || "模型返回了空响应")
     } catch (reason) {
-      setTestResponse(
-        reason instanceof Error ? reason.message : "模型测试失败"
-      )
+      showToast({
+        status: "error",
+        title: reason instanceof Error ? reason.message : "模型测试失败",
+      })
     } finally {
       setTestSending(false)
     }
