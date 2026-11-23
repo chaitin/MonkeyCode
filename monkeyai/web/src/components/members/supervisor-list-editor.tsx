@@ -1,3 +1,5 @@
+import { Delete02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
@@ -30,7 +32,7 @@ export function SupervisorListEditor({
         className="flex flex-col gap-2"
       >
         <h3 id="supervisor-list-title" className="text-sm font-medium">
-          {t("pages.membersAndGroups.supervisorCount", { count: ids.length })}
+          {t("pages.membersAndGroups.supervisorList")}
         </h3>
         {ids.length ? (
           <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">
@@ -49,8 +51,10 @@ export function SupervisorListEditor({
                   </div>
                   <Button
                     type="button"
-                    size="sm"
+                    size="icon-sm"
                     variant="ghost"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive dark:hover:bg-destructive/20"
+                    title={t("pages.membersAndGroups.removeSupervisor")}
                     aria-label={t(
                       "pages.membersAndGroups.removeSupervisorNamed",
                       { name: member.name }
@@ -59,7 +63,7 @@ export function SupervisorListEditor({
                       onChange(ids.filter((current) => current !== id))
                     }
                   >
-                    {t("pages.membersAndGroups.removeSupervisor")}
+                    <HugeiconsIcon icon={Delete02Icon} aria-hidden="true" />
                   </Button>
                 </li>
               )

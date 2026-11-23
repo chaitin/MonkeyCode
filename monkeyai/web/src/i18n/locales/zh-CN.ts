@@ -2056,7 +2056,7 @@ export const zhCN = {
       supervisorBadge: "分组主管",
       supervisorBadgeHint: "{{groups}} 分组的主管",
       setGroupSupervisorsDialogDescription: "为 {{group}} 分组设置主管",
-      supervisorCount: "主管名单（{{count}} 人）",
+      supervisorList: "主管名单",
       addSupervisor: "加入",
       saveSupervisors: "保存",
       removeSupervisor: "移除",

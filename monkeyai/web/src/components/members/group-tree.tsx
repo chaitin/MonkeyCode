@@ -1,6 +1,8 @@
 import { useMemo, useState, type DragEvent, type HTMLAttributes } from "react"
 import {
   Add01Icon,
+  CrownIcon,
+  CrownPlusIcon,
   Delete02Icon,
   Edit02Icon,
   Folder02Icon,
@@ -8,7 +10,6 @@ import {
   MoreHorizontalIcon,
   MoveIcon,
   UserMultiple02Icon,
-  UserRoundCogIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -54,7 +55,7 @@ const actionIcons = {
   "add-subgroup": Add01Icon,
   rename: Edit02Icon,
   "adjust-members": UserMultiple02Icon,
-  "set-supervisors": UserRoundCogIcon,
+  "set-supervisors": CrownPlusIcon,
   move: MoveIcon,
   delete: Delete02Icon,
 }
@@ -95,6 +96,10 @@ export function MemberGroupTree({
   const tree = useMemo(
     () => buildMemberTree(groups, users, nameCollator),
     [groups, users, nameCollator]
+  )
+  const supervisorsByGroup = useMemo(
+    () => new Map(groups.map((group) => [group.id, new Set(group.supervisor_ids)])),
+    [groups]
   )
   const rows = useMemo(
     () => flattenMemberTree(tree, expansion),
@@ -153,6 +158,8 @@ export function MemberGroupTree({
             key={row.key}
             {...props}
             member={row.member}
+            supervisorLabel={supervisorsByGroup.get(row.groupID)?.has(row.member.id)
+              ? t("pages.membersAndGroups.supervisorBadge") : undefined}
             level={row.level}
             virtualProps={virtualProps}
             onMenuPin={onMenuPin}
@@ -383,6 +390,7 @@ function GroupTreeItem({
 
 function GroupTreeMemberRow({
   member,
+  supervisorLabel,
   level,
   savingID,
   currentUserID,
@@ -411,6 +419,7 @@ function GroupTreeMemberRow({
   | "selectionDisabled"
 > & {
   member: MemberActionUser
+  supervisorLabel?: string
   level: number
   selected: boolean
   onSelect: (checked: boolean) => void
@@ -491,8 +500,13 @@ function GroupTreeMemberRow({
         }
       >
         <UserAvatar src={member.avatar_url} className="!size-4" />
-        <span className="min-w-0 flex-1 truncate" title={member.email}>
-          {member.name}
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span className="truncate" title={member.email}>{member.name}</span>
+          {supervisorLabel && (
+            <span role="img" aria-label={supervisorLabel} title={supervisorLabel} className="shrink-0">
+              <HugeiconsIcon icon={CrownIcon} aria-hidden="true" className="size-3.5 text-amber-600 dark:text-amber-400" />
+            </span>
+          )}
         </span>
         <div
           className={cn(

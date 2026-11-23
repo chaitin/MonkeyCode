@@ -2188,7 +2188,7 @@ export const enUS = {
       supervisorBadge: "Group supervisor",
       supervisorBadgeHint: "Supervises the following groups: {{groups}}",
       setGroupSupervisorsDialogDescription: "Set supervisors for the {{group}} group.",
-      supervisorCount: "Supervisors ({{count}})",
+      supervisorList: "Supervisors",
       addSupervisor: "Add",
       saveSupervisors: "Save",
       removeSupervisor: "Remove",

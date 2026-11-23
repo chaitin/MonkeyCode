@@ -49,11 +49,16 @@ export function GroupActionDialog({
   const [name, setName] = useState(action === "rename" ? group.name : "")
   const selectingSupervisors = action === "set-supervisors"
   const directIDs = new Set(group.member_ids)
-  const [memberIDs, setMemberIDs] = useState(() =>
-    selectingSupervisors
-      ? group.supervisor_ids.filter((id) => directIDs.has(id))
-      : group.member_ids
+  const [initialSupervisorIDs] = useState(() =>
+    new Set(selectingSupervisors ? group.supervisor_ids.filter((id) => directIDs.has(id)) : [])
   )
+  const [memberIDs, setMemberIDs] = useState(() =>
+    selectingSupervisors ? [...initialSupervisorIDs] : group.member_ids
+  )
+  const supervisorsUnchanged =
+    selectingSupervisors &&
+    memberIDs.length === initialSupervisorIDs.size &&
+    memberIDs.every((id) => initialSupervisorIDs.has(id))
   const [query, setQuery] = useState("")
   const [parentID, setParentID] = useState("")
   const [saving, setSaving] = useState(false)
@@ -75,7 +80,7 @@ export function GroupActionDialog({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (saving) return
+    if (saving || supervisorsUnchanged) return
     setSaving(true)
     try {
       const path = `/api/admin/v1/groups/${group.id}`
@@ -300,6 +305,7 @@ export function GroupActionDialog({
               variant={action === "delete" ? "destructive" : "default"}
               disabled={
                 saving ||
+                supervisorsUnchanged ||
                 ((action === "rename" || action === "add-subgroup") &&
                   !name.trim()) ||
                 (action === "move" && !parentID) ||
