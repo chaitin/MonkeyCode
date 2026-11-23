@@ -22,8 +22,22 @@ type serverIdentity struct {
 }
 
 func resolveIdentity(config *Config) (ed25519.PrivateKey, error) {
+	return resolveIdentityWith(config, loadIdentity)
+}
+
+func ReadDeviceAuthorization(config Config) (string, []byte, error) {
+	key, err := resolveIdentityWith(&config, func(dir string) (serverIdentity, error) {
+		return readIdentity(filepath.Join(stateDir(dir), "identity.json"))
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return config.ServerID, deviceAuthorizationKey(key), nil
+}
+
+func resolveIdentityWith(config *Config, load func(string) (serverIdentity, error)) (ed25519.PrivateKey, error) {
 	if config.ServerID == "" || config.SigningKeyFile == "" {
-		state, err := loadIdentity(config.StateDir)
+		state, err := load(config.StateDir)
 		if err != nil {
 			return nil, err
 		}
@@ -37,10 +51,15 @@ func resolveIdentity(config *Config) (ed25519.PrivateKey, error) {
 	return loadSigningKey(config.SigningKeyFile)
 }
 
-func loadIdentity(dir string) (serverIdentity, error) {
+func stateDir(dir string) string {
 	if dir == "" {
-		dir = "data/runtime"
+		return "data/runtime"
 	}
+	return dir
+}
+
+func loadIdentity(dir string) (serverIdentity, error) {
+	dir = stateDir(dir)
 	path := filepath.Join(dir, "identity.json")
 	if state, err := readIdentity(path); !errors.Is(err, os.ErrNotExist) {
 		return state, err

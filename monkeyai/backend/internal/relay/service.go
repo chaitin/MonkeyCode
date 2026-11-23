@@ -218,7 +218,11 @@ func (s *Service) Run(ctx context.Context) {
 }
 
 func (s *Service) DeviceAuthorizationKey() []byte {
-	mac := hmac.New(sha256.New, s.key.Seed())
+	return deviceAuthorizationKey(s.key)
+}
+
+func deviceAuthorizationKey(key ed25519.PrivateKey) []byte {
+	mac := hmac.New(sha256.New, key.Seed())
 	mac.Write([]byte("monkeyai:device-authorization:v1"))
 	return mac.Sum(nil)
 }

@@ -3,8 +3,9 @@ package license
 import "context"
 
 type Capabilities struct {
-	AllowCloudComputer  bool `json:"allow_cloud_computer"`
-	AllowCustomBranding bool `json:"allow_custom_branding"`
+	AllowHostInstallation bool `json:"-"`
+	AllowCloudComputer    bool `json:"allow_cloud_computer"`
+	AllowCustomBranding   bool `json:"allow_custom_branding"`
 }
 
 type Reader interface {

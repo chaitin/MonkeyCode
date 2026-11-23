@@ -155,7 +155,11 @@ func TestControlOffline(t *testing.T) {
 	post := func(path, key string, body any) *http.Response {
 		t.Helper()
 		b, _ := json.Marshal(body)
-		req, err := http.NewRequestWithContext(ctx, "POST", base+path, bytes.NewReader(b))
+		target := base
+		if base == proxy.URL && !executionRoute(http.MethodPost, path) {
+			target = control.URL
+		}
+		req, err := http.NewRequestWithContext(ctx, "POST", target+path, bytes.NewReader(b))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -216,6 +220,7 @@ func TestControlOffline(t *testing.T) {
 	if tool["result"] == nil || toolCalls.Load() != 1 {
 		t.Fatalf("工具未完成: %v", tool)
 	}
+	key = call("/api/v1/api-keys", "setup", resource.Object{"name": "执行期间换用新凭据", "scopes": []string{"model:invoke"}}).String("api_key")
 	body["stream"] = false
 	call("/v1/chat/completions", key, body)
 	if modelCalls.Load() != 2 {

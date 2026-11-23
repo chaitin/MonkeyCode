@@ -102,7 +102,7 @@ func pickToolRefresh(now time.Time, targets map[string]*refreshTarget, upstreams
 	return next
 }
 
-func (s *Service) runToolRefresh(ctx context.Context) {
+func (s *Service) RunToolRefresh(ctx context.Context) {
 	cfg := toolsRefreshConfig()
 	for ctx.Err() == nil {
 		if err := s.leadToolRefresh(ctx, cfg); err != nil && ctx.Err() == nil {

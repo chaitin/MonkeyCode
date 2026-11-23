@@ -148,8 +148,12 @@ func TestDeviceGrantPollingConsentAndBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if token.ServerID == "" || token.MachineID != view["machine_id"] || token.Scope != strings.Join(runtimeScopes, " ") {
-		t.Fatal("兑换未保留冻结身份和批准范围")
+	if token.ServerID == "" || token.MachineID != view["machine_id"] {
+		t.Fatal("兑换未保留冻结身份")
+	}
+	const wantScope = "device:bind device:publish session:report"
+	if token.Scope != wantScope {
+		t.Fatalf("设备码兑换返回了非预期的 scope：%q", token.Scope)
 	}
 	p := tokenPrincipal(t, s, token.AccessToken, http.StatusNoContent)
 	if p.Purpose != "runtime" || p.MachineID != "" || p.Has("device:connect") {
@@ -183,6 +187,9 @@ func TestDeviceGrantPollingConsentAndBinding(t *testing.T) {
 	refreshed, err := s.Refresh(t.Context(), RuntimeClientID, token.RefreshToken)
 	if err != nil || refreshed.GrantID != token.GrantID || refreshed.MachineID != token.MachineID {
 		t.Fatalf("runtime 刷新丢失 client 或宿主：%v", err)
+	}
+	if refreshed.Scope != wantScope {
+		t.Fatalf("runtime 刷新返回了非预期的 scope：%q", refreshed.Scope)
 	}
 	_, err = s.ExchangeDeviceCode(t.Context(), RuntimeClientID, response.DeviceCode)
 	oauthCode(t, err, "invalid_grant")
