@@ -109,9 +109,11 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 			rpcFail(r.Context(), w, in.ID, err)
 			return
 		}
-		if connector.String("authorization_mode") != "none" && credentialStatus(connector, credential) != "authorized" {
-			rpcFail(r.Context(), w, in.ID, authorizationRequired)
-			return
+		if connector.String("authorization_mode") != "none" {
+			if err := requireCredential(connector, credential); err != nil {
+				rpcFail(r.Context(), w, in.ID, err)
+				return
+			}
 		}
 		if strings.HasPrefix(in.Method, "notifications/") {
 			if len(in.ID) != 0 {
