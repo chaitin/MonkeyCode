@@ -257,7 +257,7 @@ func (s *Service) mediaAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if _, err = s.mediaClaims(token, time.Now()); err != nil {
+	if _, err = s.mediaClaims(r.Context(), token, time.Now()); err != nil {
 		writeAPIError(w, r, err)
 		return
 	}

@@ -24,7 +24,7 @@ func TestNginxRelay(t *testing.T) {
 	}
 	f := newFixture(t)
 	upstream, _ := url.Parse(f.server.URL)
-	config := fmt.Sprintf("events {}\nhttp { upstream monkeyai_backend { server host.docker.internal:%s; } server { listen 8080; include /etc/nginx/relay-app.conf; } }\n", upstream.Port())
+	config := fmt.Sprintf("pid /tmp/nginx.pid; events {}\nhttp { client_body_temp_path /tmp/body; proxy_temp_path /tmp/proxy; fastcgi_temp_path /tmp/fast; uwsgi_temp_path /tmp/uwsgi; scgi_temp_path /tmp/scgi; map $uri $monkeyai_target { default monkeyai_backend; } upstream monkeyai_admin { server 127.0.0.1:1; } upstream monkeyai_backend { server host.docker.internal:%s; } server { listen 8080; include /etc/nginx/relay-app.conf; } }\n", upstream.Port())
 	configPath := filepath.Join(t.TempDir(), "nginx.conf")
 	if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
 		t.Fatal(err)
@@ -51,8 +51,8 @@ func TestNginxRelay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command("cp", configPath, id+":/etc/nginx/nginx.conf")
-	command("cp", appPath, id+":/etc/nginx/relay-app.conf")
+	copyNginxFixture(t, ctx, id, configPath, "/etc/nginx/nginx.conf")
+	copyNginxFixture(t, ctx, id, appPath, "/etc/nginx/relay-app.conf")
 	command("start", id)
 	command("exec", id, "nginx", "-t")
 	address := command("port", id, "8080")

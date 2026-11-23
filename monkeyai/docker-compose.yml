@@ -67,7 +67,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
-    environment:
+    environment: &backend_environment
+      MONKEYAI_SERVICE_ROLE: control
       MONKEYAI_S3_ENDPOINT: ${MONKEYAI_S3_ENDPOINT:-http://rustfs:9000}
       MONKEYAI_S3_REGION: ${MONKEYAI_S3_REGION:-us-east-1}
       MONKEYAI_S3_BUCKET: ${MONKEYAI_S3_BUCKET:-monkeyai-resources}
@@ -124,11 +125,60 @@ services:
     tmpfs:
       - /tmp
 
+  monkeyai-proxy:
+    container_name: monkeyai-proxy
+    logging: *monkeyai_logging
+    image: ${PROXY_IMAGE:-monkeyai-proxy:local}
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      <<: *backend_environment
+      TMPDIR: /tmp
+      MONKEYAI_SERVICE_ROLE: proxy
+      MONKEYAI_INITIAL_ADMIN_EMAIL: ""
+      MONKEYAI_INITIAL_ADMIN_PASSWORD: ""
+    volumes:
+      - ./data/runtime:/app/runtime
+      - ./data/license:/app/license:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-Y", "off", "-q", "--spider", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   admin:
     logging: *monkeyai_logging
     image: ${ADMIN_IMAGE:-monkeyai-admin:local}
     build:
       context: ./admin
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-Y", "off", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  monkeyai-nginx:
+    container_name: monkeyai-nginx
+    logging: *monkeyai_logging
+    image: ${NGINX_IMAGE:-monkeyai-nginx:local}
+    build:
+      context: ./admin
+      target: ingress
       args:
         NGINX_ACME_IMAGE: ${NGINX_ACME_IMAGE:-chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/nginx-acme:1.31.9-acme0.4.1-r1}
     restart: unless-stopped
@@ -149,9 +199,6 @@ services:
     volumes:
       - acme:/var/lib/nginx/acme
       - ./data/tls/server:/run/monkeyai/tls:ro
-    depends_on:
-      backend:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-Y", "off", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
       interval: 10s

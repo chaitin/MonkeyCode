@@ -4,6 +4,8 @@ REGISTRY ?= chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode
 
 ADMIN_IMAGE ?= $(REGISTRY)/monkeyai-admin:$(TAG)
 BACKEND_IMAGE ?= $(REGISTRY)/monkeyai-backend:$(TAG)
+PROXY_IMAGE ?= $(REGISTRY)/monkeyai-proxy:$(TAG)
+NGINX_IMAGE ?= $(REGISTRY)/monkeyai-nginx:$(TAG)
 MIGRATE_IMAGE ?= $(REGISTRY)/monkeyai-migrate:$(TAG)
 NGINX_ACME_IMAGE ?= $(REGISTRY)/nginx-acme:1.31.9-acme0.4.1-r1
 PRIVATE_ROOT ?= ../..
@@ -15,7 +17,8 @@ MONKEYAI_AES_KEY_FILE ?=
 
 .PHONY: image image-admin image-backend image-migrate image-nginx-acme push push-admin push-backend push-migrate push-nginx-acme images
 
-image: image-admin image-backend image-migrate
+LOCKED_COMPONENTS ?= true
+image: image-admin image-backend image-migrate $(if $(filter true,$(LOCKED_COMPONENTS)),image-nginx image-proxy)
 
 image-admin:
 	docker buildx build \
@@ -59,7 +62,20 @@ image-nginx-acme:
 	  ./admin
 	@echo "Nginx ACME image: $(NGINX_ACME_IMAGE)"
 
-push: push-admin push-backend push-migrate
+push: push-admin push-backend push-migrate $(if $(filter true,$(LOCKED_COMPONENTS)),push-nginx push-proxy)
+
+.PHONY: image-proxy push-proxy
+image-proxy push-proxy:
+	@test -s "$(MONKEYAI_PUBLIC_KEY_FILE)" && test -s "$(MONKEYAI_AES_KEY_FILE)" || { echo "构建任务代理需要 MONKEYAI_PUBLIC_KEY_FILE 和 MONKEYAI_AES_KEY_FILE" >&2; exit 1; }
+	docker buildx build --platform $(PLATFORM) --tag $(PROXY_IMAGE) --file $(PRIVATE_ROOT)/monkeyai/Dockerfile.proxy \
+	  --secret "id=monkeyai_public_key,src=$(MONKEYAI_PUBLIC_KEY_FILE)" \
+	  --secret "id=monkeyai_aes_key,src=$(MONKEYAI_AES_KEY_FILE)" \
+	  $(if $(filter push-proxy,$@),--push,--load) $(PRIVATE_ROOT)
+
+.PHONY: image-nginx push-nginx
+image-nginx push-nginx:
+	docker buildx build --platform $(PLATFORM) --tag $(NGINX_IMAGE) --target ingress \
+	  --build-arg NGINX_ACME_IMAGE=$(NGINX_ACME_IMAGE) $(if $(filter push-nginx,$@),--push,--load) ./admin
 
 push-admin:
 	docker buildx build \

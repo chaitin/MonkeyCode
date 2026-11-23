@@ -94,7 +94,7 @@ func TestCatalogContract(t *testing.T) {
 	if tokenResponse.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("token 可缓存")
 	}
-	claims, err := s.mediaClaims(token.Token, time.Now())
+	claims, err := s.mediaClaims(t.Context(), token.Token, time.Now())
 	if err != nil || claims.ClientID != "owned-machine" || claims.Subject != actor {
 		t.Fatal("媒体 claims 错误", err)
 	}
@@ -273,17 +273,17 @@ func TestDesignTokenValidation(t *testing.T) {
 	s := NewService(nil, nil).WithAccess(AccessConfig{InstanceID: "instance", MediaSecret: "local-secret"})
 	now := time.Now()
 	valid := Claims{Issuer: "monkeyai", Audience: "monkeyai-design-media", InstanceID: "instance", ClientID: "machine", Subject: "user", IssuedAt: now.Unix(), ExpiresAt: now.Add(10 * time.Minute).Unix()}
-	if _, err := s.mediaClaims(signClaims(valid, "local-secret"), now); err != nil {
+	if _, err := s.mediaClaims(t.Context(), signClaims(valid, "local-secret"), now); err != nil {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*Claims){func(c *Claims) { c.Audience = "respub-design" }, func(c *Claims) { c.InstanceID = "other" }, func(c *Claims) { c.Subject = "" }, func(c *Claims) { c.ClientID = "" }, func(c *Claims) { c.ExpiresAt = now.Add(-time.Minute).Unix() }, func(c *Claims) { c.IssuedAt = now.Add(time.Minute).Unix() }, func(c *Claims) { c.ExpiresAt = now.Add(time.Hour).Unix() }} {
 		bad := valid
 		mutate(&bad)
-		if _, err := s.mediaClaims(signClaims(bad, "local-secret"), now); err == nil {
+		if _, err := s.mediaClaims(t.Context(), signClaims(bad, "local-secret"), now); err == nil {
 			t.Fatal("非法媒体claims被接受", bad)
 		}
 	}
-	if _, err := s.mediaClaims(signClaims(valid, "hub-secret"), now); err == nil {
+	if _, err := s.mediaClaims(t.Context(), signClaims(valid, "hub-secret"), now); err == nil {
 		t.Fatal("hub密钥被接受")
 	}
 }

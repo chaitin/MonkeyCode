@@ -1,6 +1,7 @@
 package designcatalog
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -28,10 +29,11 @@ func signClaims(c Claims, key string) string {
 	mac.Write([]byte(unsigned))
 	return unsigned + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
-func (s *Service) mediaClaims(token string, now time.Time) (Claims, error) {
+func (s *Service) mediaClaims(ctx context.Context, token string, now time.Time) (Claims, error) {
 	var c Claims
 	unauthorized := fault(401, "unauthorized", "媒体凭据无效或已过期")
-	if s.access.MediaSecret == "" || s.access.InstanceID == "" {
+	instanceID := s.access.instance(ctx)
+	if s.access.MediaSecret == "" || instanceID == "" {
 		return c, fault(503, "unavailable", "本地媒体签发尚未配置")
 	}
 	if len(token) > 8192 {
@@ -72,7 +74,7 @@ func (s *Service) mediaClaims(token string, now time.Time) (Claims, error) {
 		return c, unauthorized
 	}
 	n := now.Unix()
-	if c.Issuer != "monkeyai" || c.Audience != "monkeyai-design-media" || c.InstanceID != s.access.InstanceID || c.ClientID == "" || c.Subject == "" || c.IssuedAt <= 0 || c.IssuedAt > n+30 || c.ExpiresAt <= c.IssuedAt || c.ExpiresAt-c.IssuedAt > 600 || c.ExpiresAt <= n-30 {
+	if c.Issuer != "monkeyai" || c.Audience != "monkeyai-design-media" || c.InstanceID != instanceID || c.ClientID == "" || c.Subject == "" || c.IssuedAt <= 0 || c.IssuedAt > n+30 || c.ExpiresAt <= c.IssuedAt || c.ExpiresAt-c.IssuedAt > 600 || c.ExpiresAt <= n-30 {
 		return c, unauthorized
 	}
 	return c, nil
