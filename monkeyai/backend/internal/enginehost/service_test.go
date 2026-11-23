@@ -118,7 +118,7 @@ func signedHeartbeat(key ed25519.PrivateKey, server, id string, at time.Time, re
 }
 func TestEnrollmentHeartbeatAndRevocation(t *testing.T) {
 	db := testPool(t)
-	s := NewService(db).WithInstallation("https://console.example", fixture(t), "v1")
+	s := NewService(db).WithInstallation("https://console.example", fixture(t), "v1").WithLicense(installationLicense(true))
 	router := chi.NewRouter()
 	registerAdmin(router, s)
 	s.Register(router)
@@ -200,7 +200,7 @@ func TestEnrollmentHeartbeatAndRevocation(t *testing.T) {
 }
 func TestExpiredEnrollmentAndMissingRelease(t *testing.T) {
 	db := testPool(t)
-	s := NewService(db).WithInstallation("https://console.example", fixture(t), "v1")
+	s := NewService(db).WithInstallation("https://console.example", fixture(t), "v1").WithLicense(installationLicense(true))
 	router := chi.NewRouter()
 	registerAdmin(router, s)
 	s.Register(router)
@@ -225,7 +225,7 @@ func TestExpiredEnrollmentAndMissingRelease(t *testing.T) {
 	}
 }
 func TestReleaseEndpointsAndLimits(t *testing.T) {
-	s := NewService(nil).WithInstallation("https://console.example", fixture(t), "v1")
+	s := NewService(nil).WithInstallation("https://console.example", fixture(t), "v1").WithLicense(installationLicense(true))
 	router := chi.NewRouter()
 	s.Register(router)
 	for _, path := range []string{"/api/host/v1/releases/v1/amd64/manifest.json", "/api/host/v1/releases/v1/amd64/monkeyai-engine"} {

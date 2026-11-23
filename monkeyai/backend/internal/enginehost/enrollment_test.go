@@ -24,7 +24,7 @@ func commandCredential(t *testing.T, command string) string {
 }
 func TestRenewPendingEnrollment(t *testing.T) {
 	db := testPool(t)
-	s := NewService(db).WithInstallation("https://control.example", fixture(t), "v1")
+	s := NewService(db).WithInstallation("https://control.example", fixture(t), "v1").WithLicense(installationLicense(true))
 	router := chi.NewRouter()
 	registerAdmin(router, s)
 	s.Register(router)

@@ -37,7 +37,7 @@ func TestReleaseComponents(t *testing.T) {
 
 func TestHostArchiveRoute(t *testing.T) {
 	dir := fixture(t)
-	s := NewService(nil).WithInstallation("https://control.example", dir, "v1")
+	s := NewService(nil).WithInstallation("https://control.example", dir, "v1").WithLicense(installationLicense(true))
 	router := chi.NewRouter()
 	s.Register(router)
 	path := filepath.Join(dir, "v1", "amd64", "resources.tgz")
@@ -64,7 +64,7 @@ func TestHostArchiveRoute(t *testing.T) {
 
 func TestInstallationScriptAndAutomaticIdentity(t *testing.T) {
 	pool := testPool(t)
-	s := NewService(pool).WithInstallation("https://control.example", fixture(t), "v1")
+	s := NewService(pool).WithInstallation("https://control.example", fixture(t), "v1").WithLicense(installationLicense(true))
 	router := chi.NewRouter()
 	registerAdmin(router, s)
 	s.Register(router)
