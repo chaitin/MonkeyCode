@@ -152,8 +152,8 @@ func (s *Service) headers(ctx context.Context, c, cred resource.Object) (map[str
 	if c.String("authorization_mode") == "none" {
 		return map[string]string{}, nil, nil
 	}
-	if credentialStatus(c, cred) != "authorized" {
-		return nil, nil, authorizationRequired
+	if err := requireCredential(c, cred); err != nil {
+		return nil, nil, err
 	}
 	if c.String("authorization_method") == "oauth" {
 		fresh, err := s.refresh(ctx, c, cred)

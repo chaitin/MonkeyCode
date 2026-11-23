@@ -116,7 +116,9 @@ func (s *Service) catalog(ctx context.Context, q resource.Queryer, c resource.Ob
 	if c.String("authorization_mode") == "centralized" {
 		out["authorization_status"], out["connection_status"] = credentialStatus(c, cred), "unknown"
 		if cred != nil {
-			out["connection_status"] = cred["connection_status"]
+			if !staleCredential(c, cred) {
+				out["connection_status"] = cred["connection_status"]
+			}
 			out["credential_id"] = cred["id"]
 		}
 	}
