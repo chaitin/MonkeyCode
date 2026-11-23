@@ -125,7 +125,7 @@ services:
     tmpfs:
       - /tmp
 
-  monkeyai-proxy:
+  proxy:
     container_name: monkeyai-proxy
     logging: *monkeyai_logging
     image: ${PROXY_IMAGE:-monkeyai-proxy:local}
@@ -174,7 +174,7 @@ services:
       timeout: 5s
       retries: 5
 
-  monkeyai-nginx:
+  nginx:
     container_name: monkeyai-nginx
     logging: *monkeyai_logging
     image: ${NGINX_IMAGE:-monkeyai-nginx:local}
