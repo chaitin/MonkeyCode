@@ -1093,7 +1093,7 @@ paths:
               required: [client_id, machine_id, execution_public_key, display_name, platform, arch]
               properties:
                 client_id: {type: string, const: monkeyai-runtime}
-                scope: {type: string, default: 'account:ai-resources device:bind device:publish session:report', description: 从 OAuth 元数据 device_scopes_supported 发现。已有设备须重新申请并批准；刷新不会扩权。}
+                scope: {type: string, deprecated: true, description: 兼容旧运行端；服务端忽略此字段，设备批准授予固定能力。}
                 machine_id: {type: string, format: uuid}
                 execution_public_key: {type: string, description: Ed25519 原始公钥的无填充 base64url}
                 display_name: {type: string, maxLength: 128}
@@ -1136,11 +1136,11 @@ paths:
               properties:
                 request_id: {type: string, format: uuid}
                 decision: {type: string, enum: [approve, deny]}
-                approved_scopes: {type: array, items: {type: string, enum: ['account:ai-resources', 'device:bind', 'device:publish', 'session:report']}}
+                approved_scopes: {type: array, deprecated: true, items: {type: string}, description: 兼容旧客户端；批准或拒绝针对整套运行端授权。}
                 restore_revoked: {type: boolean, default: false}
       responses:
         '200': {description: approved 或 denied 已持久化}
-        '400': {description: invalid_request 或 invalid_scope}
+        '400': {description: invalid_request}
         '401': {description: 浏览器未登录}
         '403': {description: CSRF、来源或账号状态校验失败}
         '404': {description: request_not_found}

@@ -140,7 +140,6 @@ func TestDeviceGrantPollingConsentAndBinding(t *testing.T) {
 	oauthCode(t, err, "slow_down")
 	approved := []string{"device:bind", "session:report"}
 	deviceDecide(t, s, view, cookie, "approve", approved, false, "invalid", 403)
-	deviceDecide(t, s, view, cookie, "approve", []string{"device:connect"}, false, view["csrf_token"].(string), 400)
 	deviceDecide(t, s, view, cookie, "approve", approved, false, view["csrf_token"].(string), 200)
 	if _, err = s.db.Exec(t.Context(), "UPDATE oauth_device_requests SET next_poll_at=now()-interval '1 second' WHERE id=$1", view["request_id"]); err != nil {
 		t.Fatal(err)
@@ -149,7 +148,7 @@ func TestDeviceGrantPollingConsentAndBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if token.ServerID == "" || token.MachineID != view["machine_id"] || token.Scope != "device:bind session:report" {
+	if token.ServerID == "" || token.MachineID != view["machine_id"] || token.Scope != strings.Join(runtimeScopes, " ") {
 		t.Fatal("兑换未保留冻结身份和批准范围")
 	}
 	p := tokenPrincipal(t, s, token.AccessToken, http.StatusNoContent)
@@ -272,18 +271,15 @@ func TestNewResourceOperation(t *testing.T) {
 	mux.Handle("PATCH /test-resource/{id}", RequireAccountResources(operation))
 	mux.Handle("PATCH /test-control/{id}", RequireInteractive(operation))
 	h := s.RequireAgent(mux)
-	for _, tc := range []struct {
-		scopes []string
-		want   int
-	}{{runtimeScopes, 204}, {[]string{"device:publish"}, 403}} {
+	for _, scopes := range [][]string{runtimeScopes, {"device:manage"}} {
 		device := deviceApplication(t, s)
 		view := deviceView(t, s, device, cookie)
-		deviceDecide(t, s, view, cookie, "approve", tc.scopes, false, view["csrf_token"].(string), 200)
+		deviceDecide(t, s, view, cookie, "approve", scopes, false, view["csrf_token"].(string), 200)
 		token, err := s.ExchangeDeviceCode(t.Context(), RuntimeClientID, device.DeviceCode)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for path, want := range map[string]int{"/test-resource/example": tc.want, "/test-control/example": 403} {
+		for path, want := range map[string]int{"/test-resource/example": 204, "/test-control/example": 403} {
 			req := httptest.NewRequest("PATCH", path, nil)
 			req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 			w := httptest.NewRecorder()

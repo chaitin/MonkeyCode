@@ -137,7 +137,7 @@ func (s *Service) RequireAgent(next http.Handler) http.Handler {
 
 const AccountResources = "account:ai-resources"
 
-// 交互式账号沿用原有业务权限；设备授权只能使用明确委托的能力。
+// 运行端权限由路由用途决定，不继承交互式客户端的控制权限。
 func runtimePolicy(allow func(Principal) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +152,7 @@ func runtimePolicy(allow func(Principal) bool) func(http.Handler) http.Handler {
 }
 
 var RequireInteractive = runtimePolicy(func(Principal) bool { return false })
-var RequireAccountResources = runtimePolicy(func(p Principal) bool { return p.Has(AccountResources) })
+var RequireAccountResources = runtimePolicy(Principal.IsRuntime)
 var RequireGatewayKeys = runtimePolicy(Principal.CanIssueRuntimeKey)
 
 func writeJSON(ctx context.Context, w http.ResponseWriter, status int, value any) {

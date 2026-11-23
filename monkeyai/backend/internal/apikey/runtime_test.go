@@ -155,11 +155,11 @@ func TestRuntimeGatewayKeysStayWithinExecutionGrant(t *testing.T) {
 	if err := json.Unmarshal(call(second, "POST", "/api-keys", `{"name":"升级前的密钥","scopes":["mcp:invoke"]}`, 201), &legacy); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(t.Context(), "UPDATE oauth_grants SET scopes=array_remove(scopes,$2) WHERE id=$1", second.grant, identity.AccountResources); err != nil {
+	if _, err := pool.Exec(t.Context(), "UPDATE oauth_grants SET scopes='{}' WHERE id=$1", second.grant); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := keys.Authenticate(t.Context(), legacy.APIKey, ScopeMCPInvoke); err == nil {
-		t.Fatal("缺少资源委托仍可使用历史派生密钥")
+	if got, err := keys.Authenticate(t.Context(), legacy.APIKey, ScopeMCPInvoke); err != nil || got != user {
+		t.Fatal("旧 OAuth scope 不应影响已绑定的派生密钥", err)
 	}
 	if err := keys.RevokeRuntimeKeys(t.Context(), first.grant); err != nil {
 		t.Fatal(err)

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"slices"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
@@ -48,11 +47,7 @@ func (s *Service) ApproveRuntime(ctx context.Context, tx pgx.Tx, user, machine s
 	if err != nil {
 		return "", err
 	}
-	scopes := slices.Clone(request.RequestedScopes)
-	slices.Sort(scopes)
-	// 兼容显式申请旧三项权限的宿主，但绝不代它追加资源委托。
-	validScopes := slices.Equal(scopes, runtimeScopes) || slices.Equal(scopes, []string{"device:bind", "device:publish", "session:report"})
-	if request.ClientID != RuntimeClientID || request.MachineID != machine || !bytes.Equal(request.ExecutionPublicKey, public) || request.Platform != "linux" || !validScopes || request.RestoreRevoked || !s.now().Before(request.ExpiresAt) {
+	if request.ClientID != RuntimeClientID || request.MachineID != machine || !bytes.Equal(request.ExecutionPublicKey, public) || request.Platform != "linux" || request.RestoreRevoked || !s.now().Before(request.ExpiresAt) {
 		return "", errors.New("设备申请与云环境身份不符")
 	}
 	if _, err = q.LockDeviceOwner(ctx, user); err != nil {
@@ -66,7 +61,7 @@ func (s *Service) ApproveRuntime(ctx context.Context, tx pgx.Tx, user, machine s
 		return "", errors.New("已撤销设备不能自动恢复")
 	}
 	if request.Status == "approved" || request.Status == "consumed" {
-		if request.OwnerUserID == nil || *request.OwnerUserID != user || !slices.Equal(request.ApprovedScopes, scopes) {
+		if request.OwnerUserID == nil || *request.OwnerUserID != user {
 			return "", errors.New("设备申请已归属其他授权")
 		}
 		return request.ID, nil
@@ -74,14 +69,14 @@ func (s *Service) ApproveRuntime(ctx context.Context, tx pgx.Tx, user, machine s
 	if request.Status != "pending" {
 		return "", errors.New("设备申请已结束")
 	}
-	n, err := q.DecideDeviceRequest(ctx, sqlc.DecideDeviceRequestParams{ID: request.ID, Status: "approved", OwnerUserID: &user, ApprovedScopes: scopes})
+	n, err := q.DecideDeviceRequest(ctx, sqlc.DecideDeviceRequestParams{ID: request.ID, Status: "approved", OwnerUserID: &user, ApprovedScopes: runtimeScopes})
 	if err != nil {
 		return "", err
 	}
 	if n != 1 {
 		return "", errors.New("设备申请已被处理")
 	}
-	err = audit.Write(ctx, tx, audit.Event{ActorID: user, Action: "device.cloud_approved", Category: "security", TargetType: "endpoint", TargetID: machine, Params: map[string]any{"request_id": request.ID, "scopes": scopes}})
+	err = audit.Write(ctx, tx, audit.Event{ActorID: user, Action: "device.cloud_approved", Category: "security", TargetType: "endpoint", TargetID: machine, Params: map[string]any{"request_id": request.ID, "scopes": runtimeScopes}})
 	return request.ID, err
 }
 

@@ -20,8 +20,13 @@ func (s *Service) lockDeviceGrant(ctx context.Context, tx pgx.Tx, p Principal, s
 		return g, false, err
 	}
 	if g.UserID != p.UserID || g.ClientID != p.ClientID || g.Audience != p.Audience || g.Purpose != p.Purpose || g.RevocationVersion != p.RevocationVersion ||
-		g.RevokedAt != nil || !s.now().Before(g.ExpiresAt) || g.UserStatus != "active" || g.UserDeletedAt != nil ||
-		scope != "" && (!p.Has(scope) || !slices.Contains(g.Scopes, scope)) {
+		g.RevokedAt != nil || !s.now().Before(g.ExpiresAt) || g.UserStatus != "active" || g.UserDeletedAt != nil {
+		return g, false, nil
+	}
+	if p.Purpose == "runtime" {
+		return g, p.IsRuntime() && (p.MachineID == "" || g.MachineID != nil && *g.MachineID == p.MachineID && g.KeyID != nil && *g.KeyID == p.KeyID), nil
+	}
+	if scope != "" && (!p.Has(scope) || !slices.Contains(g.Scopes, scope)) {
 		return g, false, nil
 	}
 	for _, value := range p.Scopes {
@@ -33,6 +38,9 @@ func (s *Service) lockDeviceGrant(ctx context.Context, tx pgx.Tx, p Principal, s
 }
 
 func (s *Service) AuthorizeDevice(ctx context.Context, tx pgx.Tx, p Principal, scope string) (bool, error) {
+	if p.Purpose == "runtime" && (p.MachineID == "" || p.KeyID == "" || scope != "session:report" && scope != "device:publish") {
+		return false, nil
+	}
 	_, valid, err := s.lockDeviceGrant(ctx, tx, p, scope)
 	if err != nil || !valid {
 		return valid, err
