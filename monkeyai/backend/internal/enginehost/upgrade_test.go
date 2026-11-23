@@ -14,7 +14,7 @@ import (
 
 func TestUpgradeCommandAndScript(t *testing.T) {
 	root := fixture(t)
-	s := NewService(nil).WithInstallation("https://server.example", root, "v1")
+	s := NewService(nil).WithInstallation("https://server.example", root, "v1").WithLicense(installationLicense(true))
 	r := chi.NewRouter()
 	registerAdmin(r, s)
 	s.Register(r)

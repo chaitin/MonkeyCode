@@ -278,7 +278,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	}))
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
-	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion)
+	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion).WithLicense(capabilities)
 	if cfg.EngineReleaseDir != "" && cfg.Role != config.RoleControl {
 		stateDir := cfg.RuntimeStateDir
 		if stateDir == "" {

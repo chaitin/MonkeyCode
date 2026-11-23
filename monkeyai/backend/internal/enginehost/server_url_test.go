@@ -38,7 +38,7 @@ func TestServerURLScriptAndBootstrap(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			service := NewService(nil).WithInstallation("https://control.example", releases, "v1")
+			service := NewService(nil).WithInstallation("https://control.example", releases, "v1").WithLicense(installationLicense(true))
 			router := chi.NewRouter()
 			service.Register(router)
 			query := url.Values{"version": {"v1"}}
@@ -93,7 +93,7 @@ func TestServerURLScriptAndBootstrap(t *testing.T) {
 }
 
 func TestServerURLRejectsInvalidOrigins(t *testing.T) {
-	service := NewService(nil).WithInstallation("https://control.example", fixture(t), "v1")
+	service := NewService(nil).WithInstallation("https://control.example", fixture(t), "v1").WithLicense(installationLicense(true))
 	router := chi.NewRouter()
 	service.Register(router)
 	for _, address := range []string{"ftp://server.example", "http://user:pass@server.example", "http://server.example/path", "http://server.example?x=1", "http://server.example#fragment", "http://server.example\n"} {

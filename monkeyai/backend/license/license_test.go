@@ -14,7 +14,7 @@ type source struct {
 func (s source) Capabilities(context.Context) (Capabilities, error) { return s.value, s.err }
 
 func TestReadCapabilities(t *testing.T) {
-	all := Capabilities{true, true}
+	all := Capabilities{AllowHostInstallation: true, AllowCloudComputer: true, AllowCustomBranding: true}
 	for _, tc := range []struct {
 		reader Reader
 		want   Capabilities

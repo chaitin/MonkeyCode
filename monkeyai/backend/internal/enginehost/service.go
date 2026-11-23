@@ -17,10 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/enginehost/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/hostname"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/enginehost/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/license"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5"
@@ -33,6 +34,7 @@ func (s *Service) WithHostCounts(read hostCounts) { s.hostCounts = read }
 
 type Service struct {
 	hostCounts                hostCounts
+	license                   license.Reader
 	pool                      *pgxpool.Pool
 	commands                  Commands
 	server, releases, version string
@@ -40,34 +42,51 @@ type Service struct {
 }
 
 func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
+func (s *Service) WithLicense(reader license.Reader) *Service {
+	s.license = reader
+	return s
+}
 func (s *Service) WithInstallation(server, dir, version string) *Service {
 	s.server, s.releases, s.version = strings.TrimRight(server, "/"), dir, version
 	return s
 }
 func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Get("/engine-hosts", s.list)
-	r.Get("/engine-upgrade", s.upgradeCommand)
-	r.Post("/engine-hosts/{id}/upgrade", s.requestUpgrade)
-	r.Post("/engine-host-enrollments", s.create)
-	r.Post("/engine-hosts/{id}/enrollment", s.renew)
+	install := r.With(s.requireInstallationLicense)
+	install.Get("/engine-upgrade", s.upgradeCommand)
+	install.Post("/engine-hosts/{id}/upgrade", s.requestUpgrade)
+	install.Post("/engine-host-enrollments", s.create)
+	install.Post("/engine-hosts/{id}/enrollment", s.renew)
 	r.Delete("/engine-hosts/{id}", s.revoke)
 	r.Delete("/engine-hosts/{id}/record", s.remove)
 }
 func (s *Service) Register(r chi.Router) {
 	r.Route("/api/host/v1", func(r chi.Router) {
 		r.Use(middleware.Throttle(32))
-		r.Get("/install.sh", s.script)
-		r.Get("/upgrade.sh", s.upgradeScript)
-		r.Get("/releases/{version}/{arch}/{file}", s.artifact)
+		install := r.With(s.requireInstallationLicense)
+		install.Get("/install.sh", s.script)
+		install.Get("/upgrade.sh", s.upgradeScript)
+		install.Get("/releases/{version}/{arch}/{file}", s.artifact)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Timeout(10 * time.Second))
-			r.Post("/enroll", s.enroll)
+			r.With(s.requireInstallationLicense).Post("/enroll", s.enroll)
 			r.Post("/time", s.timestamp)
 			r.Post("/heartbeat", s.heartbeat)
 			if s.commands != nil {
 				r.Post("/exchange", s.exchange)
 			}
 		})
+	})
+}
+
+func (s *Service) requireInstallationLicense(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !license.Read(r.Context(), s.license).AllowHostInstallation {
+			w.Header().Set("Cache-Control", "no-store")
+			fail(w, r, http.StatusForbidden, "请先在管理后台导入有效的 License，再安装或升级宿主机")
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
