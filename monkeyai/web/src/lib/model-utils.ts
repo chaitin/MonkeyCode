@@ -4,6 +4,7 @@ const MODEL_ICON_MATCHERS = [
   { keywords: ["qwen", "tongyi", "通义"], iconName: "icon-qwen" },
   { keywords: ["doubao", "豆包"], iconName: "icon-doubao" },
   { keywords: ["gemini"], iconName: "icon-gemini" },
+  { keywords: ["grok", "xai"], iconName: "icon-grok" },
   { keywords: ["moonshot", "kimi"], iconName: "icon-moonshot" },
   { keywords: ["minimax"], iconName: "icon-minimax" },
   { keywords: ["hunyuan", "混元"], iconName: "icon-hunyuan" },
