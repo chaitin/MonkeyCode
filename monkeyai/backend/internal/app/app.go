@@ -372,6 +372,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	designs.RegisterCatalog(router, requireResource)
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
+		WithRejectedUserLookup(keys.LookupModelUser).
 		WithSessionResolver(sessionResolver).
 		WithBilling(modelBilling{service: charges}).
 		WithUsageRecorder(modelUsageRecorder{models: modelRepo})

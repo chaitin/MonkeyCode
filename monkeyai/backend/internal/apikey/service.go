@@ -33,7 +33,7 @@ type Store interface {
 	ListByUser(context.Context, string) ([]Key, error)
 	List(context.Context, string) ([]Key, error)
 	Revoke(context.Context, string, string) error
-	Authenticate(context.Context, string, string) (string, error)
+	Authenticate(ctx context.Context, keyHash, scope string, recordUse bool) (string, error)
 }
 
 type Service struct {
@@ -160,10 +160,19 @@ func (s *Service) CleanupRuntimeKeys(ctx context.Context) error {
 }
 
 func (s *Service) Authenticate(ctx context.Context, raw, scope string) (string, error) {
+	return s.authenticate(ctx, raw, scope, true)
+}
+
+// LookupModelUser 仅归属被拒请求，不更新 Key 最近使用时间。
+func (s *Service) LookupModelUser(ctx context.Context, raw string) (string, error) {
+	return s.authenticate(ctx, raw, ScopeModelInvoke, false)
+}
+
+func (s *Service) authenticate(ctx context.Context, raw, scope string, recordUse bool) (string, error) {
 	if !strings.HasPrefix(raw, "mk_") {
 		return "", ErrInvalidKey
 	}
-	userID, err := s.store.Authenticate(ctx, hash(raw), scope)
+	userID, err := s.store.Authenticate(ctx, hash(raw), scope, recordUse)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return "", err

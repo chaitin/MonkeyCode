@@ -39,7 +39,7 @@ func TestUserModelBypassesBillingAndRecordsUsage(t *testing.T) {
 		target.OwnershipType = "user"
 		return target, nil
 	}), discardLogger()).WithBilling(billingMustNotRun{}).WithUsageRecorder(recorder)
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","n":2}`))
+	req := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","n":2}`))
 	req.Header.Set("Authorization", "Bearer own-key")
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
@@ -73,7 +73,7 @@ func TestUserModelRecordsFailedCallWithoutBilling(t *testing.T) {
 		target.OwnershipType = "user"
 		return target, nil
 	}), discardLogger()).WithBilling(billingMustNotRun{}).WithUsageRecorder(recorder)
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5"}`))
+	req := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5"}`))
 	req.Header.Set("Authorization", "Bearer own-key")
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
@@ -106,7 +106,7 @@ func TestUserModelStreamPreservesRequest(t *testing.T) {
 		target.OwnershipType = "user"
 		return target, nil
 	}), discardLogger()).WithBilling(billingMustNotRun{}).WithUsageRecorder(recorder)
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","stream":true,"max_tokens":4096}`))
+	req := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","stream":true,"max_tokens":4096}`))
 	req.Header.Set("Authorization", "Bearer own-key")
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
@@ -155,7 +155,7 @@ func TestProxyPreservesOutputParameters(t *testing.T) {
 					p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 						return Target{BaseURL: upstream.URL}, nil
 					}), discardLogger()).WithBilling(estimateBilling{calls: make(chan Call, 1)})
-					r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+					r := newProxyRequest(http.MethodPost, path, strings.NewReader(body))
 					r.Header.Set("Authorization", "Bearer test")
 					w := httptest.NewRecorder()
 					p.ServeHTTP(w, r)
@@ -267,7 +267,7 @@ func TestBillingSettlementDoesNotBlockResponse(t *testing.T) {
 			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 				return Target{BaseURL: upstream.URL}, nil
 			}), discardLogger()).WithBilling(billing)
-			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"test"}`))
+			req := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"test"}`))
 			req.Header.Set("Authorization", "Bearer test")
 			response := make(chan *httptest.ResponseRecorder, 1)
 			go func() {
@@ -311,7 +311,7 @@ func TestBillingPreservesRequestBytes(t *testing.T) {
 			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 				return Target{BaseURL: upstream.URL}, nil
 			}), discardLogger()).WithBilling(estimateBilling{calls: make(chan Call, 1)})
-			r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+			r := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
 			r.Header.Set("Authorization", "Bearer test")
 			w := httptest.NewRecorder()
 			p.ServeHTTP(w, r)

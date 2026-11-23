@@ -30,7 +30,7 @@ type requestState struct {
 func WithRequest(r *http.Request, actor Actor) context.Context {
 	state := &requestState{
 		id: logging.RequestID(r.Context()), actor: actor, at: time.Now().UTC(),
-		ip: clientIP(r), agent: clean(r.UserAgent(), 512),
+		ip: ClientIP(r), agent: clean(r.UserAgent(), 512),
 	}
 	return context.WithValue(r.Context(), requestKey{}, state)
 }
@@ -81,7 +81,7 @@ func (s *Service) Middleware(actor func(*http.Request) Actor) func(http.Handler)
 				failure(r.Context(), w, 500, "server_error", "缺少请求观测上下文")
 				return
 			}
-			state := &requestState{id: id, actor: user, at: time.Now().UTC(), ip: clientIP(r), agent: clean(r.UserAgent(), 512)}
+			state := &requestState{id: id, actor: user, at: time.Now().UTC(), ip: ClientIP(r), agent: clean(r.UserAgent(), 512)}
 			r = r.WithContext(context.WithValue(r.Context(), requestKey{}, state))
 			var body, response capture
 			media, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -116,7 +116,8 @@ func (s *Service) Middleware(actor func(*http.Request) Actor) func(http.Handler)
 	}
 }
 
-func clientIP(r *http.Request) string {
+// ClientIP 返回默认部署下供审计使用的客户端来源地址。
+func ClientIP(r *http.Request) string {
 	remote := sourceIP(r.RemoteAddr)
 	peer, err := netip.ParseAddr(remote)
 	if err != nil || !peer.IsPrivate() {

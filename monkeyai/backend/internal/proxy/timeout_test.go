@@ -162,7 +162,7 @@ func TestProxyBodyTimeoutObservedAsFailure(t *testing.T) {
 			transport.readTimeout = 100 * time.Millisecond
 			transport.requestTimeout = 2 * time.Second
 			p.reverse.Transport = transport
-			r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(fmt.Sprintf(`{"model":"test","stream":%t}`, stream)))
+			r := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(fmt.Sprintf(`{"model":"test","stream":%t}`, stream)))
 			r.Header.Set("Authorization", "Bearer test")
 			// ReverseProxy 在响应已经开始后通过 ErrAbortHandler 结束连接。
 			func() {

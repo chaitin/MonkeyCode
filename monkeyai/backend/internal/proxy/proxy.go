@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/llmurl"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
@@ -92,13 +93,14 @@ type proxyContext struct {
 }
 
 type Proxy struct {
-	resolver Resolver
-	sessions SessionResolver
-	logger   *slog.Logger
-	recorder UsageRecorder
-	billing  Billing
-	captures sync.WaitGroup
-	reverse  *httputil.ReverseProxy
+	lookupRejectedUser func(context.Context, string) (string, error)
+	resolver           Resolver
+	sessions           SessionResolver
+	logger             *slog.Logger
+	recorder           UsageRecorder
+	billing            Billing
+	captures           sync.WaitGroup
+	reverse            *httputil.ReverseProxy
 }
 
 func DirectTransport() *http.Transport {
@@ -134,6 +136,11 @@ func (p *Proxy) WithUsageRecorder(recorder UsageRecorder) *Proxy {
 	return p
 }
 
+func (p *Proxy) WithRejectedUserLookup(lookup func(context.Context, string) (string, error)) *Proxy {
+	p.lookupRejectedUser = lookup
+	return p
+}
+
 func (p *Proxy) WithSessionResolver(resolver SessionResolver) *Proxy {
 	p.sessions = resolver
 	return p
@@ -164,6 +171,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logging.Bind(r.Context(), slog.String("route", r.URL.Path))
+	if ua := r.UserAgent(); !strings.Contains(ua, "ohmyagent") {
+		p.logRejectedUserAgent(r, ua)
+		web.HTTPError(w, r, http.StatusUnauthorized)
+		return
+	}
 	credential, ok := Credential(r)
 	if !ok {
 		web.HTTPError(w, r, http.StatusUnauthorized)
@@ -270,6 +282,24 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reservation:  reservation,
 	})
 	p.reverse.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (p *Proxy) logRejectedUserAgent(r *http.Request, ua string) {
+	if !p.logger.Enabled(r.Context(), slog.LevelWarn) {
+		return
+	}
+	var userID string
+	if key, ok := Credential(r); ok && p.lookupRejectedUser != nil {
+		// 归属查询失败或超时不改变 401，也不触发模型解析和计费。
+		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		defer cancel()
+		if id, err := p.lookupRejectedUser(ctx, key); err == nil {
+			userID = id
+		}
+	}
+	logging.Event(r.Context(), p.logger, slog.LevelWarn, "proxy.user_agent.rejected", "模型代理拒绝请求：User-Agent 不含 ohmyagent",
+		"route", r.URL.Path, "status", http.StatusUnauthorized, "user_agent", ua, "user_agent_missing", ua == "",
+		"user_id", userID, "client_ip", audit.ClientIP(r))
 }
 
 func protocolForPath(requestPath string) string {

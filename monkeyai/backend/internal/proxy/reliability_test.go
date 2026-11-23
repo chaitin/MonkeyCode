@@ -53,7 +53,7 @@ func TestReplayUsesPreparedBodyAndKeepsRoute(t *testing.T) {
 	p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 		return Target{BaseURL: "https://example.com/v1", OwnershipType: "user", UpstreamModel: "upstream-model"}, nil
 	}), logger).WithTransport(replayTransport{t})
-	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"alias","stream":true,"messages":[]}`))
+	r := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"alias","stream":true,"messages":[]}`))
 	r.Header.Set("Authorization", "Bearer mk_test")
 	logging.HTTP(logger)(p).ServeHTTP(httptest.NewRecorder(), r)
 	if !strings.Contains(logs.String(), `"route":"/v1/chat/completions"`) || strings.Contains(logs.String(), `"route":"unmatched"`) {
@@ -109,7 +109,7 @@ func TestCanceledResolutionIsNotUnauthorized(t *testing.T) {
 	var logs bytes.Buffer
 	logger := logging.New(&logs, slog.LevelDebug)
 	p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) { return Target{}, context.Canceled }), logger)
-	r := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"test"}`))
+	r := newProxyRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"test"}`))
 	r.Header.Set("Authorization", "Bearer mk_test")
 	ctx, cancel := context.WithCancel(r.Context())
 	cancel()
@@ -129,7 +129,7 @@ func TestUpstreamRejectionKeepsResponseAndSafeDiagnostics(t *testing.T) {
 	defer server.Close()
 	var logs bytes.Buffer
 	p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) { return Target{BaseURL: server.URL}, nil }), logging.New(&logs, slog.LevelDebug))
-	r := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"test"}`))
+	r := newProxyRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"test"}`))
 	r.Header.Set("Authorization", "Bearer mk_test")
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, r)

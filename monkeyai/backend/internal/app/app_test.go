@@ -54,6 +54,7 @@ func TestProxyRegistered(t *testing.T) {
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"test"}`))
+		request.Header.Set("User-Agent", "ohmyagent/test")
 		request.Header.Set("Authorization", "Bearer test")
 		handler.ServeHTTP(recorder, request)
 

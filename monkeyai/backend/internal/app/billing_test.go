@@ -72,6 +72,7 @@ func TestBillingIntegration(t *testing.T) {
 		t.Helper()
 		raw, _ := json.Marshal(body)
 		r := httptest.NewRequest(method, path, bytes.NewReader(raw))
+		r.Header.Set("User-Agent", "ohmyagent/test")
 		r.Header.Set("Content-Type", "application/json")
 		if cookie != nil {
 			r.AddCookie(cookie)

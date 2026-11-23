@@ -89,7 +89,7 @@ func (p *Postgres) CleanupRuntimeKeys(ctx context.Context) error {
 	return sqlc.New(p.pool).CleanupRuntimeKeys(ctx)
 }
 
-func (p *Postgres) Authenticate(ctx context.Context, keyHash, scope string) (string, error) {
+func (p *Postgres) Authenticate(ctx context.Context, keyHash, scope string, recordUse bool) (string, error) {
 	var id, userID string
 	record, err := sqlc.New(p.pool).AuthenticateKey(ctx, sqlc.AuthenticateKeyParams{KeyHash: keyHash, Scope: scope})
 	if err == nil {
@@ -101,6 +101,9 @@ func (p *Postgres) Authenticate(ctx context.Context, keyHash, scope string) (str
 	}
 	if err != nil {
 		return "", fmt.Errorf("验证调用密钥: %w", err)
+	}
+	if !recordUse {
+		return userID, nil
 	}
 	if _, err := sqlc.New(p.pool).TouchKey(ctx, id); err != nil {
 		logging.Event(ctx, slog.Default(), slog.LevelError, "apikey.request.failed", "更新调用密钥使用时间失败", "module", "apikey", "operation", "Authenticate", "key_id", id, "error", err)

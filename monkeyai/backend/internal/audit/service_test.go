@@ -60,7 +60,7 @@ func TestClientIP(t *testing.T) {
 			if tc.forwarded != "" {
 				r.Header.Set("X-Forwarded-For", tc.forwarded)
 			}
-			if got := clientIP(r); got != tc.want {
+			if got := ClientIP(r); got != tc.want {
 				t.Fatalf("来源 IP = %q，期望 %q", got, tc.want)
 			}
 		})
@@ -69,7 +69,7 @@ func TestClientIP(t *testing.T) {
 	r.RemoteAddr = "172.18.0.5:1234"
 	r.Header.Add("X-Real-IP", "198.51.100.23")
 	r.Header.Add("X-Real-IP", "203.0.113.99")
-	if got := clientIP(r); got != "172.18.0.5" {
+	if got := ClientIP(r); got != "172.18.0.5" {
 		t.Fatalf("多个客户端地址应退回连接地址，实际为 %q", got)
 	}
 }

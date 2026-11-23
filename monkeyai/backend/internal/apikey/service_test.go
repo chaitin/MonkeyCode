@@ -34,7 +34,7 @@ func (s *storeStub) Revoke(_ context.Context, id, _ string) error {
 	s.revoked = append(s.revoked, id)
 	return s.revokeErr[id]
 }
-func (s *storeStub) Authenticate(context.Context, string, string) (string, error) {
+func (s *storeStub) Authenticate(context.Context, string, string, bool) (string, error) {
 	return s.userID, s.authErr
 }
 

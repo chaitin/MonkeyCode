@@ -225,7 +225,7 @@ func TestProxyFinishesEstimatedUsage(t *testing.T) {
 	p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 		return Target{ModelID: "resource-id", UpstreamModel: "gpt-5", BaseURL: upstream.URL}, nil
 	}), discardLogger()).WithBilling(billing)
-	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"resource-id","messages":[{"role":"user","content":"hello world"}]}`))
+	r := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"resource-id","messages":[{"role":"user","content":"hello world"}]}`))
 	r.Header.Set("Authorization", "Bearer token")
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, r)

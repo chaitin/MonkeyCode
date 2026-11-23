@@ -41,7 +41,7 @@ func TestModelFailureObservedWithoutBillingOrRecorder(t *testing.T) {
 			if test.stream {
 				body = `{"model":"test","messages":[],"stream":true}`
 			}
-			r := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+			r := newProxyRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 			r.Header.Set("Authorization", "Bearer private-key")
 			response := httptest.NewRecorder()
 			logging.HTTP(logger)(p).ServeHTTP(response, r)
@@ -116,7 +116,7 @@ func TestResponseOutputLimitDiagnostics(t *testing.T) {
 				p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 					return Target{BaseURL: upstream.URL}, nil
 				}), logging.New(&logs, slog.LevelDebug)).WithBilling(billing)
-				r := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":"test","stream":%t}`, stream)))
+				r := newProxyRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":"test","stream":%t}`, stream)))
 				r.Header.Set("Authorization", "Bearer test")
 				w := httptest.NewRecorder()
 				p.ServeHTTP(w, r)

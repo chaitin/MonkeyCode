@@ -91,6 +91,7 @@ func TestResourceIntegration(t *testing.T) {
 			b, _ = json.Marshal(body)
 		}
 		req := httptest.NewRequest(method, path, bytes.NewReader(b))
+		req.Header.Set("User-Agent", "ohmyagent/test")
 		req.Header.Set("Content-Type", "application/json")
 		if cookie != nil {
 			req.AddCookie(cookie)

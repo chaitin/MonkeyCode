@@ -162,6 +162,7 @@ func TestControlOffline(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+key)
 		req.Header.Set("X-MAI-Session-ID", session)
+		req.Header.Set("User-Agent", "ohmyagent/test")
 		res, err := client.Do(req)
 		if err != nil {
 			t.Fatal(err)

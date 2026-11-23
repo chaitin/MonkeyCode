@@ -9,7 +9,7 @@ var stringFields = map[string]bool{
 	"event": true, "module": true, "operation": true, "phase": true,
 	"error_code": true, "error_type": true, "cause_type": true, "tls_reason": true, "net_op": true, "reason": true, "sqlstate": true,
 	"request_id": true, "trace_id": true, "span_id": true, "response_id": true, "upstream_request_id": true,
-	"session_id": true, "user_id": true, "model_id": true, "connector_id": true,
+	"session_id": true, "user_id": true, "client_ip": true, "model_id": true, "connector_id": true,
 	"job_id": true, "transaction_id": true, "machine_id": true, "server_id": true,
 	"boot_id": true, "connection_id": true, "upload_id": true, "import_id": true,
 	"worker_run_id": true, "channel_kind": true, "dependency": true,
@@ -59,6 +59,10 @@ func safeAttr(a slog.Attr) slog.Attr {
 		}
 		return slog.Attr{Key: a.Key, Value: slog.GroupValue(attrs...)}
 	case slog.KindString:
+		// UA 拒绝日志保留原始值（含空字符串），由结构化日志处理器转义。
+		if a.Key == "user_agent" {
+			return a
+		}
 		value := a.Value.String()
 		if value == "" {
 			return slog.Attr{}

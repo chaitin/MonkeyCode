@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -13,8 +14,63 @@ import (
 	"time"
 
 	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/go-chi/chi/v5"
 )
+
+func newProxyRequest(method, path string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, path, body)
+	r.Header.Set("User-Agent", "client/pre-ohmyagent-post")
+	return r
+}
+
+func TestProxyRejectsUserAgentLikeInvalidKey(t *testing.T) {
+	for _, endpoint := range endpoints {
+		t.Run(endpoint.path, func(t *testing.T) {
+			var resolved int
+			var logs bytes.Buffer
+			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
+				resolved++
+				return Target{}, errors.New("invalid key")
+			}), logging.New(&logs, slog.LevelWarn)).WithRejectedUserLookup(func(_ context.Context, key string) (string, error) {
+				if key == "test-key" {
+					return "user-1", nil
+				}
+				return "", errors.New("invalid key")
+			})
+			call := func(ua, key string) *httptest.ResponseRecorder {
+				r := httptest.NewRequest(http.MethodPost, endpoint.path, strings.NewReader("{}"))
+				if ua != "" {
+					r.Header.Set("User-Agent", ua)
+				}
+				r.Header.Set("X-Api-Key", key)
+				r.RemoteAddr = "172.18.0.5:1234"
+				r.Header.Set("X-Real-IP", "2001:db8::1")
+				w := httptest.NewRecorder()
+				p.ServeHTTP(w, r)
+				return w
+			}
+			denied := call("client/pre-ohmyagent-post", "invalid")
+			if denied.Code != http.StatusUnauthorized || resolved != 1 {
+				t.Fatal("命中子串后仍须校验 API Key")
+			}
+			for _, ua := range []string{"", "other-client/1.0 (Linux; x86_64) " + strings.Repeat("x", 128), "OhMyAgent"} {
+				logs.Reset()
+				w := call(ua, "test-key")
+				var event map[string]any
+				if err := json.Unmarshal(logs.Bytes(), &event); err != nil || event["event"] != "proxy.user_agent.rejected" || event["user_agent"] != ua {
+					t.Errorf("拒绝日志未保留原始 UA %q: %s", ua, logs.Bytes())
+				}
+				if event["user_id"] != "user-1" || event["client_ip"] != "2001:db8::1" {
+					t.Errorf("拒绝日志未记录密钥所属用户或来源 IP: %s", logs.Bytes())
+				}
+				if w.Code != denied.Code || w.Body.String() != denied.Body.String() || resolved != 1 {
+					t.Errorf("UA %q 应在模型解析前返回与无效密钥相同的响应，实际为 %d %q", ua, w.Code, w.Body.String())
+				}
+			}
+		})
+	}
+}
 
 func TestProxyForwardsRequest(t *testing.T) {
 	var gotPath, gotQuery, gotAuthorization, gotAPIKey, gotXForwardedFor, gotBody string
@@ -44,7 +100,7 @@ func TestProxyForwardsRequest(t *testing.T) {
 	})
 	proxy := NewProxy(resolver, discardLogger())
 	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?trace=1", strings.NewReader(body))
+	req := newProxyRequest(http.MethodPost, "/v1/chat/completions?trace=1", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer runtime-secret")
 	req.Header.Set("X-Forwarded-For", "203.0.113.10")
 	forwardedHeaders := map[string]string{
@@ -108,7 +164,7 @@ func TestProxyIgnoresSessionWhenReportingDisabled(t *testing.T) {
 	gateway := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 		return testTarget(upstream.URL + "/v1"), nil
 	}), discardLogger()).WithSessionResolver(disabledSessionResolver{}).WithUsageRecorder(usage)
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5"}`))
+	req := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5"}`))
 	req.Header.Set("Authorization", "Bearer runtime-secret")
 	req.Header.Set("X-MAI-Session-ID", "11111111-1111-4111-8111-111111111111")
 	req.Header.Set("X-Session-ID", "forwarded-session")
@@ -145,7 +201,7 @@ func TestProxyRecordsUsage(t *testing.T) {
 	proxy := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 		return testTarget(upstream.URL + "/v1"), nil
 	}), discardLogger()).WithUsageRecorder(usage)
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5"}`))
+	req := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5"}`))
 	req.Header.Set("Authorization", "Bearer runtime-secret")
 	recorder := httptest.NewRecorder()
 
@@ -214,7 +270,7 @@ func TestProxyRejectsInvalidRequests(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			proxy := NewProxy(test.resolver, discardLogger())
-			req := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
+			req := newProxyRequest(test.method, test.path, strings.NewReader(test.body))
 			if test.credential != "" {
 				req.Header.Set("Authorization", "Bearer "+test.credential)
 			}
@@ -244,7 +300,7 @@ func TestProxyRewritesModelAndRejectsProtocolMismatch(t *testing.T) {
 	})
 	p := NewProxy(resolver, discardLogger())
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"model-uuid","input":"hi"}`))
+	request := newProxyRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"model-uuid","input":"hi"}`))
 	request.Header.Set("Authorization", "Bearer mk_secret")
 	p.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK || !strings.Contains(gotBody, `"model":"gpt-5"`) {
@@ -252,7 +308,7 @@ func TestProxyRewritesModelAndRejectsProtocolMismatch(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"model-uuid"}`))
+	request = newProxyRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"model-uuid"}`))
 	request.Header.Set("Authorization", "Bearer mk_secret")
 	p.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusBadRequest {
@@ -265,7 +321,7 @@ func TestProxyRegister(t *testing.T) {
 	router := chi.NewRouter()
 	proxy.Register(router)
 	for _, endpoint := range endpoints {
-		req := httptest.NewRequest(http.MethodPost, endpoint.path, strings.NewReader(`{}`))
+		req := newProxyRequest(http.MethodPost, endpoint.path, strings.NewReader(`{}`))
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, req)
 		if recorder.Code != http.StatusUnauthorized {
@@ -313,7 +369,7 @@ func TestProxyDoesNotReuseConnections(t *testing.T) {
 				return target, nil
 			}), discardLogger())
 			for range 2 {
-				r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"test"}`))
+				r := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"test"}`))
 				r.Header.Set("Authorization", "Bearer test")
 				w := httptest.NewRecorder()
 				p.ServeHTTP(w, r)
@@ -370,7 +426,7 @@ func TestProxyErrorHandlerLogsUpstreamError(t *testing.T) {
 	var logs bytes.Buffer
 	proxy := NewProxy(nil, slog.New(slog.NewTextHandler(&logs, nil)))
 	pc := &proxyContext{target: Target{ModelID: "model-1"}, reservation: Reservation{ID: "transaction-1"}}
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req := newProxyRequest(http.MethodPost, "/v1/responses", nil)
 	req = req.WithContext(context.WithValue(req.Context(), proxyContextKey{}, pc))
 	recorder := httptest.NewRecorder()
 	proxy.errorHandler(recorder, req, errors.New("upstream-token-and-private-response"))

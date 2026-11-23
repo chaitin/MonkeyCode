@@ -26,7 +26,7 @@ func TestAnthropicUpstreamPath(t *testing.T) {
 			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 				return Target{BaseURL: upstream.URL + tc.basePath + "?source=test", Protocol: "anthropic"}, nil
 			}), discardLogger())
-			req := httptest.NewRequest(http.MethodPost, "/v1/messages?beta=true", strings.NewReader(`{"model":"test-model"}`))
+			req := newProxyRequest(http.MethodPost, "/v1/messages?beta=true", strings.NewReader(`{"model":"test-model"}`))
 			req.Header.Set("X-Api-Key", "test-key")
 			w := httptest.NewRecorder()
 			p.ServeHTTP(w, req)

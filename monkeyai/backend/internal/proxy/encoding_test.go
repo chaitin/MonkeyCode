@@ -60,7 +60,7 @@ func TestProxyNegotiatesEncoding(t *testing.T) {
 			if tc.reject {
 				p.WithBilling(billingMustNotRun{})
 			}
-			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"resource-id"}`))
+			req := newProxyRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"resource-id"}`))
 			req.Header.Set("Authorization", "Bearer token")
 			for _, value := range tc.values {
 				req.Header.Add("Accept-Encoding", value)

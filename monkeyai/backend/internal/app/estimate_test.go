@@ -109,6 +109,7 @@ func TestEstimatedModelBilling(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(encoded))
+			r.Header.Set("User-Agent", "ohmyagent/test")
 			r.Header.Set("Authorization", "Bearer test")
 			w := httptest.NewRecorder()
 			p.ServeHTTP(w, r)

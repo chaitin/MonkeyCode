@@ -81,7 +81,7 @@ func TestProxyBillsGzipUsage(t *testing.T) {
 				p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 					return Target{ModelID: "resource-id", UpstreamModel: "deepseek-flash", BaseURL: upstream.URL, Protocol: protocolForPath(tc.path)}, nil
 				}), discardLogger()).WithBilling(billing)
-				req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(fmt.Sprintf(`{"model":"resource-id","stream":%t,"messages":[{"role":"user","content":"Hello, world"}]}`, tc.stream)))
+				req := newProxyRequest(http.MethodPost, tc.path, strings.NewReader(fmt.Sprintf(`{"model":"resource-id","stream":%t,"messages":[{"role":"user","content":"Hello, world"}]}`, tc.stream)))
 				req.Header.Set("Authorization", "Bearer token")
 				if encoding != "" {
 					req.Header.Set("Accept-Encoding", encoding)
@@ -134,7 +134,7 @@ func TestProxyPreservesInvalidGzipResponse(t *testing.T) {
 			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 				return Target{ModelID: "resource-id", BaseURL: upstream.URL}, nil
 			}), discardLogger()).WithBilling(billing)
-			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(fmt.Sprintf(`{"model":"resource-id","stream":%t}`, stream)))
+			req := newProxyRequest(http.MethodPost, "/v1/messages", strings.NewReader(fmt.Sprintf(`{"model":"resource-id","stream":%t}`, stream)))
 			req.Header.Set("Authorization", "Bearer token")
 			req.Header.Set("Accept-Encoding", "gzip")
 			w := httptest.NewRecorder()

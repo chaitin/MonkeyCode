@@ -23,7 +23,7 @@ func TestStreamRecordsFirstOutputDuration(t *testing.T) {
 	p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 		return testTarget(upstream.URL + "/v1"), nil
 	}), discardLogger()).WithUsageRecorder(recorder)
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","stream":true}`))
+	req := newProxyRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","stream":true}`))
 	req.Header.Set("Authorization", "Bearer runtime-secret")
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
