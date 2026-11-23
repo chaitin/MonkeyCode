@@ -144,6 +144,7 @@ services:
       MONKEYAI_INITIAL_ADMIN_PASSWORD: ""
     volumes:
       - ./data/runtime:/app/runtime
+      - ./data/license:/app/license:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -18,7 +18,7 @@ MONKEYAI_AES_KEY_FILE ?=
 .PHONY: image image-admin image-backend image-migrate image-nginx-acme push push-admin push-backend push-migrate push-nginx-acme images
 
 LOCKED_COMPONENTS ?= true
-image: image-admin image-backend $(if $(filter true,$(LOCKED_COMPONENTS)),image-migrate image-nginx image-proxy)
+image: image-admin image-backend image-migrate $(if $(filter true,$(LOCKED_COMPONENTS)),image-nginx image-proxy)
 
 image-admin:
 	docker buildx build \
@@ -62,11 +62,15 @@ image-nginx-acme:
 	  ./admin
 	@echo "Nginx ACME image: $(NGINX_ACME_IMAGE)"
 
-push: push-admin push-backend $(if $(filter true,$(LOCKED_COMPONENTS)),push-migrate push-nginx push-proxy)
+push: push-admin push-backend push-migrate $(if $(filter true,$(LOCKED_COMPONENTS)),push-nginx push-proxy)
 
 .PHONY: image-proxy push-proxy
 image-proxy push-proxy:
-	docker buildx build --platform $(PLATFORM) --tag $(PROXY_IMAGE) --file $(PRIVATE_ROOT)/monkeyai/Dockerfile.proxy $(if $(filter push-proxy,$@),--push,--load) $(PRIVATE_ROOT)
+	@test -s "$(MONKEYAI_PUBLIC_KEY_FILE)" && test -s "$(MONKEYAI_AES_KEY_FILE)" || { echo "构建任务代理需要 MONKEYAI_PUBLIC_KEY_FILE 和 MONKEYAI_AES_KEY_FILE" >&2; exit 1; }
+	docker buildx build --platform $(PLATFORM) --tag $(PROXY_IMAGE) --file $(PRIVATE_ROOT)/monkeyai/Dockerfile.proxy \
+	  --secret "id=monkeyai_public_key,src=$(MONKEYAI_PUBLIC_KEY_FILE)" \
+	  --secret "id=monkeyai_aes_key,src=$(MONKEYAI_AES_KEY_FILE)" \
+	  $(if $(filter push-proxy,$@),--push,--load) $(PRIVATE_ROOT)
 
 .PHONY: image-nginx push-nginx
 image-nginx push-nginx:
