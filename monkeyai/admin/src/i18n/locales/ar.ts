@@ -807,6 +807,8 @@ export const ar = {
       memberDisabled: "معطّل",
       makeAdministrator: "تعيين كمسؤول",
       removeAdministrator: "إلغاء صلاحية المسؤول",
+      deleteMember: "حذف العضو",
+      confirmDeleteMember: "هل تريد حذف {{member}} ({{email}})؟ لن يتمكن العضو من تسجيل الدخول بهذا الحساب، وستبقى السجلات السابقة محفوظة.",
       remainingCredits: "{{count}} رصيد متبقٍ",
       joinedAt: "تاريخ الانضمام: {{date}}",
       groupActions: "إجراءات المجموعة",

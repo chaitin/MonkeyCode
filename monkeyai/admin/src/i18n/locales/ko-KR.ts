@@ -816,6 +816,8 @@ export const koKR = {
       memberDisabled: "비활성",
       makeAdministrator: "관리자로 설정",
       removeAdministrator: "관리자 해제",
+      deleteMember: "멤버 삭제",
+      confirmDeleteMember: "{{member}}({{email}}) 님을 삭제하시겠습니까? 이 계정으로 더 이상 로그인할 수 없으며, 기존 기록은 보존됩니다.",
       remainingCredits: "잔여 크레딧 {{count}}",
       joinedAt: "가입일: {{date}}",
       groupActions: "그룹 작업",

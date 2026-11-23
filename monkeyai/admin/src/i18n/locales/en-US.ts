@@ -2179,6 +2179,8 @@ export const enUS = {
       memberDisabled: "Disabled",
       makeAdministrator: "Make administrator",
       removeAdministrator: "Remove administrator",
+      deleteMember: "Delete member",
+      confirmDeleteMember: "Delete {{member}} ({{email}})? They will no longer be able to sign in with this account. Historical records will be retained.",
       remainingCredits: "{{count}} credits remaining",
       joinedAt: "Joined {{date}}",
       groupActions: "Group actions",

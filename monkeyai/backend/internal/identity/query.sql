@@ -319,6 +319,29 @@ WHERE
     id = $1
     AND deleted_at IS NULL;
 
+-- name: LockActiveAdmin :one
+SELECT id FROM users
+WHERE id = $1 AND role = 'admin' AND status = 'active' AND deleted_at IS NULL
+FOR SHARE;
+
+-- name: MarkUserDeleted :one
+UPDATE users SET deleted_at = now(), updated_at = now(), password_hash = NULL
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING lower(email)::text;
+
+-- name: MarkUserIdentitiesDeleted :exec
+UPDATE user_identities SET deleted_at = now(), updated_at = now()
+WHERE user_id = $1 AND deleted_at IS NULL;
+
+-- name: RemoveDeletedUserGroups :exec
+WITH removed AS (
+    UPDATE group_users SET removed_at = now()
+    WHERE user_id = $1 AND removed_at IS NULL
+    RETURNING group_id
+)
+UPDATE groups SET updated_at = now()
+WHERE id IN (SELECT group_id FROM removed) AND deleted_at IS NULL;
+
 -- name: UpdateUser :one
 UPDATE
     users

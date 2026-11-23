@@ -1197,6 +1197,18 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
+const lockActiveAdmin = `-- name: LockActiveAdmin :one
+SELECT id FROM users
+WHERE id = $1 AND role = 'admin' AND status = 'active' AND deleted_at IS NULL
+FOR SHARE
+`
+
+func (q *Queries) LockActiveAdmin(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, lockActiveAdmin, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const lockEmailDelivery = `-- name: LockEmailDelivery :exec
 SELECT pg_advisory_xact_lock(741210)
 `
@@ -1278,6 +1290,29 @@ func (q *Queries) LockUserCreationGroups(ctx context.Context) error {
 	return err
 }
 
+const markUserDeleted = `-- name: MarkUserDeleted :one
+UPDATE users SET deleted_at = now(), updated_at = now(), password_hash = NULL
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING lower(email)::text
+`
+
+func (q *Queries) MarkUserDeleted(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, markUserDeleted, id)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const markUserIdentitiesDeleted = `-- name: MarkUserIdentitiesDeleted :exec
+UPDATE user_identities SET deleted_at = now(), updated_at = now()
+WHERE user_id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) MarkUserIdentitiesDeleted(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, markUserIdentitiesDeleted, userID)
+	return err
+}
+
 const readyEmailCode = `-- name: ReadyEmailCode :exec
 UPDATE email_codes SET ready = true WHERE email = $1 AND purpose = $2 AND code_hash = $3
 `
@@ -1320,6 +1355,21 @@ WHERE
 
 func (q *Queries) RedeemAuthorizationCode(ctx context.Context, id string) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, redeemAuthorizationCode, id)
+}
+
+const removeDeletedUserGroups = `-- name: RemoveDeletedUserGroups :exec
+WITH removed AS (
+    UPDATE group_users SET removed_at = now()
+    WHERE user_id = $1 AND removed_at IS NULL
+    RETURNING group_id
+)
+UPDATE groups SET updated_at = now()
+WHERE id IN (SELECT group_id FROM removed) AND deleted_at IS NULL
+`
+
+func (q *Queries) RemoveDeletedUserGroups(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, removeDeletedUserGroups, userID)
+	return err
 }
 
 const resetAdminPassword = `-- name: ResetAdminPassword :one
