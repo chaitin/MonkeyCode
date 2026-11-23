@@ -105,7 +105,9 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 
 ## 上游文本模型查询
 
-`POST /api/admin/v1/models/discover` 仅供管理员使用，请求提供 `base_url`、文本 `protocol` 和 `api_key`，返回 `{models: [{id}]}`。服务端在 Base URL 路径后拼接 `/models`，例如 `https://provider.example/v1` 查询 `/v1/models`。OpenAI Chat Completions 和 Responses 使用 Bearer 密钥，Anthropic 使用 `x-api-key` 和 `anthropic-version`。
+`POST /api/admin/v1/models/discover` 仅供管理员使用，请求提供 `base_url`、文本 `protocol` 和 `api_key`，返回 `{models: [{id}]}`。OpenAI Chat Completions 和 Responses 使用 Bearer 密钥，Anthropic 使用 `x-api-key` 和 `anthropic-version`。
+
+模型代理、连通性测试和模型发现采用同一套 Base URL 规则：OpenAI 的 Base URL 需包含上游要求的版本路径（如 `https://api.openai.com/v1`）；Anthropic 填写不含 `/v1` 的地址（如 `https://api.anthropic.com`），服务端自动补 `/v1`，再拼接 `/messages` 或 `/models`。已有 `/v1` 后缀的配置继续可用，无需修改。仅提供无版本路径的 Anthropic 兼容网关需要配置对应的 `/v1` 路由。
 
 编辑已有系统文本模型时，可传 `model_resource_id` 并省略或留空 `api_key`，在服务端沿用已保存的密钥。可选 `proxy_id` 使用网络代理，空字符串直连。请求 15 秒超时，不跟随重定向，合并分页、排序去重，最多 2000 个模型及合计 2 MiB 上游响应；错误不透传上游响应正文，接口返回 `Cache-Control: no-store`。前端在名称输入框按钮中打开列表，加载时仅显示一行 spinner，关闭时取消请求，选择后沿用展示名称跟随规则。
 

@@ -10,12 +10,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/llmurl"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -152,7 +152,7 @@ func probeRequest(item Model, message string) (probeUpstream, error) {
 	default:
 		return probeUpstream{}, errors.New("仅支持测试大语言模型协议")
 	}
-	base.Path = path.Join(base.Path, endpoint)
+	base.Path = llmurl.JoinPath(base.Path, endpoint, item.Protocol == ProtocolAnthropic)
 	base.RawPath = ""
 	encoded, err := json.Marshal(body)
 	if err != nil {
