@@ -925,6 +925,7 @@ SELECT
     g.audience,
     g.purpose,
     g.machine_id,
+    g.requested_machine_id,
     g.key_id,
     g.revocation_version
 FROM
@@ -941,23 +942,24 @@ WHERE
 `
 
 type GetTokenUserRow struct {
-	ID                string
-	Name              string
-	Email             string
-	AvatarUrl         string
-	Role              string
-	Status            string
-	JoinedAt          time.Time
-	LastLoginAt       *time.Time
-	AccessExpiresAt   time.Time
-	GrantID           string
-	ClientID          string
-	Scopes            []string
-	Audience          string
-	Purpose           string
-	MachineID         *string
-	KeyID             *string
-	RevocationVersion int64
+	ID                 string
+	Name               string
+	Email              string
+	AvatarUrl          string
+	Role               string
+	Status             string
+	JoinedAt           time.Time
+	LastLoginAt        *time.Time
+	AccessExpiresAt    time.Time
+	GrantID            string
+	ClientID           string
+	Scopes             []string
+	Audience           string
+	Purpose            string
+	MachineID          *string
+	RequestedMachineID *string
+	KeyID              *string
+	RevocationVersion  int64
 }
 
 func (q *Queries) GetTokenUser(ctx context.Context, accessTokenHash string) (GetTokenUserRow, error) {
@@ -979,6 +981,7 @@ func (q *Queries) GetTokenUser(ctx context.Context, accessTokenHash string) (Get
 		&i.Audience,
 		&i.Purpose,
 		&i.MachineID,
+		&i.RequestedMachineID,
 		&i.KeyID,
 		&i.RevocationVersion,
 	)

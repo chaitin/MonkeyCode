@@ -309,6 +309,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
 	agent.Use(rootgroup.Middleware(settings))
+	interactive := agent.With(identity.RequireInteractive)
+	account := agent.With(identity.RequireAccountResources)
 	endpointStore := endpoint.NewPostgres(pool).WithDeviceAuthorizer(identities)
 	var instanceID string
 	for _, registrar := range registrars {
@@ -327,29 +329,32 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	endpoints.RegisterAgent(agent)
 	endpoints.RegisterAdmin(admin)
 	identities.RegisterAgent(agent)
-	group.NewService(pool).RegisterAgent(agent)
-	keys.RegisterAgent(agent)
-	models.RegisterAgent(agent)
-	rules.RegisterAgent(agent)
-	skills.RegisterAgent(agent)
-	experts.RegisterAgent(agent)
-	knowledgeBases.RegisterAgent(agent)
-	store.RegisterSharing(agent, map[string]resource.Shareable{"model": modelRepo, "rule": rules, "skill": skills.CRUD, "connector": connectors.Connectors, "expert": experts.CRUD, "kb": knowledgeBases.CRUD})
+	group.NewService(pool).RegisterAgent(interactive)
+	keys.RegisterAgent(agent.With(identity.RequireGatewayKeys))
+	models.RegisterAgent(account)
+	rules.RegisterAgent(account)
+	skills.RegisterAgent(account)
+	experts.RegisterAgent(account)
+	knowledgeBases.RegisterAgent(account)
+	store.RegisterSharing(account, map[string]resource.Shareable{"model": modelRepo, "rule": rules, "skill": skills.CRUD, "connector": connectors.Connectors, "expert": experts.CRUD, "kb": knowledgeBases.CRUD})
 	settings.RegisterAgent(agent)
-	connectors.RegisterAgent(agent)
-	resources.RegisterAgent(agent)
-	charges.RegisterAgent(agent)
-	feedbacks.RegisterAgent(agent)
+	connectors.RegisterAgent(account)
+	resources.RegisterAgent(account)
+	charges.RegisterAgent(interactive)
+	feedbacks.RegisterAgent(interactive)
 	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
 
 	router.Use(web.New(logger).Middleware)
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
+	requireResource := func(next http.Handler) http.Handler {
+		return identities.RequireAgent(identity.RequireAccountResources(next))
+	}
 	router.With(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("Authorization") != "" {
-				identities.RequireAgent(next).ServeHTTP(w, r)
+				requireResource(next).ServeHTTP(w, r)
 			} else {
 				identities.RequireBrowser(next).ServeHTTP(w, r)
 			}
@@ -357,7 +362,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	}).Get("/api/kb/{id}/assets/{name}", knowledgeBases.ServeAsset)
 	router.NotFound(web.NotFound)
 	router.MethodNotAllowed(web.MethodNotAllowed)
-	designs.RegisterCatalog(router, identities.RequireAgent)
+	designs.RegisterCatalog(router, requireResource)
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
 		WithSessionResolver(sessionResolver).
@@ -444,7 +449,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	}
 	for _, module := range modules {
-		module.RegisterAgent(agent)
+		module.RegisterAgent(interactive)
 		module.RegisterPublic(router)
 		module.RegisterAuth(authRouter)
 	}

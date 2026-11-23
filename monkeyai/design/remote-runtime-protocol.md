@@ -115,7 +115,13 @@ Nginx 提供专用泛域名 TLS server，证书和私钥由部署方只读挂载
 
 ## 7. 独立设备授权
 
-申请：`POST /oauth/device/authorization`，表单 client_id=monkeyai-runtime、machine_id、公钥、display_name、platform、arch、scope。允许 scope 仅 device:bind/device:publish/session:report，默认三项；控制其他设备、账号管理及资源写入均不放行。设备码 32 字节随机值仅存 hash，短码 HMAC 索引；有效期 600 秒，初始轮询 5 秒。
+桌面通过交互登录使用账号已有的资源权限。云电脑和自建 runtime 均用自己的设备码申请委托，不复制桌面 token。先查询 `GET /.well-known/oauth-authorization-server`：启用设备授权时返回 `device_authorization_endpoint` 和 `device_scopes_supported`；不支持 `account:ai-resources` 的服务器不能承诺资源接口对等。
+
+向 `POST /oauth/device/authorization` 提交表单：`client_id=monkeyai-runtime`、`machine_id`、`execution_public_key`、`display_name`、`platform`、`arch` 和空格分隔的 `scope`。默认申请 `account:ai-resources device:bind device:publish session:report`；显式列表不补齐。设备码有效期 600 秒，初始轮询间隔 5 秒。
+
+`account:ai-resources` 允许设备使用桌面相同的资源 HTTP 接口，包括创建、修改和共享账号有权管理的资源；不授予新库权限、账号管理或控制其他机器的能力。`resources:manage` 是远程控制目标设备配置的权限，不能替代它。OAuth 资源请求使用 access token；`/mcp/kb` 仍使用设备派生的 `mcp:invoke` 网关密钥，并由知识库检查账号权限。
+
+旧设备：检查兑换或刷新响应中实际批准的 `scope`。缺少资源委托时，账号资源接口返回 403；刷新不扩权。使用原 machine_id 和原公钥重新走设备码申请、同意、兑换和独立发布，再创建网关密钥；不要清空设备身份或改用桌面凭据。新授权接管后旧授权及其密钥失效。云电脑自动批准只接受经环境控制操作核验的身份和固定四项权限；兼容显式请求旧三项的宿主，但不会给它追加资源权限。已撤销设备不能自动恢复。
 
 用户打开 `/device` 输入短码，或访问 verification_uri_complete。查询使用 `/api/auth/v1/client-requests/device?purpose=device&user_code=...`，SSO 使用 purpose=device 和独立 device_request_id 返回同一申请。确认页展示设备、公钥指纹、账号、权限和有效期，不回传 device_code。
 
@@ -127,7 +133,7 @@ Nginx 提供专用泛域名 TLS server，证书和私钥由部署方只读挂载
 
 独立发布 hello 使用 deployment_mode=standalone。原托管进程停止并释放在线租约后，同公钥、同 machine 的新独立授权可接管；旧 Desktop 用户授权保留，原会话不复制。同机重新授权替换旧专用执行授权，并撤销其调用密钥。活跃不同 boot 仍优先，不能自动抢占。
 
-独立调用密钥带 machine_id/runtime_grant_id。创建要求当前活动独立执行授权，列表、轮换和删除限定该授权族；网关逐次检查授权与活动设备绑定。退出、移除独立登记或替换授权会使密钥立即不可用，并同步或周期保存撤销标记；托管关闭远程不影响 Desktop 调用密钥。
+独立调用密钥带 machine_id/runtime_grant_id。签发要求当前已绑定的活动授权同时包含 `device:publish` 和 `account:ai-resources`；网关逐次检查资源委托、授权有效性与活动设备绑定。只批准发布不能经 MCP 绕过资源委托。旧三项授权的网关密钥不可继续使用，升级流程见上文。列表、轮换和删除限定该授权族；退出、移除独立登记或替换授权使派生密钥失效，但不影响其他设备和桌面的调用密钥。
 
 ## 8. 本人会话目录
 

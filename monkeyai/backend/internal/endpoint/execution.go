@@ -25,6 +25,7 @@ type DeviceAuthorizer interface {
 	BindDevice(context.Context, pgx.Tx, identity.Principal, string, string) (bool, error)
 	ConsumeRuntimeRestore(context.Context, pgx.Tx, identity.Principal) (bool, error)
 	RevokeRuntimeGrant(context.Context, pgx.Tx, string, string, string) (bool, error)
+	RevokeDeviceGrants(context.Context, pgx.Tx, string, string, string) ([]string, error)
 	NotifyGrantRevoked(string)
 	AuthorizeDevice(context.Context, pgx.Tx, identity.Principal, string) (bool, error)
 }
@@ -275,7 +276,7 @@ func (e *Execution) AuthenticateHost(ctx context.Context, tx pgx.Tx, p identity.
 		return false, err
 	}
 	scope := ""
-	if len(p.Scopes) > 0 {
+	if p.Purpose == "runtime" || len(p.Scopes) > 0 {
 		if !p.Has("session:report") {
 			return false, executionFailure(http.StatusForbidden, "permission_denied")
 		}
@@ -337,10 +338,9 @@ func (e *Execution) Revoke(ctx context.Context, p identity.Principal, machineID 
 	if old.RegistrationVersion != version && !(old.RemoteAccessState == "revoked" && old.RegistrationVersion == version+1) {
 		return ExecutionState{}, executionFailure(http.StatusPreconditionFailed, "device_registration_changed")
 	}
-	if old.DeploymentMode != nil && *old.DeploymentMode == "standalone" && old.ActiveGrantID != nil {
-		if _, err := e.auth.RevokeRuntimeGrant(ctx, tx, p.UserID, machineID, *old.ActiveGrantID); err != nil {
-			return ExecutionState{}, err
-		}
+	revoked, err := e.auth.RevokeDeviceGrants(ctx, tx, p.UserID, machineID, "device_revoked")
+	if err != nil {
+		return ExecutionState{}, err
 	}
 	row, err := q.RevokeExecution(ctx, sqlc.RevokeExecutionParams{UserID: p.UserID, MachineID: machineID})
 	if err != nil {
@@ -355,8 +355,8 @@ func (e *Execution) Revoke(ctx context.Context, p identity.Principal, machineID 
 	if err := tx.Commit(ctx); err != nil {
 		return ExecutionState{}, err
 	}
-	if old.DeploymentMode != nil && *old.DeploymentMode == "standalone" && old.ActiveGrantID != nil {
-		e.auth.NotifyGrantRevoked(*old.ActiveGrantID)
+	for _, id := range revoked {
+		e.auth.NotifyGrantRevoked(id)
 	}
 	return executionState(row), nil
 }

@@ -411,8 +411,8 @@ user 搜索条件过长	The user search query is too long.
 清理批次大小无效	The cleanup batch size is invalid.
 父会话属于其他用户	The parent session belongs to another user.
 父会话已删除	The parent session has been deleted.
-独立执行授权仅限本设备执行和上报	Standalone execution authorization is limited to execution and reporting on this device.
-独立执行授权只能访问本机执行接口	Standalone execution authorization can only access this device's execution endpoints.
+设备不能申请此权限	Devices cannot request this permission.
+此委托权限仅用于设备授权	This delegated permission is only available through device authorization.
 独立认证连接由凭证所有者测试	Connections with independent authentication must be tested by the credential owner.
 生图任务参数无效	The image generation task parameters are invalid.
 生图任务状态已变化，请重新核查	The image task state has changed. Please review it again.

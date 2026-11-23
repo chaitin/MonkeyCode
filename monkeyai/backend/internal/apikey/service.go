@@ -80,7 +80,7 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateInput) 
 	}
 	p, authenticated := identity.PrincipalFromContext(ctx)
 	if authenticated && p.Purpose == "runtime" {
-		if p.UserID != userID || p.MachineID == "" || !p.Has("device:publish") {
+		if p.UserID != userID || !p.CanIssueRuntimeKey() {
 			return CreatedKey{}, ErrInvalidKey
 		}
 		key.MachineID, key.RuntimeGrantID = new(p.MachineID), new(p.GrantID)

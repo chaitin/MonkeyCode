@@ -5,6 +5,7 @@ WHERE sqlc.narg(runtime_grant_id)::uuid IS NULL OR EXISTS (
     SELECT 1 FROM oauth_grants g JOIN endpoints e ON e.user_id=g.user_id AND e.machine_id=g.machine_id
     WHERE g.id=sqlc.narg(runtime_grant_id)::uuid AND g.user_id=$1 AND g.machine_id=sqlc.narg(machine_id)::uuid
         AND g.purpose='runtime' AND g.revoked_at IS NULL AND g.expires_at>now()
+        AND 'account:ai-resources'=ANY(g.scopes)
         AND e.active_grant_id=g.id AND e.deployment_mode='standalone' AND e.remote_access_state='enabled'
 )
 RETURNING *;
@@ -24,6 +25,7 @@ WHERE
     AND (k.runtime_grant_id IS NULL OR EXISTS (
         SELECT 1 FROM oauth_grants g JOIN endpoints e ON e.user_id=g.user_id AND e.machine_id=g.machine_id
         WHERE g.id=k.runtime_grant_id AND g.user_id=k.user_id AND g.machine_id=k.machine_id AND g.purpose='runtime'
+            AND 'account:ai-resources'=ANY(g.scopes)
             AND g.revoked_at IS NULL AND g.expires_at>now() AND e.active_grant_id=g.id
             AND e.remote_access_state='enabled' AND e.deployment_mode='standalone'))
     AND u.status = 'active'

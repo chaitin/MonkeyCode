@@ -26,10 +26,11 @@ import (
 
 func (s *Service) RegisterAgent(router chi.Router) {
 	router.Route("/endpoints", func(r chi.Router) {
+		r.Put("/{machine}", s.register)
+		r = r.With(identity.RequireInteractive)
 		r.Get("/connect", s.connect)
 		r.Get("/", s.list)
 		r.Get("/{machine}", s.get)
-		r.Put("/{machine}", s.register)
 		r.Patch("/{machine}", func(w http.ResponseWriter, r *http.Request) { s.update(w, r, "rename") })
 		r.Post("/{machine}/revoke", func(w http.ResponseWriter, r *http.Request) { s.update(w, r, "revoke") })
 		r.Post("/{machine}/restore", func(w http.ResponseWriter, r *http.Request) { s.update(w, r, "restore") })

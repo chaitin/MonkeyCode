@@ -50,9 +50,9 @@ func (s *Service) ApproveRuntime(ctx context.Context, tx pgx.Tx, user, machine s
 	}
 	scopes := slices.Clone(request.RequestedScopes)
 	slices.Sort(scopes)
-	expected := slices.Clone(runtimeScopes)
-	slices.Sort(expected)
-	if request.ClientID != RuntimeClientID || request.MachineID != machine || !bytes.Equal(request.ExecutionPublicKey, public) || request.Platform != "linux" || !slices.Equal(scopes, expected) || request.RestoreRevoked || !s.now().Before(request.ExpiresAt) {
+	// 兼容显式申请旧三项权限的宿主，但绝不代它追加资源委托。
+	validScopes := slices.Equal(scopes, runtimeScopes) || slices.Equal(scopes, []string{"device:bind", "device:publish", "session:report"})
+	if request.ClientID != RuntimeClientID || request.MachineID != machine || !bytes.Equal(request.ExecutionPublicKey, public) || request.Platform != "linux" || !validScopes || request.RestoreRevoked || !s.now().Before(request.ExpiresAt) {
 		return "", errors.New("设备申请与云环境身份不符")
 	}
 	if _, err = q.LockDeviceOwner(ctx, user); err != nil {
@@ -86,8 +86,12 @@ func (s *Service) ApproveRuntime(ctx context.Context, tx pgx.Tx, user, machine s
 }
 
 func (s *Service) RevokeRuntime(ctx context.Context, tx pgx.Tx, user, machine string) ([]string, error) {
+	return s.RevokeDeviceGrants(ctx, tx, user, machine, "environment_deleted")
+}
+
+func (s *Service) RevokeDeviceGrants(ctx context.Context, tx pgx.Tx, user, machine, reason string) ([]string, error) {
 	q := sqlc.New(tx)
-	ids, err := q.RevokeRuntimeMachine(ctx, sqlc.RevokeRuntimeMachineParams{UserID: user, MachineID: &machine})
+	ids, err := q.RevokeRuntimeMachine(ctx, sqlc.RevokeRuntimeMachineParams{UserID: user, MachineID: &machine, Reason: reason})
 	if err != nil {
 		return nil, err
 	}

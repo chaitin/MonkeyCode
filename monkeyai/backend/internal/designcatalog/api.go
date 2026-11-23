@@ -237,7 +237,8 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 		controlError(w, r, fault(401, "unauthorized", "尚未认证"))
 		return
 	}
-	if s.devices == nil || input.MachineID == "" {
+	p, _ := identity.PrincipalFromContext(r.Context())
+	if s.devices == nil || input.MachineID == "" || (p.Purpose == "runtime" || p.MachineID != "") && input.MachineID != p.MachineID {
 		controlError(w, r, fault(403, "forbidden", "设备不属于当前用户"))
 		return
 	}
