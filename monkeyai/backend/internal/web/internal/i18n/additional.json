@@ -10,6 +10,7 @@
   "authorization_pending": {"zh-CN":"等待用户确认授权。","en-US":"Waiting for the user to approve authorization."},
   "authorization_state_unavailable": {"zh-CN":"授权状态暂不可用，请稍后重试。","en-US":"Authorization state is temporarily unavailable. Please try again later."},
   "baizhiyun_identity_required": {"zh-CN":"请通过百智云登录后使用系统资源。","en-US":"Sign in through Baizhiyun to use system resources in this billing mode."},
+  "cannot_delete_self": {"zh-CN":"不能删除自己的账号。","en-US":"You cannot delete your own account."},
   "cannot_disable_self": {"zh-CN":"不能停用自己或移除自己的管理员角色。","en-US":"You cannot disable yourself or remove your own administrator role."},
   "capabilities_unavailable": {"zh-CN":"功能策略暂不可用。","en-US":"The capability policy is temporarily unavailable."},
   "clock_sync_unavailable": {"zh-CN":"授时参考不可用。","en-US":"The clock synchronization reference is unavailable."},
