@@ -237,7 +237,7 @@ try {
       input.dispatchEvent(new Event("input", { bubbles: true }))
     }, value)
   }
-  await page.goto("http://admin.test/console/settings/members")
+  await page.goto("http://admin.test/admin/settings/members")
   await exists(card(0))
   await exists(groupButton("a"))
   const initial = await assertBounded()

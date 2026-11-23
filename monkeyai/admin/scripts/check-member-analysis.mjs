@@ -11,7 +11,7 @@ const baseURL = process.env.ADMIN_DEV_URL || "http://admin.test"
 const dist = fileURLToPath(new URL("../dist/", import.meta.url))
 const prefix = "/api/admin/v1/statistics/session-reporting/members/"
 const overviewPath = `${prefix}overview`
-const memberPath = "/console/statistics/members"
+const memberPath = "/admin/statistics/members"
 const modelOverviewPath = "/api/admin/v1/statistics/models/overview"
 const messageModels = [
   ["GPT-5.2", 93],
@@ -29,8 +29,8 @@ const messageModels = [
   name,
   messages,
 }))
-const taskPath = "/console/statistics/task-history"
-const conversationPath = "/console/statistics/conversation-history"
+const taskPath = "/admin/statistics/task-history"
+const conversationPath = "/admin/statistics/conversation-history"
 const users = [
   {
     id: "00000000-0000-4000-8000-000000000001",
@@ -548,7 +548,7 @@ try {
     for (const [label, destination, api] of [
       ["会话数", taskPath, "/api/admin/v1/statistics/history"],
       ["消息数", conversationPath, "/api/admin/v1/statistics/conversations"],
-      ["消耗积分", "/console/billing/details", "/api/admin/v1/billing/entries"],
+      ["消耗积分", "/admin/billing/details", "/api/admin/v1/billing/entries"],
     ]) {
       const card = root.getByRole("group", { name: label, exact: true }),
         link = card.getByRole("link", { name: label, exact: true }),
@@ -676,7 +676,7 @@ try {
     }
     // Model analysis only requests model statistics; user/session cards live on their own pages.
     overviewRequests.length = 0
-    await page.goto(`${baseURL}/console/statistics/models`)
+    await page.goto(`${baseURL}/admin/statistics/models`)
     const loadingDistribution = page.getByRole("region", {
       name: "模型使用分布",
       exact: true,

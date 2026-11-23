@@ -159,7 +159,7 @@ try {
     })
   })
 
-  await page.goto("http://admin.test/console/resources/kb", {
+  await page.goto("http://admin.test/admin/resources/kb", {
     waitUntil: "networkidle",
   })
   await page.getByText("测试知识库", { exact: true }).click()

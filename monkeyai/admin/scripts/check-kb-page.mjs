@@ -149,7 +149,7 @@ try {
     })
   })
 
-  await page.goto("http://admin.test/console/resources/kb", {
+  await page.goto("http://admin.test/admin/resources/kb", {
     waitUntil: "networkidle",
   })
   await page.getByText("测试知识库", { exact: true }).click()
@@ -212,7 +212,7 @@ try {
   // Keep A pending, switch to B, then deliver A after B has rendered.
   checkStaleDocuments = true
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.goto("http://admin.test/console/resources/kb", {
+  await page.goto("http://admin.test/admin/resources/kb", {
     waitUntil: "networkidle",
   })
   const firstRequest = new Promise((resolve) => { documentRequested = resolve })

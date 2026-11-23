@@ -246,7 +246,7 @@ try {
         "/monkeyai-logo.webp"
       )
       authenticated = true
-      await go("/console/settings/other")
+      await go("/admin/settings/other")
       await preview().waitFor()
       await expectLogo("")
       const trigger = page.locator("#brand-logo-upload")

@@ -188,7 +188,7 @@ try {
           body: await readFile(file),
         })
       })
-      await page.goto("http://expert.test/console/resources/experts")
+      await page.goto("http://expert.test/admin/resources/experts")
       await page.getByTitle("普通专家", { exact: true }).waitFor()
       await page.evaluate(
         (dark) => document.documentElement.classList.toggle("dark", dark),

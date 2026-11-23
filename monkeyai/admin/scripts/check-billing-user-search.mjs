@@ -213,7 +213,7 @@ try {
     }
     try {
       await page.goto(
-        "http://monkeyai.test/console/billing/details?view=entries&page=3"
+        "http://monkeyai.test/admin/billing/details?view=entries&page=3"
       )
       await ready()
       const before = entries.length

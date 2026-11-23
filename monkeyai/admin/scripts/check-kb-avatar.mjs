@@ -186,7 +186,7 @@ try {
     })
   })
 
-  await page.goto("http://admin.test/console/resources/kb", {
+  await page.goto("http://admin.test/admin/resources/kb", {
     waitUntil: "networkidle",
   })
   await page.locator('img[src$="/avatar"]').first().waitFor()
@@ -221,7 +221,7 @@ try {
     .click()
   await page.getByRole("dialog").waitFor({ state: "hidden" })
   assert.equal((await page.evaluate(() => window.__avatarWrites)).length, 1)
-  await page.goto("http://admin.test/console/resources/kb", {
+  await page.goto("http://admin.test/admin/resources/kb", {
     waitUntil: "networkidle",
   })
   await page.getByRole("button", { name: "创建知识库", exact: true }).click()

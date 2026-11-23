@@ -925,7 +925,7 @@ export function BillingSettingsPage() {
                     <Button
                       nativeButton={false}
                       variant="secondary"
-                      render={<Link to="/console/resources/models" />}
+                      render={<Link to={CONSOLE_ROUTES.models} />}
                     >
                       {t("pages.billingSettings.modelPricing.manageMultiplier")}
                       <HugeiconsIcon
@@ -951,7 +951,7 @@ export function BillingSettingsPage() {
               <CardContent>
                 <Button
                   variant="secondary"
-                  render={<Link to="/console/resources/tools" />}
+                  render={<Link to={CONSOLE_ROUTES.tools} />}
                   nativeButton={false}
                 >
                   {t("pages.billingSettings.toolPricing.manage")}

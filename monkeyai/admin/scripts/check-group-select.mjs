@@ -195,7 +195,7 @@ try {
       })
     })
     try {
-      await page.goto("http://group-select.test/console/resources/models")
+      await page.goto("http://group-select.test/admin/resources/models")
       await page.waitForFunction(() =>
         document.querySelector('[data-slot="dialog-trigger"]')
       )
@@ -498,7 +498,7 @@ try {
         memberID(3),
       ])
       if (config.size === 1000 && config.width === 1440) {
-        await page.goto("http://group-select.test/console/settings/members")
+        await page.goto("http://group-select.test/admin/settings/members")
         await page.waitForFunction(() =>
           document.querySelector(
             '[data-virtual-key="group:g000"] button[aria-haspopup="menu"]'

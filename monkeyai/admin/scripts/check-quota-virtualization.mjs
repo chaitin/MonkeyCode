@@ -256,7 +256,7 @@ try {
       { selector: search, value }
     )
   }
-  await page.goto("http://admin.test/console/billing/settings")
+  await page.goto("http://admin.test/admin/billing/settings")
   await exists(row(0))
   const initial = await bounded()
   assert.equal(await page.getAttribute(row(0), "aria-setsize"), String(size))

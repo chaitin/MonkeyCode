@@ -16,7 +16,7 @@ import {
 const executablePath = process.env.CHROME_BIN
 if (!executablePath) throw new Error("请设置 CHROME_BIN；先执行 npm run build")
 const dist = fileURLToPath(new URL("../dist/", import.meta.url))
-const routePath = "/console/statistics/sessions"
+const routePath = "/admin/statistics/sessions"
 const overviewPath =
   "/api/admin/v1/statistics/session-reporting/sessions/overview"
 const now = new Date("2026-11-03T12:00:00Z")

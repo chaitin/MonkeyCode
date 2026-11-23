@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
+import { NavLink, Outlet, useLocation, useMatch, useNavigate } from "react-router-dom"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AppSidebar } from "@/components/app-sidebar"
@@ -50,7 +50,7 @@ function DashboardContent() {
   const currentPage = getConsolePage(location.pathname) ?? CONSOLE_PAGES[0]
   const { branding } = useBranding()
   const productName = branding.product_name
-  const kbId = location.pathname.match(/^\/console\/resources\/kb\/([^/]+)/)?.[1]
+  const kbId = useMatch(`${CONSOLE_ROUTES.kb}/:kbId/*`)?.params.kbId
   const [kbName, setKbName] = useState("")
 
   useEffect(() => {

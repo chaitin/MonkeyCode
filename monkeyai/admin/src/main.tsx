@@ -9,7 +9,6 @@ import App from "./App.tsx"
 import { AnimatedToastProvider } from "@/components/animated-toast-provider"
 import { BrandingProvider } from "@/components/branding-provider"
 import { AuthProvider } from "@/components/auth-provider"
-import { SkillTagsProvider } from "@/components/skill-tags-provider"
 import { ThemeProvider } from "@/components/theme-provider.tsx"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
@@ -19,11 +18,9 @@ function Application() {
       <ThemeProvider>
         <BrandingProvider>
           <AnimatedToastProvider>
-            <SkillTagsProvider>
-              <TooltipProvider>
-                <App />
-              </TooltipProvider>
-            </SkillTagsProvider>
+            <TooltipProvider>
+              <App />
+            </TooltipProvider>
           </AnimatedToastProvider>
         </BrandingProvider>
       </ThemeProvider>

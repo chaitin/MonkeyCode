@@ -142,7 +142,7 @@ try {
   assert.equal(new Set(ids).size, 50)
 
   authenticated = true
-  await page.goto(`${baseURL}/console/billing/details`)
+  await page.goto(`${baseURL}/admin/billing/details`)
   await page.waitForFunction(
     () => document.querySelectorAll("tbody tr").length === 3
   )
@@ -238,7 +238,7 @@ try {
   )
 
   await page.evaluate(() => document.querySelector("#compat-has").remove())
-  await page.goto(`${baseURL}/console/statistics/clients`)
+  await page.goto(`${baseURL}/admin/statistics/clients`)
   await page.waitForFunction(() =>
     document.querySelector('[role="figure"][data-container-wide]')
   )
@@ -311,7 +311,7 @@ try {
     )
   )
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.goto(`${baseURL}/console/settings/other`)
+  await page.goto(`${baseURL}/admin/settings/other`)
   await page.waitForFunction(() =>
     document.querySelector('[role="switch"][aria-label="使用密码登录"]')
   )

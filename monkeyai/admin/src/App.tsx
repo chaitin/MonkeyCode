@@ -2,12 +2,16 @@ import { lazy, Suspense, useEffect } from "react"
 import { CloudHostsPage } from "@/pages/cloud-hosts-page"
 import { DirectionProvider } from "@base-ui/react/direction-provider"
 import { useTranslation } from "react-i18next"
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom"
+import { Navigate, Outlet, Route, Routes, useLocation, useMatch } from "react-router-dom"
 
+import { ClientPage } from "@/pages/client-page"
+import { SkillTagsProvider } from "@/components/skill-tags-provider"
+import { useBranding } from "@/hooks/use-branding"
 import { Dashboard } from "@/components/dashboard"
 import { LicenseGuard } from "@/components/license-guard"
 import { useAuth } from "@/hooks/use-auth"
 import {
+  CLIENT_ROUTE,
   CONSOLE_PAGES,
   CONSOLE_PATH,
   CONSOLE_ROUTES,
@@ -65,7 +69,9 @@ function RequireAuth() {
 
   return (
     <LicenseGuard>
-      <Outlet />
+      <SkillTagsProvider>
+        <Outlet />
+      </SkillTagsProvider>
     </LicenseGuard>
   )
 }
@@ -85,11 +91,16 @@ export function App() {
   const { i18n, t } = useTranslation()
   const location = useLocation()
 
+  const isClient = useMatch(CLIENT_ROUTE) !== null
+  const { branding } = useBranding()
+
   useEffect(() => {
-    if (location.pathname !== LOGIN_PATH && location.pathname !== "/") {
+    if (isClient) {
+      document.title = branding.product_name
+    } else if (location.pathname !== LOGIN_PATH && location.pathname !== "/") {
       document.title = t("app.documentTitle")
     }
-  }, [location.pathname, t])
+  }, [branding.product_name, isClient, location.pathname, t])
 
   return (
     <DirectionProvider direction={i18n.dir()}>
@@ -98,6 +109,7 @@ export function App() {
         <Route path={LOGIN_PATH} element={<LoginPage />} />
         <Route path="/device" element={<DeviceAuthorizationPage />} />
         <Route path="/client-login" element={<ClientLoginPage />} />
+        <Route path={CLIENT_ROUTE} element={<ClientPage />} />
         <Route element={<RequireAuth />}>
           <Route path={CONSOLE_PATH} element={<Dashboard />}>
             <Route

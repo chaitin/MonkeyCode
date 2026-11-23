@@ -19,7 +19,7 @@ const from = "2026-10-01T00:00:00.000Z",
 const configurations = [
   {
     name: "audit",
-    route: "/console/settings/operation-logs",
+    route: "/admin/settings/operation-logs",
     api: "/api/admin/v1/audits",
     filters: {
       actor_user_id: id,
@@ -36,13 +36,13 @@ const configurations = [
   },
   {
     name: "feedback",
-    route: "/console/settings/feedback",
+    route: "/admin/settings/feedback",
     api: "/api/admin/v1/feedback",
     filters: { category: "bug", state: "new" },
   },
   {
     name: "billing",
-    route: "/console/billing/details",
+    route: "/admin/billing/details",
     api: "/api/admin/v1/billing/entries",
     filters: {
       view: "entries",
@@ -60,7 +60,7 @@ const configurations = [
   },
   {
     name: "conversation",
-    route: "/console/statistics/conversation-history",
+    route: "/admin/statistics/conversation-history",
     api: "/api/admin/v1/statistics/conversations",
     filters: {
       task: "任务 + &",
@@ -77,7 +77,7 @@ const configurations = [
   },
   {
     name: "task",
-    route: "/console/statistics/task-history",
+    route: "/admin/statistics/task-history",
     api: "/api/admin/v1/statistics/history",
     filters: { task: "任务 + &", user_id: id, from, until },
     textKey: "task",

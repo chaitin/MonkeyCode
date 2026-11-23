@@ -77,7 +77,7 @@ test("billing settings use equal left and right columns on desktop", async () =>
   assert.match(right, /pages\.billingSettings\.toolPricing\.manage/)
   assert.match(
     right,
-    /<Button\s+variant="secondary"\s+render=\{<Link to="\/console\/resources\/tools" \/>\}/
+    /<Button\s+variant="secondary"\s+render=\{<Link to=\{CONSOLE_ROUTES\.tools\} \/>\}/
   )
   assert.match(right, /icon=\{LinkSquare02Icon\}\s+data-icon="inline-end"/)
   assert.ok(
@@ -423,7 +423,7 @@ test("model pricing uses configurable items instead of inline inputs", async () 
   assert.doesNotMatch(modelCard, /<CardAction>/)
   assert.match(
     modelCard,
-    /variant="secondary"\s+render=\{<Link to="\/console\/resources\/models" \/>\}/
+    /variant="secondary"\s+render=\{<Link to=\{CONSOLE_ROUTES\.models\} \/>\}/
   )
   assert.match(modelCard, /modelPricing\.manageMultiplier/)
   assert.match(modelCard, /icon=\{LinkSquare02Icon\}\s+data-icon="inline-end"/)

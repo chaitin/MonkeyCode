@@ -304,7 +304,7 @@ try {
         body: await readFile(file),
       })
     })
-    await page.goto("http://connector.test/console/resources/tools")
+    await page.goto("http://connector.test/admin/resources/tools")
     if (process.env.DARK === "1")
       await page.evaluate(() => document.documentElement.classList.add("dark"))
     const dialog = () =>

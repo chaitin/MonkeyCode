@@ -200,7 +200,7 @@ try {
           await response
         }
         await page.goto(
-          `http://history.test/console/statistics/${kind}-history`
+          `http://history.test/admin/statistics/${kind}-history`
         )
         await page.waitForFunction(
           (selector) => document.querySelector(selector),

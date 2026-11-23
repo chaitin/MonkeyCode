@@ -179,7 +179,7 @@ ticket 有效期 15 分钟；按响应 expires_in 提前串行续期，携带原
 
 宿主列表 `GET /api/admin/v1/engine-hosts` 每项返回 `environment_count`，统计该宿主尚未确认删除的环境，包含停止、失败及删除中的环境；已撤销或离线的宿主仍按服务端记录计数。计数与默认 `status=active` 的环境列表一致，不从宿主心跳估算。
 
-点击宿主的环境数进入 `/console/environments/instances?host_id=<uuid>&host_name=<name>`。管理端环境列表支持可选 `host_id`，按宿主筛选后再执行状态筛选、资源排序和分页；不存在的宿主返回空列表，无效或重复的UUID返回400。页面显示当前宿主，可清除该筛选，且刷新、排序、分页及详情操作保留宿主条件。客户端本人环境接口的权限和范围保持原有约束。
+点击宿主的环境数进入 `/admin/environments/instances?host_id=<uuid>&host_name=<name>`。管理端环境列表支持可选 `host_id`，按宿主筛选后再执行状态筛选、资源排序和分页；不存在的宿主返回空列表，无效或重复的UUID返回400。页面显示当前宿主，可清除该筛选，且刷新、排序、分页及详情操作保留宿主条件。客户端本人环境接口的权限和范围保持原有约束。
 
 ## 独立 runtime 更新
 

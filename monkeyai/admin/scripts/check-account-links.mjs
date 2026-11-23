@@ -14,9 +14,9 @@ const dist = fileURLToPath(new URL("../dist/", import.meta.url))
 const user = "00000000-0000-4000-8000-000000000001",
   other = "00000000-0000-4000-8000-000000000002"
 const history = "/api/admin/v1/statistics/history"
-const taskPath = "/console/statistics/task-history",
-  clientPath = "/console/statistics/clients",
-  memberPath = "/console/statistics/members"
+const taskPath = "/admin/statistics/task-history",
+  clientPath = "/admin/statistics/clients",
+  memberPath = "/admin/statistics/members"
 const memberAPI = "/api/admin/v1/statistics/session-reporting/members"
 const at = "2026-10-01T00:00:00Z"
 const tasks = [user, user, other].map((owner, i) => ({

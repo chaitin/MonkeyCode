@@ -147,7 +147,7 @@ try {
         })
       })
 
-      await page.goto("http://member.test/console/settings/members")
+      await page.goto("http://member.test/admin/settings/members")
       await page.evaluate(
         (dark) => document.documentElement.classList.toggle("dark", dark),
         dark

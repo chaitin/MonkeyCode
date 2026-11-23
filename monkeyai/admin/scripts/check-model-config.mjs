@@ -520,7 +520,7 @@ try {
       })
     })
     try {
-      await page.goto("http://advanced.test/console/resources/models")
+      await page.goto("http://advanced.test/admin/resources/models")
       if (scenario.edit) {
         await page.waitForFunction(() =>
           document.querySelector('[data-slot="card"] button[aria-label="更多"]')

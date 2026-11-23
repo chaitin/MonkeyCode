@@ -62,7 +62,7 @@ try {
         host.id = "fixture-renewed-" + enrollments.length
         await route.fulfill({ json: { host_id: host.id, version: host.version, command, expires_at: new Date(Date.now() + 1800000).toISOString() } })
       })
-      await page.goto(base + "/console/environments/cloud-hosts")
+      await page.goto(base + "/admin/environments/cloud-hosts")
       await page.getByRole("button", { name: "开发宿主机", exact: true }).click()
       const details = page.getByRole("dialog", { name: "宿主机详情", exact: true })
       const footer = details.locator('[data-slot="dialog-footer"]')

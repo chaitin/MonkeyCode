@@ -25,7 +25,7 @@ test("paid license card is last in other settings without a standalone page", as
     source("src/components/app-sidebar.tsx"),
   ])
   assert.match(settings, /<PaidLicenseCard className="order-6" \/>/)
-  assert.doesNotMatch(routes, /license: "\/console\/settings\/license"/)
+  assert.doesNotMatch(routes, /^\s*license:/m)
   assert.doesNotMatch(app, /<LicensePage \/>/)
   assert.doesNotMatch(sidebar, /pages\.license\.title/)
 })

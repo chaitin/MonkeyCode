@@ -193,8 +193,8 @@ try {
     })
   })
 
-  const url = `http://admin.test/console/resources/kb/${kbId}/documents/${documentId}`
-  await page.goto("http://admin.test/console/resources/kb", {
+  const url = `http://admin.test/admin/resources/kb/${kbId}/documents/${documentId}`
+  await page.goto("http://admin.test/admin/resources/kb", {
     waitUntil: "networkidle",
   })
   await page.getByText("测试知识库", { exact: true }).click()
@@ -332,7 +332,7 @@ try {
 
   // Router navigation must preserve a draft when discard is declined.
   await page.getByRole("button", { name: "资源管理", exact: true }).click()
-  const modelsLink = page.locator('a[href="/console/resources/models"]').first()
+  const modelsLink = page.locator('a[href="/admin/resources/models"]').first()
   await confirmNavigation(() => modelsLink.click())
   assert.equal(page.url(), url)
   assert.equal(await title.inputValue(), "保存失败保留草稿")
@@ -354,7 +354,7 @@ try {
   await title.fill("确认放弃的草稿")
   await page.getByRole("button", { name: "资源管理", exact: true }).click()
   await confirmNavigation(() => modelsLink.click(), true)
-  await page.waitForURL("**/console/resources/models")
+  await page.waitForURL("**/admin/resources/models")
 
   ownership = "user"
   await page.goto(url, { waitUntil: "networkidle" })

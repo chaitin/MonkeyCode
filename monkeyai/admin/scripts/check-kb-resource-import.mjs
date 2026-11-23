@@ -45,7 +45,7 @@ try {
     const file = exists ? candidate : path.join(dist, "index.html")
     return route.fulfill({ body: await readFile(file), contentType: ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".woff2": "font/woff2" })[path.extname(file)] || "application/octet-stream" })
   })
-  await page.goto("http://admin.test/console/resources/imports")
+  await page.goto("http://admin.test/admin/resources/imports")
   await page.getByRole("button", { name: "继续确认", exact: true }).click()
   await page.getByRole("checkbox", { name: /知识库/ }).first().waitFor()
   await page.getByRole("button", { name: "解析并预览", exact: true }).click()
