@@ -25,13 +25,17 @@ type DeviceAuthorizer interface {
 	BindDevice(context.Context, pgx.Tx, identity.Principal, string, string) (bool, error)
 	ConsumeRuntimeRestore(context.Context, pgx.Tx, identity.Principal) (bool, error)
 	RevokeRuntimeGrant(context.Context, pgx.Tx, string, string, string) (bool, error)
+	RevokeDeviceGrants(context.Context, pgx.Tx, string, string, string) ([]string, error)
 	NotifyGrantRevoked(string)
 	AuthorizeDevice(context.Context, pgx.Tx, identity.Principal, string) (bool, error)
 }
 
+func (e *Execution) WithNames(r nameReader) { e.names = r }
+
 type Execution struct {
-	pool *pgxpool.Pool
-	auth DeviceAuthorizer
+	names nameReader
+	pool  *pgxpool.Pool
+	auth  DeviceAuthorizer
 }
 
 func NewExecution(pool *pgxpool.Pool, auth DeviceAuthorizer) *Execution {
@@ -108,7 +112,7 @@ func (e *Execution) Snapshot(ctx context.Context, userID string, executeOnly boo
 	if err != nil {
 		return nil, err
 	}
-	names, err := cloudNames(ctx, sqlc.New(e.pool), userID, rows)
+	names, err := e.names.lookup(ctx, e.pool, userID, rows)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +166,8 @@ func (e *Execution) Enroll(ctx context.Context, p identity.Principal, in Enrollm
 		return ExecutionState{}, executionFailure(http.StatusBadRequest, "invalid_request")
 	}
 	managed := p.ClientID == "monkeyai-desktop" && p.Purpose == "user" && in.DeploymentMode == "desktop_managed"
-	standalone := p.ClientID == identity.RuntimeClientID && p.Purpose == "runtime" && in.DeploymentMode == "standalone"
-	if !p.Has("device:bind") || (in.Intent == "publish" && (!p.Has("device:publish") || !managed && !standalone)) {
+	standalone := p.IsRuntime() && in.DeploymentMode == "standalone"
+	if !standalone && (!p.Has("device:bind") || in.Intent == "publish" && (!p.Has("device:publish") || !managed)) {
 		return ExecutionState{}, executionFailure(http.StatusForbidden, "permission_denied")
 	}
 	tx, err := e.pool.Begin(ctx)
@@ -272,8 +276,9 @@ func (e *Execution) AuthenticateHost(ctx context.Context, tx pgx.Tx, p identity.
 		return false, err
 	}
 	scope := ""
-	if len(p.Scopes) > 0 {
-		if !p.Has("session:report") {
+	verified := p.IsRuntime() || len(p.Scopes) > 0
+	if verified {
+		if !p.IsRuntime() && !p.Has("session:report") {
 			return false, executionFailure(http.StatusForbidden, "permission_denied")
 		}
 		if p.MachineID == "" {
@@ -289,13 +294,13 @@ func (e *Execution) AuthenticateHost(ctx context.Context, tx pgx.Tx, p identity.
 		return false, executionFailure(http.StatusForbidden, "permission_denied")
 	}
 	row, err := q.Get(ctx, sqlc.GetParams{UserID: p.UserID, MachineID: machineID})
-	if errors.Is(err, pgx.ErrNoRows) && len(p.Scopes) == 0 {
+	if errors.Is(err, pgx.ErrNoRows) && !verified {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if len(p.Scopes) == 0 && row.KeyID == nil {
+	if !verified && row.KeyID == nil {
 		return false, nil
 	}
 	if p.MachineID != machineID || row.KeyID == nil || p.KeyID != *row.KeyID {
@@ -334,10 +339,9 @@ func (e *Execution) Revoke(ctx context.Context, p identity.Principal, machineID 
 	if old.RegistrationVersion != version && !(old.RemoteAccessState == "revoked" && old.RegistrationVersion == version+1) {
 		return ExecutionState{}, executionFailure(http.StatusPreconditionFailed, "device_registration_changed")
 	}
-	if old.DeploymentMode != nil && *old.DeploymentMode == "standalone" && old.ActiveGrantID != nil {
-		if _, err := e.auth.RevokeRuntimeGrant(ctx, tx, p.UserID, machineID, *old.ActiveGrantID); err != nil {
-			return ExecutionState{}, err
-		}
+	revoked, err := e.auth.RevokeDeviceGrants(ctx, tx, p.UserID, machineID, "device_revoked")
+	if err != nil {
+		return ExecutionState{}, err
 	}
 	row, err := q.RevokeExecution(ctx, sqlc.RevokeExecutionParams{UserID: p.UserID, MachineID: machineID})
 	if err != nil {
@@ -352,8 +356,8 @@ func (e *Execution) Revoke(ctx context.Context, p identity.Principal, machineID 
 	if err := tx.Commit(ctx); err != nil {
 		return ExecutionState{}, err
 	}
-	if old.DeploymentMode != nil && *old.DeploymentMode == "standalone" && old.ActiveGrantID != nil {
-		e.auth.NotifyGrantRevoked(*old.ActiveGrantID)
+	for _, id := range revoked {
+		e.auth.NotifyGrantRevoked(id)
 	}
 	return executionState(row), nil
 }

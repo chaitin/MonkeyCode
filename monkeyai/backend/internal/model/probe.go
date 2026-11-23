@@ -10,12 +10,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/llmurl"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -204,15 +204,14 @@ func probeRequest(item Model, message string) (probeUpstream, error) {
 		header.Set("Authorization", "Bearer "+item.APIKey)
 		body = map[string]any{"model": item.ModelID, "stream": false, "input": message}
 	case ProtocolAnthropic:
-		// Anthropic 的 Base URL 约定不含版本段，测试时由协议层补 /v1。
-		endpoint = "v1/messages"
+		endpoint = "messages"
 		header.Set("X-Api-Key", item.APIKey)
 		header.Set("Anthropic-Version", "2023-06-01")
 		body = map[string]any{"model": item.ModelID, "stream": false, "max_tokens": 256, "messages": []map[string]string{{"role": "user", "content": message}}}
 	default:
 		return probeUpstream{}, errors.New("仅支持测试大语言模型协议")
 	}
-	base.Path = path.Join(base.Path, endpoint)
+	base.Path = llmurl.JoinPath(base.Path, endpoint, item.Protocol == ProtocolAnthropic)
 	base.RawPath = ""
 	encoded, err := json.Marshal(body)
 	if err != nil {

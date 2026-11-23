@@ -30,7 +30,7 @@ func (s *Service) OAuthRouter() http.Handler {
 		})
 		router.With(s.RequireAgent, RequireScope("device:manage")).Post("/", s.createPairing)
 		router.Post("/{pairingID}/join", s.joinPairing)
-		router.With(s.RequireAgent).Get("/{pairingID}", s.pairingStatus)
+		router.With(s.RequireAgent, RequireInteractive).Get("/{pairingID}", s.pairingStatus)
 		router.With(s.RequireAgent, RequireScope("device:manage")).Post("/{pairingID}/approve", s.approvePairing)
 	})
 	router.Post("/token", s.token)
@@ -38,7 +38,7 @@ func (s *Service) OAuthRouter() http.Handler {
 	return router
 }
 
-func (s *Service) AuthRouter() http.Handler {
+func (s *Service) AuthRouter() chi.Router {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,8 +46,8 @@ func (s *Service) AuthRouter() http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	})
+	router.Get("/capabilities", s.capabilities)
 	router.Get("/branding", s.branding)
-	router.Get("/branding/logo", s.logo)
 	router.Get("/clients", s.clients)
 	router.Get("/providers", s.providers)
 	router.Post("/admin/login", s.passwordLogin)
@@ -94,6 +94,7 @@ func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.deviceEnabled() {
 		metadata["device_authorization_endpoint"] = s.publicURL + "/oauth/device/authorization"
+		metadata["device_scopes_supported"] = runtimeScopes
 		metadata["grant_types_supported"] = []string{"authorization_code", "refresh_token", DeviceGrantType, PairingGrantType}
 	}
 	if s.runtimeMetadata != nil {

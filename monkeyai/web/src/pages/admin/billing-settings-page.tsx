@@ -189,7 +189,7 @@ export function BillingSettingsPage() {
         .then((result) => {
           if (signal?.aborted) return
           setSettings(result)
-          setEnvironment(result.policy.environment)
+          setEnvironment(result.policy.environment ?? null)
           setSettingsLoadFailed(false)
           setPricing({
             input_credits_per_million_tokens:
@@ -330,7 +330,8 @@ export function BillingSettingsPage() {
         }
       )
       setSettings(result)
-      if (section === "environment") setEnvironment(result.policy.environment)
+      if (section === "environment")
+        setEnvironment(result.policy.environment ?? null)
       setQuotas((current) =>
         current ? { ...current, revision: result.policy.revision } : current
       )
@@ -962,49 +963,57 @@ export function BillingSettingsPage() {
                 </Button>
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>云电脑扣费规则</CardTitle>
-                <CardDescription>设置云电脑每小时的积分消耗。</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {environment ? (
-                  <ItemGroup className="gap-2">
-                    {environmentPricingFields.map((field) => (
-                      <Item key={field.key} variant="outline">
-                        <ItemContent>
-                          <ItemTitle>{field.title}</ItemTitle>
-                          <ItemDescription>
-                            {field.unit === "GB"
-                              ? "每 GB 每小时"
-                              : "每核每小时"}{" "}
-                            {format(settings!.policy.environment[field.key])}{" "}
-                            积分
-                          </ItemDescription>
-                        </ItemContent>
-                        <ItemActions>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            disabled={!!busy}
-                            onClick={() => {
-                              setEnvironment(settings!.policy.environment)
-                              setEnvironmentTarget(field.key)
-                              setEnvironmentDialogOpen(true)
-                            }}
-                          >
-                            {t("pages.billingSettings.modelPricing.configure")}
-                          </Button>
-                        </ItemActions>
-                      </Item>
-                    ))}
-                  </ItemGroup>
-                ) : (
-                  loadState(settingsLoadFailed, retrySettings)
-                )}
-              </CardContent>
-            </Card>
+            {settings?.policy.environment && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>云电脑扣费规则</CardTitle>
+                  <CardDescription>
+                    设置云电脑每小时的积分消耗。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {environment ? (
+                    <ItemGroup className="gap-2">
+                      {environmentPricingFields.map((field) => (
+                        <Item key={field.key} variant="outline">
+                          <ItemContent>
+                            <ItemTitle>{field.title}</ItemTitle>
+                            <ItemDescription>
+                              {field.unit === "GB"
+                                ? "每 GB 每小时"
+                                : "每核每小时"}{" "}
+                              {format(settings.policy.environment![field.key])}{" "}
+                              积分
+                            </ItemDescription>
+                          </ItemContent>
+                          <ItemActions>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={!!busy}
+                              onClick={() => {
+                                setEnvironment(
+                                  settings.policy.environment ?? null
+                                )
+                                setEnvironmentTarget(field.key)
+                                setEnvironmentDialogOpen(true)
+                              }}
+                            >
+                              {t(
+                                "pages.billingSettings.modelPricing.configure"
+                              )}
+                            </Button>
+                          </ItemActions>
+                        </Item>
+                      ))}
+                    </ItemGroup>
+                  ) : (
+                    loadState(settingsLoadFailed, retrySettings)
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </ScrollArea>
       </div>

@@ -8,11 +8,10 @@ import (
 	"math"
 	"net/http"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/extension"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/envimage"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/environment"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb"
@@ -29,21 +28,20 @@ import (
 
 type applicationHandler struct {
 	http.Handler
-	billing           *billing.Service
-	sessions          *session.Service
-	proxy             *proxy.Proxy
-	images            *imagegen.Service
-	videos            *videogen.Service
-	inputs            *imagegen.Inputs
-	endpoints         *endpoint.Service
-	runtimeKeys       *apikey.Service
-	relay             *relay.Service
-	feedback          *feedback.Service
-	connectors        *mcp.Service
-	knowledgeBases    *kb.Service
-	resourceImports   *resourceimport.Service
-	environmentImages *envimage.Service
-	environments      *environment.Service
+	billing         *billing.Service
+	sessions        *session.Service
+	proxy           *proxy.Proxy
+	images          *imagegen.Service
+	videos          *videogen.Service
+	inputs          *imagegen.Inputs
+	endpoints       *endpoint.Service
+	runtimeKeys     *apikey.Service
+	relay           *relay.Service
+	feedback        *feedback.Service
+	connectors      *mcp.Service
+	knowledgeBases  *kb.Service
+	resourceImports *resourceimport.Service
+	modules         []extension.Module
 }
 type modelBilling struct{ service *billing.Service }
 type modelUsageRecorder struct{ models *model.Postgres }

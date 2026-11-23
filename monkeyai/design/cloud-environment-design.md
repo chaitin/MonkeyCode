@@ -143,7 +143,7 @@ sequenceDiagram
     B-->>C: 环境可连接
 ```
 
-登录操作本身可以是异步环境操作；如果后台授权策略不满足、请求过期或宿主断线，后台保留结构化失败原因及已有 state-dir，核实授权和身份状态后重试，不因超时删除唯一设备身份。自动批准只允许由已认证用户创建的环境操作触发，固定为 `device:bind device:publish session:report`，绑定 user、environment、host 和 machine 公钥，并设置很短的有效期；不能做成按 machine ID 无条件自动批准。重复重试先检查已有 `machine_id` 和授权状态，不能为同一个环境并行启动两个 login。
+登录操作本身可以是异步环境操作；如果后台授权策略不满足、请求过期或宿主断线，后台保留结构化失败原因及已有 state-dir，核实授权和身份状态后重试，不因超时删除唯一设备身份。自动批准只允许由已认证用户创建的环境操作触发，绑定 user、environment、host 和 machine 公钥，并设置很短的有效期；不能做成按 machine ID 无条件自动批准。批准授予固定运行端能力，不读取旧客户端的 scope 参数。重复重试先检查已有 `machine_id` 和授权状态，不能为同一个环境并行启动两个 login。
 
 首期要持久化整个 runtime state-dir，而不只是项目目录，因为现有 standalone 模式的设备密钥、凭据、账号映射、profile 和会话资料都通过该目录关联。宿主将用户项目卷挂载到固定路径，并在客户端能力说明中约定工作区路径；runtime 本身不需要知道该路径是云盘还是本地目录。
 
@@ -395,7 +395,7 @@ stopped → preparing
 2. 宿主管理为环境创建独立 `state-dir`，运行 `monkeyai-runtime login --device-code`。
 3. runtime 返回设备码和验证地址；宿主管理将授权请求上报，后台根据创建操作自动批准固定 scope。
 4. 批准后 runtime 将凭据、设备公钥、machine ID 和 profile 写入该环境的 state-dir；宿主管理只启动同一 state-dir 的 `serve`。
-5. 后台沿用现有 `purpose=runtime`、`device:bind device:publish session:report` 和 standalone endpoint 规则，将返回的 machine ID 与 environment ID 建立一对一绑定。
+5. 后台沿用 `purpose=runtime` 和 standalone endpoint 规则，将返回的 machine ID 与 environment ID 建立一对一绑定。账号资源委托的申请、批准和旧设备升级见《远程执行协议》第 7 节。
 6. 模型、MCP 调用继续使用绑定执行授权的专用调用密钥，不下发用户全局密钥。
 
 设备码授权本身原本支持人工确认；云环境首期把用户创建环境作为等价的明确授权，由后台代为完成一次批准。因此不需要 runtime 改动，也不需要把设备码展示给用户。设备码、验证地址和错误码仍通过宿主控制协议传递，不能写入用户镜像环境变量；若自动批准失败，操作返回明确错误，而不是退回人工流程。

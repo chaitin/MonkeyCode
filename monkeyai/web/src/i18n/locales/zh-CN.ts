@@ -1,4 +1,12 @@
 export const zhCN = {
+  licenseCapabilities: {
+    cloudComputer: "云电脑",
+    customBranding: "自定义品牌",
+    granted: "可用",
+    notGranted: "不可用",
+    cloudLocked: "当前无法新建云电脑。",
+    brandingLocked: "当前无法编辑自定义品牌。",
+  },
   kbPermissions: {
     noAccess: "未授权",
     readOnly: "只读",
@@ -30,6 +38,9 @@ export const zhCN = {
   },
   environmentAdmin: {
     systemImages: {
+      accepted: "镜像任务已受理。",
+      defaultImage: "默认镜像 · 已就绪",
+      stages: {queued:"等待处理",resolving:"解析镜像地址",pulling:"拉取镜像",reading_archive:"读取镜像包",importing:"镜像入库",verifying:"校验镜像",uploading:"发送镜像包",awaiting:"文件已发送，等待后台确认"},
       title: "系统镜像",
       description: "管理云电脑所支持的系统镜像，系统镜像是 docker 镜像的格式。",
       registry: "内置 Registry",
@@ -61,7 +72,7 @@ export const zhCN = {
       deleting: "正在删除",
       upstream: "镜像地址",
       added: "已模拟导入镜像，未上传或拉取真实镜像。",
-      deleted: "已从演示列表移除，未操作真实 Registry。",
+      deleted: "已从可选镜像中移除，已有云电脑不受影响。",
       loadFailed: "镜像列表读取失败，请重新刷新。",
       operationFailed: "操作失败，请重试。",
       addDescription: "选择导入方式，将 Docker 镜像添加到内置 Registry。",
@@ -432,6 +443,7 @@ export const zhCN = {
       sign_out: "退出登录",
     },
     targets: {
+      "system-images": "系统镜像",
       accounts: "积分账户",
       transactions: "计费交易",
       quotas: "额度",
@@ -2046,6 +2058,8 @@ export const zhCN = {
       memberDisabled: "禁用",
       makeAdministrator: "设为超级管理员",
       removeAdministrator: "取消超级管理员",
+      deleteMember: "删除成员",
+      confirmDeleteMember: "确定删除 {{member}}（{{email}}）吗？删除后此成员将无法使用原账号登录，其历史记录会保留。",
       remainingCredits: "剩余 {{count}} 积分",
       joinedAt: "{{year}} 年 {{month}} 月 {{day}} 日加入",
       groupActions: "分组操作",

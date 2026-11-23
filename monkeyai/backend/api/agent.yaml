@@ -8,6 +8,29 @@ servers:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/system-images:
+    get:
+      summary: 查询管理员已发布的可用系统镜像
+      description: 需要 environment:read。只列出已就绪且未下架的镜像。客户端应预选 is_default 项并提交其真实 ID。
+      responses:
+        '200':
+          description: 可选镜像目录，不缓存。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, display_name, architectures, is_default]
+                      properties:
+                        id: {type: string, format: uuid}
+                        display_name: {type: string}
+                        architectures: {type: array, items: {type: string}}
+                        is_default: {type: boolean}
   /api/v1/environment-specifications:
     get:
       summary: 查询全局可选云电脑规格
@@ -25,6 +48,27 @@ paths:
           description: 缺少 environment:read。
         '500':
           description: 内部存储错误。
+  /api/auth/v1/capabilities:
+    get:
+      summary: 读取当前可用功能
+      description: 无需登录。返回可用功能的布尔值，响应使用 Cache-Control no-store。
+      security: []
+      responses:
+        '200':
+          description: 当前生效的能力
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [allow_cloud_computer, allow_custom_branding]
+                properties:
+                  allow_cloud_computer:
+                    type: boolean
+                    description: 是否支持新建云电脑。
+                  allow_custom_branding:
+                    type: boolean
+                    description: 允许修改和使用自定义团队名称、产品名称和 Logo。
   /api/v1/environment-hosts:
     get:
       summary: 查询本人可使用的宿主
@@ -110,7 +154,7 @@ paths:
     post:
       summary: 使用所选全局规格创建环境
       description: >-
-        客户端提交 name、request_key、specification_id、specification_version，可选 host_id；不得传任意资源或镜像。
+        客户端提交 name、request_key、specification_id、specification_version 和从目录选择的 image_id，可选 host_id；不接受任意镜像地址。旧客户端不传 image_id 时使用当前默认镜像。
         服务端在事务内校验规格及版本，按所选 CPU 和内存校验计费，并在已授权、在线、镜像及 runtime 就绪的宿主中选择环境数量最少者。
         不限制宿主及用户环境数量，允许 CPU／内存超卖；宿主旧资源预设不参与准入。
         request_key 按用户幂等并绑定规格、版本及宿主选择；成功请求即使规格后来修改或删除仍返回原环境，不重新调度或扣款。
@@ -727,6 +771,11 @@ paths:
                     type: array
                     items: {type: string, enum: [authorization_code, refresh_token, 'urn:ietf:params:oauth:grant-type:device_code', 'urn:monkeyai:params:oauth:grant-type:pairing_code']}
                     description: 仅在设备授权启用时包含 device_code 和 pairing_code
+                  scopes_supported: {type: array, items: {type: string}}
+                  device_scopes_supported:
+                    type: array
+                    items: {type: string}
+                    description: 启用设备授权时发布。account:ai-resources 是设备访问账号 AI 资源的委托，不替代资源自身权限。
   /oauth/authorize:
     get:
       summary: 创建安装登录授权请求
@@ -748,7 +797,7 @@ paths:
   /oauth/token:
     post:
       summary: 兑换授权码、手机配对码或轮换安装凭据
-      description: 刷新保持 grant_id、scope 和机器绑定；已轮换 refresh token 重放会撤销整个授权族。手机配对使用 urn:monkeyai:params:oauth:grant-type:pairing_code，仅允许 monkeyai-mobile，必须提供 device_code 和 43–128 字符的 code_verifier；固定签发 device:connect、files:read、files:write、resources:manage、session:control、session:read 账号权限，不绑定执行设备。等待批准返回 authorization_pending；并发改密或批准占用配对锁时也返回该可重试错误。轮询遵守 join 返回的 interval，每次 slow_down 增加 5 秒。所有响应 no-store。
+      description: 刷新保持 grant_id、scope 和机器绑定；已轮换 refresh token 重放会撤销整个授权族。手机配对使用 urn:monkeyai:params:oauth:grant-type:pairing_code，仅允许 monkeyai-mobile，必须提供 device_code 和 43–128 字符的 code_verifier；固定签发 device:connect、environment:read、files:read、files:write、resources:manage、session:control、session:read 账号权限，不绑定执行设备。等待批准返回 authorization_pending；并发改密或批准占用配对锁时也返回该可重试错误。轮询遵守 join 返回的 interval，每次 slow_down 增加 5 秒。所有响应 no-store。
       security: []
       requestBody:
         required: true
@@ -1044,7 +1093,7 @@ paths:
               required: [client_id, machine_id, execution_public_key, display_name, platform, arch]
               properties:
                 client_id: {type: string, const: monkeyai-runtime}
-                scope: {type: string, default: 'device:bind device:publish session:report'}
+                scope: {type: string, deprecated: true, description: 兼容旧运行端；服务端忽略此字段，设备批准授予固定能力。}
                 machine_id: {type: string, format: uuid}
                 execution_public_key: {type: string, description: Ed25519 原始公钥的无填充 base64url}
                 display_name: {type: string, maxLength: 128}
@@ -1087,11 +1136,11 @@ paths:
               properties:
                 request_id: {type: string, format: uuid}
                 decision: {type: string, enum: [approve, deny]}
-                approved_scopes: {type: array, items: {type: string, enum: ['device:bind', 'device:publish', 'session:report']}}
+                approved_scopes: {type: array, deprecated: true, items: {type: string}, description: 兼容旧客户端；批准或拒绝针对整套运行端授权。}
                 restore_revoked: {type: boolean, default: false}
       responses:
         '200': {description: approved 或 denied 已持久化}
-        '400': {description: invalid_request 或 invalid_scope}
+        '400': {description: invalid_request}
         '401': {description: 浏览器未登录}
         '403': {description: CSRF、来源或账号状态校验失败}
         '404': {description: request_not_found}
@@ -5586,6 +5635,10 @@ components:
           type: string
           format: uuid
           description: 从 environment-specifications 获取的有效规格 ID。
+        image_id:
+          type: string
+          format: uuid
+          description: 从 system-images 选定的镜像 ID，参与创建幂等校验。
         specification_version:
           type: integer
           format: int64

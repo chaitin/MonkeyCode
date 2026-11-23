@@ -1,6 +1,14 @@
 import { enUS } from "./en-US.ts"
 
 export const zhTW = {
+  licenseCapabilities: {
+    cloudComputer: "雲端電腦",
+    customBranding: "自訂品牌",
+    granted: "可用",
+    notGranted: "無法使用",
+    cloudLocked: "目前無法建立雲端電腦。",
+    brandingLocked: "目前無法編輯自訂品牌。",
+  },
   accountSettings: {
     loadingProfile: "正在載入",
     profileLoadFailed: "帳戶設定載入失敗，請重試。",
@@ -833,6 +841,8 @@ export const zhTW = {
       memberDisabled: "已停用",
       makeAdministrator: "設為超級管理員",
       removeAdministrator: "取消超級管理員",
+      deleteMember: "刪除成員",
+      confirmDeleteMember: "確定刪除 {{member}}（{{email}}）嗎？刪除後，此成員將無法使用原帳號登入，歷史記錄將保留。",
       remainingCredits: "剩餘 {{count}} 點積分",
       joinedAt: "{{year}} 年 {{month}} 月 {{day}} 日加入",
       groupActions: "群組操作",

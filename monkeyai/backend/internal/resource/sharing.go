@@ -64,6 +64,11 @@ func SharedGroups(ctx context.Context, q Queryer, kind string, ids []string) (ma
 	for _, row := range rows {
 		group := Object{"id": row.ID, "name": row.Name, "parent_id": row.ParentID}
 		if row.ID == rootgroup.ID {
+			name, err := rootgroup.Name(ctx, nil)
+			if err != nil {
+				return nil, err
+			}
+			group["name"] = name
 			group["parent_id"] = nil
 		}
 		groups[row.ResourceID] = append(groups[row.ResourceID], group)

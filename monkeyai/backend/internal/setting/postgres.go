@@ -45,6 +45,9 @@ func (p *Postgres) List(ctx context.Context) ([]Record, error) {
 }
 
 func (p *Postgres) Put(ctx context.Context, record Record) (Record, error) {
+	if record.Key == "branding" {
+		return Record{}, ErrUnknownKey
+	}
 	row, err := sqlc.New(database.Reader(ctx, p.pool)).PutSetting(ctx, sqlc.PutSettingParams{
 		Key:             record.Key,
 		Value:           record.Value,
@@ -56,22 +59,6 @@ func (p *Postgres) Put(ctx context.Context, record Record) (Record, error) {
 		return Record{}, fmt.Errorf("保存设置: %w", err)
 	}
 	return stored, nil
-}
-
-func (p *Postgres) PutBranding(ctx context.Context, workspace, product, key, userID string) (Record, error) {
-	row, err := sqlc.New(database.Reader(ctx, p.pool)).PutBranding(ctx, sqlc.PutBrandingParams{WorkspaceName: workspace, ProductName: product, LogoKey: key, UserID: userID})
-	if err != nil {
-		return Record{}, fmt.Errorf("保存品牌信息: %w", err)
-	}
-	return Record{Key: row.Key, Value: row.Value, SchemaVersion: int(row.SchemaVersion), UpdatedByUserID: row.UpdatedByUserID, UpdatedAt: row.UpdatedAt}, nil
-}
-
-func (p *Postgres) PutBrandingLogo(ctx context.Context, key, userID string) (Record, error) {
-	row, err := sqlc.New(database.Reader(ctx, p.pool)).PutBrandingLogo(ctx, sqlc.PutBrandingLogoParams{LogoKey: key, UserID: userID})
-	if err != nil {
-		return Record{}, fmt.Errorf("保存品牌 Logo: %w", err)
-	}
-	return Record{Key: row.Key, Value: row.Value, SchemaVersion: int(row.SchemaVersion), UpdatedByUserID: row.UpdatedByUserID, UpdatedAt: row.UpdatedAt}, nil
 }
 
 func (p *Postgres) CheckProxyRemoval(ctx context.Context, next json.RawMessage) error {

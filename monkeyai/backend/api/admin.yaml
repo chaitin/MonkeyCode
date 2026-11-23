@@ -463,10 +463,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EmailAuthError"
+  /api/auth/v1/capabilities:
+    get:
+      summary: 读取当前可用功能
+      description: 无需登录。返回可用功能的布尔值，响应使用 Cache-Control no-store。
+      security: []
+      responses:
+        "200":
+          description: 当前生效的能力
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [allow_cloud_computer, allow_custom_branding]
+                properties:
+                  allow_cloud_computer:
+                    type: boolean
+                    description: 是否支持新建云电脑。
+                  allow_custom_branding:
+                    type: boolean
+                    description: 是否允许修改和使用团队名称、产品名称及自定义 Logo。
   /api/auth/v1/branding:
     get:
       summary: 读取公开品牌信息
-      description: 公开返回团队名称、产品名称、授权机器码及有效商业授权标记。仅宿主确认合法且当前有效的付费授权时标记为 true；未配置校验器或读取失败时为 false。不会返回授权文件、客户信息、席位、有效期或密钥。
+      description: 返回团队名称、产品名称及展示信息。未启用自定义品牌时使用默认名称和空 Logo。
       security: []
       responses:
         "200":
@@ -1546,6 +1567,7 @@ paths:
   /api/admin/v1/billing/settings:
     get:
       summary: 读取计费策略与远程连接状态（不返回证书或私钥）
+      description: policy.environment 为可选字段，仅在支持环境定价时返回。
       responses:
         '200':
           description: 请求成功
@@ -1597,7 +1619,7 @@ paths:
       required: true
     patch:
       summary: 独立保存计价、周期、模式、云电脑全局计费或百智云连接配置
-      description: wallet 配置保存后无需重启，各实例在下次使用时读取。证书和私钥省略或留空时保留原值。首次保存必须提供全部证书。客户端证书与私钥须匹配且处于有效期，私钥须为 PKCS#8 ECDSA 格式。CA 须为有效的 CA 证书。服务 URL 或应用 ID 变更不能影响未完成的远程交易。校验仅在本地执行，不代表远程网络或账户权限验证成功。
+      description: environment 节未装配时返回 404，未授权时禁止修改。wallet 配置保存后无需重启，各实例在下次使用时读取。证书和私钥省略或留空时保留原值。首次保存必须提供全部证书。客户端证书与私钥须匹配且处于有效期，私钥须为 PKCS#8 ECDSA 格式。CA 须为有效的 CA 证书。服务 URL 或应用 ID 变更不能影响未完成的远程交易。校验仅在本地执行，不代表远程网络或账户权限验证成功。
       responses:
         '200':
           description: 请求成功
@@ -2615,6 +2637,32 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    delete:
+      summary: 删除成员
+      description: 仅管理员可操作，不能删除当前登录账号。删除后成员不再出现在成员列表与分组中，旧登录凭据失效，历史记录保留。
+      responses:
+        '204':
+          description: 已删除成员。
+        '400':
+          description: 成员 UUID 无效（invalid_request）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          description: 不能删除自己的账号（cannot_delete_self）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/ResourceError500'
   /api/admin/v1/users/{userID}/reset-password:
@@ -6186,6 +6234,107 @@ paths:
           format: int64
           minimum: 1
           maximum: 100
+  /api/admin/v1/system-images:
+    get:
+      summary: 列出未下架的系统镜像
+      responses:
+        '200':
+          description: 查询或修改成功。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/SystemImage'}}
+        '403': {description: 需要管理员权限。}
+  /api/admin/v1/system-images/pull:
+    post:
+      summary: 在线拉取系统镜像
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name, upstream]
+              properties:
+                display_name: {type: string, minLength: 1, maxLength: 128}
+                upstream: {type: string}
+      responses:
+        '202':
+          description: 任务已持久化，轮询镜像详情获取进度。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemImage'
+        '403': {description: 需要管理员权限。}
+        '409': {description: 来源重复、幂等冲突、正在导入或默认镜像受保护。}
+  /api/admin/v1/system-images/upload:
+    post:
+      summary: 上传 Docker 镜像包
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [display_name, file]
+              properties:
+                display_name: {type: string, minLength: 1, maxLength: 128}
+                file: {type: string, format: binary}
+      responses:
+        '202':
+          description: 任务已持久化，轮询镜像详情获取进度。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemImage'
+        '403': {description: 需要管理员权限。}
+        '409': {description: 来源重复、幂等冲突、正在导入或默认镜像受保护。}
+        '413': {description: 镜像包超过大小限制。}
+  /api/admin/v1/system-images/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 查询单个镜像和阶段进度
+      responses:
+        '200':
+          description: 查询或修改成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemImage'
+        '403': {description: 需要管理员权限。}
+    patch:
+      summary: 修改镜像展示名称
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name]
+              properties:
+                display_name: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        '200':
+          description: 查询或修改成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemImage'
+        '403': {description: 需要管理员权限。}
+    delete:
+      summary: 移除镜像目录项，已有实例不受影响
+      responses:
+        '204':
+          description: 已从目录移除。
+        '403': {description: 需要管理员权限。}
+        '409': {description: 来源重复、幂等冲突、正在导入或默认镜像受保护。}
   /api/admin/v1/environment-images:
     get:
       summary: 列出 server 已同步的云环境镜像
@@ -10755,6 +10904,31 @@ components:
           description: 宿主确认当前代次删除完成的时间；未完成或失败时为 null，历史记录继续保留。
       description: phase 是最后一次观察结果，判断当前目标是否完成必须同时检查 observed_generation == generation。running 仅表示容器进程运行，尚不代表 runtime
         登录或用户可连接。
+    SystemImage:
+      type: object
+      required: [id, display_name, added_at, status, source_type, progress, is_default, architectures]
+      properties:
+        id: {type: string, format: uuid}
+        display_name: {type: string}
+        added_at: {type: string, format: date-time}
+        source_type: {enum: [builtin, pull, upload]}
+        status: {enum: [pending, importing, ready, failed]}
+        reference: {type: [string, 'null']}
+        upstream: {type: [string, 'null']}
+        archive_name: {type: [string, 'null']}
+        is_default: {type: boolean}
+        architectures: {type: array, items: {type: string}}
+        progress:
+          type: object
+          properties:
+            stage: {type: string}
+            completed_bytes: {type: integer}
+            total_bytes: {type: [integer, 'null']}
+        error:
+          type: [object, 'null']
+          properties:
+            code: {type: string}
+            message: {type: string}
     EnvironmentImage:
       type: object
       required: [source, reference, status, architectures, updated_at]
@@ -11077,7 +11251,6 @@ components:
       type: object
       required:
       - grants
-      - environment_count
       - id
       - name
       - architecture
@@ -11100,7 +11273,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: 该宿主尚未移除的环境数，包含停止、失败和在线等待删除的环境，与默认环境列表一致；不含离线归档记录。
+          description: 仅装配云电脑模块时返回。该宿主尚未移除的环境数，包含停止、失败和在线等待删除的环境，与默认环境列表一致；不含离线归档记录。
         user_id: {type: string, format: uuid, description: 创建宿主记录的用户}
         enabled:
           type: boolean

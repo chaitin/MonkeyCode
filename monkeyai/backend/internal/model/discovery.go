@@ -9,10 +9,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/llmurl"
 )
 
 type DiscoverInput struct {
@@ -102,7 +103,7 @@ func (s *Service) DiscoverModels(ctx context.Context, input DiscoverInput) ([]Di
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	upstream.Path = path.Join(upstream.Path, "models")
+	upstream.Path = llmurl.JoinPath(upstream.Path, "models", input.Protocol == ProtocolAnthropic)
 	upstream.RawPath = ""
 	if input.Protocol == ProtocolAnthropic {
 		query := upstream.Query()

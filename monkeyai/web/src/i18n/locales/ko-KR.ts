@@ -1,6 +1,14 @@
 import { enUS } from "./en-US.ts"
 
 export const koKR = {
+  licenseCapabilities: {
+    cloudComputer: "클라우드 컴퓨터",
+    customBranding: "사용자 지정 브랜드",
+    granted: "사용 가능",
+    notGranted: "사용 불가",
+    cloudLocked: "현재 새 클라우드 컴퓨터를 만들 수 없습니다.",
+    brandingLocked: "현재 브랜드를 변경할 수 없습니다.",
+  },
   accountSettings: {
     loadingProfile: "불러오는 중",
     profileLoadFailed: "계정 설정을 불러오지 못했습니다. 다시 시도하세요.",
@@ -822,6 +830,8 @@ export const koKR = {
       memberDisabled: "비활성",
       makeAdministrator: "관리자로 설정",
       removeAdministrator: "관리자 해제",
+      deleteMember: "멤버 삭제",
+      confirmDeleteMember: "{{member}}({{email}}) 님을 삭제하시겠습니까? 이 계정으로 더 이상 로그인할 수 없으며, 기존 기록은 보존됩니다.",
       remainingCredits: "잔여 크레딧 {{count}}",
       joinedAt: "가입일: {{date}}",
       groupActions: "그룹 작업",

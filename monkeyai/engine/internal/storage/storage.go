@@ -15,6 +15,7 @@ import (
 
 type Mount struct{ Source, Target string }
 type Record struct {
+	SandboxRoot    bool             `json:"sandbox_root,omitempty"`
 	ManagedRuntime bool             `json:"managed_runtime,omitempty"`
 	Environment    string           `json:"environment"`
 	Volume         lifecycle.Volume `json:"volume"`
@@ -93,7 +94,7 @@ func (m *Manager) Ensure(ctx context.Context, s lifecycle.Spec) ([]Mount, error)
 	// 先核对所有绑定，避免部分修改后才发现其他卷属于别的环境。
 	for _, v := range s.Volumes {
 		if r, ok := records[v.ID]; ok {
-			if r.Environment != s.EnvironmentID || r.Volume.Purpose != v.Purpose {
+			if r.Environment != s.EnvironmentID || r.Volume.Purpose != v.Purpose || r.SandboxRoot != s.SandboxRoot {
 				return nil, errors.New("卷已被其他环境绑定或用途不同")
 			}
 			if r.Project != 0 {
@@ -112,7 +113,7 @@ func (m *Manager) Ensure(ctx context.Context, s lifecycle.Spec) ([]Mount, error)
 	for _, v := range s.Volumes {
 		r, ok := records[v.ID]
 		if !ok {
-			r = Record{Environment: s.EnvironmentID, Volume: v}
+			r = Record{Environment: s.EnvironmentID, Volume: v, SandboxRoot: s.SandboxRoot}
 			records[v.ID] = r
 			if err := save(); err != nil {
 				return nil, err
@@ -140,12 +141,16 @@ func (m *Manager) Ensure(ctx context.Context, s lifecycle.Spec) ([]Mount, error)
 				return nil, errors.New("未就绪卷目录不为空，拒绝接管已有数据")
 			}
 		}
-		if v.Purpose == "runtime" && (r.ManagedRuntime || s.RuntimePackage != nil) {
+		uid := 1000
+		if s.SandboxRoot {
+			uid = 0
+		}
+		if v.Purpose == "runtime" && (s.SandboxRoot || r.ManagedRuntime || s.RuntimePackage != nil) {
 			if err := prepareRuntime(dir); err != nil {
 				return nil, err
 			}
 			r.ManagedRuntime = true
-		} else if err := prepare(dir); err != nil {
+		} else if err := prepare(dir, uid); err != nil {
 			return nil, err
 		}
 		r.Volume = v
@@ -163,10 +168,10 @@ func (m *Manager) Ensure(ctx context.Context, s lifecycle.Spec) ([]Mount, error)
 			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 				return nil, errors.New("runtime 状态目录不是普通目录")
 			}
-			if err := prepare(state); err != nil {
+			if err := prepare(state, uid); err != nil {
 				return nil, err
 			}
-			if err := prepareRuntimeLock(filepath.Join(dir, "state.maintenance.lock")); err != nil {
+			if err := prepareRuntimeLock(filepath.Join(dir, "state.maintenance.lock"), uid); err != nil {
 				return nil, err
 			}
 		}

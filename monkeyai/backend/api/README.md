@@ -10,7 +10,7 @@ OpenAPI 源文件按调用方分为 `admin.yaml` 和 `agent.yaml`。管理后台
 
 二维码固定为 `https://work.baizhi.cloud/app-link/scan/`，只包含 `v=1`、`server`、`id`、`secret` 四个参数，server 来自服务端公开地址。join 严格校验 JSON，最多 16 KiB；二维码过期、secret 错误与不存在统一返回 `404 pairing_not_found`。join 后窗口延长到当前时间后 60 秒，硬上限为创建后 180 秒。手机每 5 秒轮询，遇到 `slow_down` 再增加 5 秒；状态并发变更占用配对锁时返回可重试的 `authorization_pending`。所有配对响应均为 `Cache-Control: no-store`。
 
-四条安全约束：二维码 secret 只存摘要、只返回一次；PKCE S256 在 join 时绑定；配对码错五次整条作废；改密时同事务把未兑换的 pending、joined、approved 配对置为 `denied`。配对是一次性的，不形成长期设备绑定。手机固定取得 `device:connect files:read files:write resources:manage session:control session:read`，沿用现有刷新、取票与 ACP 流程，不取得设备管理或发布权限。
+四条安全约束：二维码 secret 只存摘要、只返回一次；PKCE S256 在 join 时绑定；配对码错五次整条作废；改密时同事务把未兑换的 pending、joined、approved 配对置为 `denied`。配对是一次性的，不形成长期设备绑定。手机固定取得 `device:connect environment:read files:read files:write resources:manage session:control session:read`，沿用现有刷新、取票与 ACP 流程，不取得设备管理或发布权限。
 
 创建与批准在用户锁下复核 Bearer。兑换先锁用户，再以 `NOWAIT` 锁配对，并条件消费，避免与改密的「配对 → 用户」锁序互相等待；改密拿到用户锁后仍复查期间新建的活动配对（pending、joined、approved），必要时返回 `409 authorization_changed` 并回滚。上线前执行迁移 `000037_oauth_pairing`。
 
@@ -105,7 +105,9 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 
 ## 上游文本模型查询
 
-`POST /api/admin/v1/models/discover` 仅供管理员使用，请求提供 `base_url`、文本 `protocol` 和 `api_key`，返回 `{models: [{id}]}`。服务端在 Base URL 路径后拼接 `/models`，例如 `https://provider.example/v1` 查询 `/v1/models`。OpenAI Chat Completions 和 Responses 使用 Bearer 密钥，Anthropic 使用 `x-api-key` 和 `anthropic-version`。
+`POST /api/admin/v1/models/discover` 仅供管理员使用，请求提供 `base_url`、文本 `protocol` 和 `api_key`，返回 `{models: [{id}]}`。OpenAI Chat Completions 和 Responses 使用 Bearer 密钥，Anthropic 使用 `x-api-key` 和 `anthropic-version`。
+
+模型代理、连通性测试和模型发现采用同一套 Base URL 规则：OpenAI 的 Base URL 需包含上游要求的版本路径（如 `https://api.openai.com/v1`）；Anthropic 填写不含 `/v1` 的地址（如 `https://api.anthropic.com`），服务端自动补 `/v1`，再拼接 `/messages` 或 `/models`。已有 `/v1` 后缀的配置继续可用，无需修改。仅提供无版本路径的 Anthropic 兼容网关需要配置对应的 `/v1` 路由。
 
 编辑已有系统文本模型时，可传 `model_resource_id` 并省略或留空 `api_key`，在服务端沿用已保存的密钥。可选 `proxy_id` 使用网络代理，空字符串直连。请求 15 秒超时，不跟随重定向，合并分页、排序去重，最多 2000 个模型及合计 2 MiB 上游响应；错误不透传上游响应正文，接口返回 `Cache-Control: no-store`。前端在名称输入框按钮中打开列表，加载时仅显示一行 spinner，关闭时取消请求，选择后沿用展示名称跟随规则。
 

@@ -420,7 +420,7 @@ SELECT
         'user', CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email) END,
         'group', CASE
             WHEN rag.all_users THEN jsonb_build_object('id', '00000000-0000-0000-0000-000000000000',
-                'name', COALESCE((SELECT NULLIF(value ->> 'workspace_name', '') FROM settings WHERE key = 'branding'), 'Monkey AI'), 'parent_id', NULL)
+                'name', 'Monkey AI', 'parent_id', NULL)
             WHEN g.id IS NOT NULL THEN jsonb_build_object('id', g.id, 'name', g.name, 'parent_id', COALESCE(g.parent_id::text, '00000000-0000-0000-0000-000000000000')) END)
 FROM
     resource_access_grants rag
@@ -530,7 +530,7 @@ const listSharedGroups = `-- name: ListSharedGroups :many
 SELECT rag.resource_id,
     COALESCE(g.id, '00000000-0000-0000-0000-000000000000'::uuid) AS id,
     (CASE WHEN rag.all_users THEN
-        COALESCE((SELECT NULLIF(value ->> 'workspace_name', '') FROM settings WHERE key = 'branding'), 'Monkey AI')
+        'Monkey AI'
         ELSE g.name END)::text AS name,
     COALESCE(g.parent_id, '00000000-0000-0000-0000-000000000000'::uuid) AS parent_id
 FROM resource_access_grants rag

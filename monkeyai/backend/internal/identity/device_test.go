@@ -140,7 +140,6 @@ func TestDeviceGrantPollingConsentAndBinding(t *testing.T) {
 	oauthCode(t, err, "slow_down")
 	approved := []string{"device:bind", "session:report"}
 	deviceDecide(t, s, view, cookie, "approve", approved, false, "invalid", 403)
-	deviceDecide(t, s, view, cookie, "approve", []string{"device:connect"}, false, view["csrf_token"].(string), 400)
 	deviceDecide(t, s, view, cookie, "approve", approved, false, view["csrf_token"].(string), 200)
 	if _, err = s.db.Exec(t.Context(), "UPDATE oauth_device_requests SET next_poll_at=now()-interval '1 second' WHERE id=$1", view["request_id"]); err != nil {
 		t.Fatal(err)
@@ -149,7 +148,7 @@ func TestDeviceGrantPollingConsentAndBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if token.ServerID == "" || token.MachineID != view["machine_id"] || token.Scope != "device:bind session:report" {
+	if token.ServerID == "" || token.MachineID != view["machine_id"] || token.Scope != strings.Join(runtimeScopes, " ") {
 		t.Fatal("兑换未保留冻结身份和批准范围")
 	}
 	p := tokenPrincipal(t, s, token.AccessToken, http.StatusNoContent)
@@ -265,14 +264,29 @@ func TestDeviceSSOStateDoesNotReuseAuthorizationRequest(t *testing.T) {
 	}
 }
 
-func TestRuntimeRoutesCannotManageOtherDevices(t *testing.T) {
-	p := Principal{Purpose: "runtime", MachineID: uuid.New().String(), Scopes: runtimeScopes, Audience: Audience}
-	for _, path := range []string{"/api/v1/endpoints/other/connections", "/api/v1/users", "/api/v1/sessions", "/api/v1/models"} {
-		if runtimeRoute(p, "POST", path) {
-			t.Fatalf("执行授权放行管理入口 %s", path)
+func TestNewResourceOperation(t *testing.T) {
+	s, _, cookie, _ := deviceService(t)
+	mux := http.NewServeMux()
+	operation := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) })
+	mux.Handle("PATCH /test-resource/{id}", RequireAccountResources(operation))
+	mux.Handle("PATCH /test-control/{id}", RequireInteractive(operation))
+	h := s.RequireAgent(mux)
+	for _, scopes := range [][]string{runtimeScopes, {"device:manage"}} {
+		device := deviceApplication(t, s)
+		view := deviceView(t, s, device, cookie)
+		deviceDecide(t, s, view, cookie, "approve", scopes, false, view["csrf_token"].(string), 200)
+		token, err := s.ExchangeDeviceCode(t.Context(), RuntimeClientID, device.DeviceCode)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if !runtimeRoute(p, "GET", "/api/v1/me") || !runtimeRoute(p, "GET", "/api/v1/endpoint-bridge") {
-		t.Fatal("执行授权自身入口不可用")
+		for path, want := range map[string]int{"/test-resource/example": 204, "/test-control/example": 403} {
+			req := httptest.NewRequest("PATCH", path, nil)
+			req.Header.Set("Authorization", "Bearer "+token.AccessToken)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, req)
+			if w.Code != want {
+				t.Fatalf("%s: %d，预期 %d", path, w.Code, want)
+			}
+		}
 	}
 }

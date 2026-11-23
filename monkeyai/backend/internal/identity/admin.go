@@ -33,11 +33,12 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Post("/users", s.createUser)
 	router.Get("/users/{userID}", s.getUser)
 	router.Patch("/users/{userID}", s.patchUser)
+	router.Delete("/users/{userID}", s.deleteUser)
 	router.Post("/users/{userID}/reset-password", s.resetUserPassword)
 }
 
 func (s *Service) RegisterAgent(router chi.Router) {
-	router.Get("/users", s.searchUsers)
+	router.With(RequireInteractive).Get("/users", s.searchUsers)
 	router.Get("/me", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := UserFromContext(r.Context())
 		writeJSON(r.Context(), w, http.StatusOK, user)

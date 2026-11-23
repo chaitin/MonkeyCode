@@ -10,7 +10,7 @@ import (
 )
 
 func TestCloudApprovalUsesExactDeviceIdentity(t *testing.T) {
-	for _, name := range []string{"成功与重试", "公钥替换", "机器替换", "权限扩大", "设备撤销", "请求过期", "用户停用"} {
+	for _, name := range []string{"成功与重试", "公钥替换", "机器替换", "忽略旧权限字段", "设备撤销", "请求过期", "用户停用"} {
 		t.Run(name, func(t *testing.T) {
 			s, user, _, registry := deviceService(t)
 			device := deviceApplication(t, s)
@@ -25,7 +25,7 @@ func TestCloudApprovalUsesExactDeviceIdentity(t *testing.T) {
 				public[0] ^= 1
 			case "机器替换":
 				machine = "11111111-1111-4111-8111-111111111111"
-			case "权限扩大":
+			case "忽略旧权限字段":
 				_, err = s.db.Exec(t.Context(), `UPDATE oauth_device_requests SET requested_scopes=ARRAY['device:bind','device:publish','session:report','device:manage'] WHERE id=$1`, request.ID)
 			case "设备撤销":
 				registry.revoked = true
@@ -43,7 +43,7 @@ func TestCloudApprovalUsesExactDeviceIdentity(t *testing.T) {
 			}
 			defer tx.Rollback(t.Context())
 			id, err := s.ApproveRuntime(t.Context(), tx, user.ID, machine, public, device.UserCode)
-			if name != "成功与重试" {
+			if name != "成功与重试" && name != "忽略旧权限字段" {
 				if err == nil {
 					t.Fatal("批准了不匹配或失效的设备申请")
 				}

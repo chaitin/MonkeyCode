@@ -84,6 +84,9 @@ func (c *Coordinator) Apply(ctx context.Context, spec Spec) (State, error) {
 		if state.Spec.Generation > spec.Generation {
 			return state, ErrStaleGeneration
 		}
+		if state.Spec.SandboxRoot != spec.SandboxRoot {
+			return state, ErrInstanceConflict
+		}
 		if state.Phase == PhaseDeleted {
 			if spec.DesiredState != DesiredDeleted {
 				return state, ErrDeleted

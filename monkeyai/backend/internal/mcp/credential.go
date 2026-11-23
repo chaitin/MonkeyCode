@@ -26,6 +26,24 @@ import (
 var authorizationRequired = &resource.Error{Status: 403, Code: "authorization_required", Message: "请先完成所选凭证的认证"}
 var selectionRequired = &resource.Error{Status: 400, Code: "credential_selection_required", Message: "请选择此连接使用的凭证"}
 
+func staleCredential(c, cred resource.Object) bool {
+	return cred != nil && cred["revoked_at"] == nil && c.Int("config_revision") != cred.Int("config_revision")
+}
+
+func requireCredential(c, cred resource.Object) error {
+	if credentialStatus(c, cred) == "authorized" {
+		return nil
+	}
+	if staleCredential(c, cred) {
+		message := "连接配置已变更，请重新授权当前凭证后再试。"
+		if c.String("authorization_method") == "http_header" {
+			message = "连接配置已变更，请编辑当前凭证并重新提交认证请求头后再试。"
+		}
+		return &resource.Error{Status: 403, Code: "authorization_required", Message: message}
+	}
+	return authorizationRequired
+}
+
 func credentialStatus(c, cred resource.Object) string {
 	if cred == nil {
 		return "authorization_required"
@@ -33,7 +51,7 @@ func credentialStatus(c, cred resource.Object) string {
 	if cred["revoked_at"] != nil {
 		return "revoked"
 	}
-	if c.Int("config_revision") != cred.Int("config_revision") {
+	if staleCredential(c, cred) {
 		return "authorization_required"
 	}
 	if c.String("authorization_method") == "http_header" {
@@ -70,6 +88,9 @@ func credentialView(c, cred resource.Object, users map[string]resource.User) res
 		out["user"] = user
 	}
 	out["authorization_status"] = credentialStatus(c, cred)
+	if staleCredential(c, cred) {
+		out["connection_status"], out["last_checked_at"], out["last_error"] = "unknown", nil, nil
+	}
 	names := []string{}
 	if headers, ok := cred["http_headers"].(map[string]any); ok {
 		for name := range headers {

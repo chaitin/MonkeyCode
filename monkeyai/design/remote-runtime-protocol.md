@@ -115,19 +115,25 @@ Nginx 提供专用泛域名 TLS server，证书和私钥由部署方只读挂载
 
 ## 7. 独立设备授权
 
-申请：`POST /oauth/device/authorization`，表单 client_id=monkeyai-runtime、machine_id、公钥、display_name、platform、arch、scope。允许 scope 仅 device:bind/device:publish/session:report，默认三项；控制其他设备、账号管理及资源写入均不放行。设备码 32 字节随机值仅存 hash，短码 HMAC 索引；有效期 600 秒，初始轮询 5 秒。
+桌面通过交互登录。云电脑和自建 runtime 使用独立设备码，不复制桌面 token。`GET /.well-known/oauth-authorization-server` 在启用设备授权时返回 `device_authorization_endpoint`；`device_scopes_supported` 仅为旧客户端保留，不参与授权判断。
+
+向 `POST /oauth/device/authorization` 提交表单：`client_id=monkeyai-runtime`、`machine_id`、`execution_public_key`、`display_name`、`platform`、`arch`。旧客户端传入的 `scope` 不影响授权。设备码有效期 600 秒，初始轮询间隔 5 秒。
+
+固定运行端授权可使用桌面相同的资源 HTTP 接口，本机操作仍校验机器和公钥。它不授予额外的资源业务权限、账号管理或控制其他机器的能力。`/mcp/kb` 仍使用含 `mcp:invoke` 的网关密钥，并由知识库检查账号权限。
+
+仍有效的旧设备授权按同一固定能力处理，不用迁移数据库、重新批准或换密钥；已撤销或过期的授权不会恢复。云电脑仍须经过环境控制操作核验后才能自动批准。
 
 用户打开 `/device` 输入短码，或访问 verification_uri_complete。查询使用 `/api/auth/v1/client-requests/device?purpose=device&user_code=...`，SSO 使用 purpose=device 和独立 device_request_id 返回同一申请。确认页展示设备、公钥指纹、账号、权限和有效期，不回传 device_code。
 
-`POST /api/auth/v1/device/decision` 带 request_id、decision=approve/deny、approved_scopes 和可选 restore_revoked，使用浏览器 Cookie、请求绑定 CSRF 和来源校验。权限只能收窄；已撤销设备必须再次明确勾选恢复，公钥冲突不允许覆盖。并发答案只接受一次。
+`POST /api/auth/v1/device/decision` 带 request_id、decision=approve/deny 和可选 restore_revoked，使用浏览器 Cookie、请求绑定 CSRF 和来源校验。批准针对整套能力；旧字段 approved_scopes 不影响授权。已撤销设备必须再次明确勾选恢复，公钥冲突不允许覆盖。并发答案只接受一次。
 
 `POST /oauth/token` 使用 `grant_type=urn:ietf:params:oauth:grant-type:device_code`、client_id 和 device_code。pending/slow_down/access_denied/expired_token 遵循 RFC8628；过快轮询每次增加 5 秒间隔。兑换事务只成功一次，响应丢失重新授权，不重复返回秘密。
 
-成功增加 server_id、machine_id、grant_id 和批准 scope。专用授权冻结申请机器/公钥，证明前没有 Principal.machineId，不能上报宿主或管理密钥；刷新必须使用 monkeyai-runtime，保持 grant 和绑定。
+成功返回 server_id、machine_id 和 grant_id；scope 仅作为兼容字段返回。专用授权冻结申请机器和公钥，完成证明前不能上报本机或管理网关密钥；刷新须使用 monkeyai-runtime，并保留原授权族和绑定。
 
 独立发布 hello 使用 deployment_mode=standalone。原托管进程停止并释放在线租约后，同公钥、同 machine 的新独立授权可接管；旧 Desktop 用户授权保留，原会话不复制。同机重新授权替换旧专用执行授权，并撤销其调用密钥。活跃不同 boot 仍优先，不能自动抢占。
 
-独立调用密钥带 machine_id/runtime_grant_id。创建要求当前活动独立执行授权，列表、轮换和删除限定该授权族；网关逐次检查授权与活动设备绑定。退出、移除独立登记或替换授权会使密钥立即不可用，并同步或周期保存撤销标记；托管关闭远程不影响 Desktop 调用密钥。
+独立调用密钥带 machine_id/runtime_grant_id。签发和使用都要求当前授权有效且匹配活动设备和公钥。密钥本身的 `model:invoke`、`mcp:invoke` 仍单独检查；列表、轮换和删除限定该授权族。退出、移除独立登记或替换授权使派生密钥失效，不影响其他设备或桌面的调用密钥。
 
 ## 8. 本人会话目录
 

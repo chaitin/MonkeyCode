@@ -50,6 +50,7 @@ try {
       const errors = []
       page.on("pageerror", (error) => errors.push(error.message))
       let authenticated = false,
+        brandLicensed = true,
         version = 0,
         broken = false,
         failNext = false,
@@ -76,17 +77,30 @@ try {
             contentType: "application/json",
             body: JSON.stringify(body),
           })
+        if (endpoint === "/api/auth/v1/capabilities")
+          return json({
+            allow_cloud_computer: true,
+            allow_custom_branding: brandLicensed,
+          })
         if (endpoint === "/api/auth/v1/branding")
           return unavailable
             ? json({ error: { message: "unavailable" } }, 503)
-            : json({
-                ...branding,
-                ...(!legacy ? { logo_url: logo() } : {}),
-                has_commercial_license: false,
-                machine_code: "test-machine",
-              })
+            : !brandLicensed
+              ? json({
+                  workspace_name: "Monkey AI",
+                  product_name: "MonkeyAI",
+                  logo_url: "",
+                  has_commercial_license: true,
+                  machine_code: "test-machine",
+                })
+              : json({
+                  ...branding,
+                  ...(!legacy ? { logo_url: logo() } : {}),
+                  has_commercial_license: false,
+                  machine_code: "test-machine",
+                })
         if (endpoint === "/api/auth/v1/branding/logo")
-          return broken || !version
+          return !brandLicensed || broken || !version
             ? route.fulfill({ status: 404, body: "" })
             : route.fulfill({ contentType: "image/png", body: image })
         if (
@@ -345,6 +359,33 @@ try {
           .count(),
         0
       )
+      const beforeRevocation = writes.length
+      brandLicensed = false
+      await page.evaluate(() =>
+        window.dispatchEvent(new Event("monkeyai-license-changed"))
+      )
+      await page.waitForFunction(
+        () =>
+          document.querySelector("#team-name").disabled &&
+          document.querySelector("#tool-name").disabled &&
+          document.querySelector("#brand-logo-file").disabled
+      )
+      await card()
+        .getByText("当前无法编辑自定义品牌。", {
+          exact: true,
+        })
+        .waitFor()
+      await expectLogo("")
+      assert.equal(writes.length, beforeRevocation, "撤销品牌能力不应改写配置")
+      assert.equal(await page.locator("#tool-name").inputValue(), "最终产品")
+      brandLicensed = true
+      await page.evaluate(() =>
+        window.dispatchEvent(new Event("monkeyai-license-changed"))
+      )
+      await page.waitForFunction(
+        () => !document.querySelector("#brand-logo-file").disabled
+      )
+      await expectLogo(logo())
       if (process.env.SCREENSHOT_DIR)
         await card().screenshot({
           path: path.join(

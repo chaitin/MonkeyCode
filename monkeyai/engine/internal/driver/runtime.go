@@ -58,7 +58,7 @@ func (d *Driver) execCreate(ctx context.Context, c container, spec lifecycle.Spe
 	var out struct {
 		ID string `json:"Id"`
 	}
-	err = d.client.Do(ctx, "POST", "/containers/"+c.ID+"/exec", map[string]any{"User": "1000:1000", "Privileged": false, "AttachStdout": true, "AttachStderr": true, "Tty": false, "WorkingDir": "/workspace", "Env": environment, "Cmd": command}, &out)
+	err = d.client.Do(ctx, "POST", "/containers/"+c.ID+"/exec", map[string]any{"User": c.Config.User, "Privileged": false, "AttachStdout": true, "AttachStderr": true, "Tty": false, "WorkingDir": "/workspace", "Env": environment, "Cmd": command}, &out)
 	return out.ID, err
 }
 
@@ -76,13 +76,13 @@ func runtimeEnv(environment, proxy []string, binary string) []string {
 	}
 	return append(environment, proxy...)
 }
-func (d *Driver) execInfo(ctx context.Context, id, containerID, binary string) (execution, error) {
+func (d *Driver) execInfo(ctx context.Context, id string, c container, binary string) (execution, error) {
 	var e execution
 	err := d.client.Do(ctx, "GET", "/exec/"+id+"/json", nil, &e)
 	if err != nil {
 		return e, err
 	}
-	if e.ContainerID != containerID || e.ProcessConfig.Entrypoint != binary || e.ProcessConfig.Privileged || e.ProcessConfig.User != "1000:1000" {
+	if e.ContainerID != c.ID || e.ProcessConfig.Entrypoint != binary || e.ProcessConfig.Privileged || e.ProcessConfig.User != c.Config.User {
 		return e, errors.New("Docker exec 归属或执行身份不一致")
 	}
 	return e, nil
@@ -160,7 +160,7 @@ func (d *Driver) runRuntime(ctx context.Context, s lifecycle.Spec, _ string, arg
 		return 0, err
 	}
 	for {
-		e, err := d.execInfo(ctx, id, c.ID, files.Binary)
+		e, err := d.execInfo(ctx, id, c, files.Binary)
 		if err != nil {
 			return 0, err
 		}
@@ -265,7 +265,7 @@ func (d *Driver) Serve(ctx context.Context, s lifecycle.Spec, observe bool) erro
 			return errors.New("运行时进程记录无效")
 		}
 		command := serveCommand(files, saved.ContainerLogs)
-		e, err := d.execInfo(ctx, saved.ID, c.ID, command[0])
+		e, err := d.execInfo(ctx, saved.ID, c, command[0])
 		if err != nil {
 			return err
 		}

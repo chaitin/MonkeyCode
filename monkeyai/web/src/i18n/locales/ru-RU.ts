@@ -1,6 +1,14 @@
 import { enUS } from "./en-US.ts"
 
 export const ruRU = {
+  licenseCapabilities: {
+    cloudComputer: "Облачные компьютеры",
+    customBranding: "Настройка бренда",
+    granted: "Доступно",
+    notGranted: "Недоступно",
+    cloudLocked: "Создание облачных компьютеров сейчас недоступно.",
+    brandingLocked: "Настройка бренда сейчас недоступна.",
+  },
   accountSettings: {
     loadingProfile: "Загрузка",
     profileLoadFailed:
@@ -853,6 +861,8 @@ export const ruRU = {
       memberDisabled: "Отключён",
       makeAdministrator: "Назначить администратором",
       removeAdministrator: "Отменить права администратора",
+      deleteMember: "Удалить участника",
+      confirmDeleteMember: "Удалить участника {{member}} ({{email}})? Вход с этой учётной записью станет невозможен. История сохранится.",
       remainingCredits: "Осталось кредитов: {{count}}",
       joinedAt: "Дата добавления: {{date}}",
       groupActions: "Действия с группой",

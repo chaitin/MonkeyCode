@@ -184,6 +184,13 @@ func Grants(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
 	}
 	for _, grant := range grants {
 		if grant.Bool("all_users") {
+			name, err := rootgroup.Name(ctx, nil)
+			if err != nil {
+				return nil, err
+			}
+			if group, ok := grant["group"].(map[string]any); ok {
+				group["name"] = name
+			}
 			grant["group_id"] = rootgroup.ID
 			grant["all_users"] = false
 		}

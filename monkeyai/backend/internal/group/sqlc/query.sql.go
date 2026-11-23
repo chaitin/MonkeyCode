@@ -476,7 +476,7 @@ func (q *Queries) RootDirectMemberIDs(ctx context.Context) ([]string, error) {
 }
 
 const rootName = `-- name: RootName :one
-SELECT COALESCE((SELECT NULLIF(value ->> 'workspace_name', '') FROM settings WHERE key = 'branding'), 'Monkey AI')::text
+SELECT 'Monkey AI'::text
 `
 
 func (q *Queries) RootName(ctx context.Context) (string, error) {

@@ -237,7 +237,8 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 		controlError(w, r, fault(401, "unauthorized", "尚未认证"))
 		return
 	}
-	if s.devices == nil || input.MachineID == "" {
+	p, _ := identity.PrincipalFromContext(r.Context())
+	if s.devices == nil || input.MachineID == "" || (p.Purpose == "runtime" || p.MachineID != "") && input.MachineID != p.MachineID {
 		controlError(w, r, fault(403, "forbidden", "设备不属于当前用户"))
 		return
 	}
@@ -261,12 +262,13 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 			key = ""
 		}
 	}
-	if key == "" || s.access.InstanceID == "" {
+	instanceID := s.access.instance(r.Context())
+	if key == "" || instanceID == "" {
 		controlError(w, r, fault(503, "unavailable", "对应签发配置缺失"))
 		return
 	}
 	now := time.Now().UTC()
-	claims := Claims{Issuer: "monkeyai", Audience: audience, InstanceID: s.access.InstanceID, ClientID: machine, Subject: subject, IssuedAt: now.Unix(), ExpiresAt: now.Add(10 * time.Minute).Unix()}
+	claims := Claims{Issuer: "monkeyai", Audience: audience, InstanceID: instanceID, ClientID: machine, Subject: subject, IssuedAt: now.Unix(), ExpiresAt: now.Add(10 * time.Minute).Unix()}
 	w.Header().Set("Cache-Control", "no-store")
 	resource.JSON(r.Context(), w, 200, map[string]any{"token": signClaims(claims, key), "expires_at": time.Unix(claims.ExpiresAt, 0).UTC()})
 }

@@ -3145,13 +3145,7 @@ func (q *Queries) WalletUser(ctx context.Context, userID string) (string, error)
 }
 
 const workspaceName = `-- name: WorkspaceName :one
-SELECT
-    COALESCE((
-        SELECT
-            NULLIF (value ->> 'workspace_name', '')
-        FROM settings
-        WHERE
-            KEY = 'branding'), 'Monkey AI')::text
+SELECT 'Monkey AI'::text
 `
 
 func (q *Queries) WorkspaceName(ctx context.Context) (string, error) {

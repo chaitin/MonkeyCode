@@ -1,4 +1,12 @@
 export const enUS = {
+  licenseCapabilities: {
+    cloudComputer: "Cloud computers",
+    customBranding: "Custom branding",
+    granted: "Available",
+    notGranted: "Unavailable",
+    cloudLocked: "Creating cloud computers is currently unavailable.",
+    brandingLocked: "Custom branding is currently unavailable.",
+  },
   kbPermissions: {
     noAccess: "No access",
     readOnly: "Read only",
@@ -32,6 +40,9 @@ export const enUS = {
   },
   environmentAdmin: {
     systemImages: {
+      accepted: "Image import accepted.",
+      defaultImage: "Default image · ready",
+      stages: {queued:"Queued",resolving:"Resolving image",pulling:"Pulling image",reading_archive:"Reading archive",importing:"Importing image",verifying:"Verifying image",uploading:"Uploading archive",awaiting:"File sent, waiting for confirmation"},
       title: "System images",
       description:
         "Browse and manage Docker images in the built-in server Registry.",
@@ -65,7 +76,7 @@ export const enUS = {
       deleting: "Deleting",
       upstream: "Image address",
       added: "Image import simulated. No real upload or pull took place.",
-      deleted: "Removed from the demo list. The real Registry is unchanged.",
+      deleted: "Image removed from the catalog. Existing environments are unchanged.",
       loadFailed: "Could not load images. Please refresh.",
       operationFailed: "The operation failed. Please try again.",
       addDescription:
@@ -452,6 +463,7 @@ export const enUS = {
       sign_out: "Sign out",
     },
     targets: {
+      "system-images": "System images",
       accounts: "Credit account",
       transactions: "Billing transaction",
       quotas: "Quota",
@@ -2178,6 +2190,8 @@ export const enUS = {
       memberDisabled: "Disabled",
       makeAdministrator: "Make administrator",
       removeAdministrator: "Remove administrator",
+      deleteMember: "Delete member",
+      confirmDeleteMember: "Delete {{member}} ({{email}})? They will no longer be able to sign in with this account. Historical records will be retained.",
       remainingCredits: "{{count}} credits remaining",
       joinedAt: "Joined {{date}}",
       groupActions: "Group actions",

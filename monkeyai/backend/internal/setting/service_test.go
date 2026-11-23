@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -40,50 +39,17 @@ func (m *memoryStore) Put(_ context.Context, record Record) (Record, error) {
 	return record, nil
 }
 
-func TestBrandingValue(t *testing.T) {
-	configured := json.RawMessage(`{"workspace_name":"Team","product_name":"Product"}`)
-	readErr := errors.New("database unavailable")
-	for _, test := range []struct {
-		name    string
-		store   *memoryStore
-		want    string
-		wantErr error
-	}{
-		{
-			name:  "missing settings use defaults",
-			store: &memoryStore{},
-			want:  `{}`,
-		},
-		{
-			name:  "wrapped missing settings use defaults",
-			store: &memoryStore{err: fmt.Errorf("read branding: %w", ErrNotFound)},
-			want:  `{}`,
-		},
-		{
-			name: "configured settings are preserved",
-			store: &memoryStore{records: map[string]Record{
-				"branding": {Key: "branding", Value: configured},
-			}},
-			want: string(configured),
-		},
-		{
-			name:    "storage errors are preserved",
-			store:   &memoryStore{err: readErr},
-			wantErr: readErr,
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			service := NewService(test.store)
-			value, err := service.GetValue(t.Context(), "branding")
-			if !errors.Is(err, test.wantErr) || string(value) != test.want {
-				t.Fatalf("value=%s err=%v, want=%s err=%v", value, err, test.want, test.wantErr)
-			}
-			if test.want == `{}` {
-				if _, err := service.Get(t.Context(), "branding"); !errors.Is(err, ErrNotFound) {
-					t.Fatalf("读取原始设置应保留缺失状态: %v", err)
-				}
-			}
-		})
+func TestBrandingDefaultsWithoutCommercialProvider(t *testing.T) {
+	configured := json.RawMessage(`{"workspace_name":"Custom team","product_name":"Custom product","logo_s3_key":"private/key"}`)
+	for _, store := range []*memoryStore{{}, {records: map[string]Record{"branding": {Key: "branding", Value: configured}}}, {err: errors.New("unavailable")}} {
+		service := NewService(store)
+		value, err := service.GetValue(t.Context(), "branding")
+		if err != nil || string(value) != string(defaultBranding) {
+			t.Fatalf("默认品牌=%s，错误=%v", value, err)
+		}
+		if _, err = service.Put(t.Context(), "branding", configured, 1, "admin"); !errors.Is(err, ErrUnknownKey) {
+			t.Fatal("通用设置允许写入自定义品牌", err)
+		}
 	}
 }
 

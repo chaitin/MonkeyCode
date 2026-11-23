@@ -1,6 +1,14 @@
 import { enUS } from "./en-US.ts"
 
 export const frFR = {
+  licenseCapabilities: {
+    cloudComputer: "Ordinateurs cloud",
+    customBranding: "Personnalisation de la marque",
+    granted: "Disponible",
+    notGranted: "Indisponible",
+    cloudLocked: "La création d’ordinateurs cloud est actuellement indisponible.",
+    brandingLocked: "La personnalisation de la marque est actuellement indisponible.",
+  },
   accountSettings: {
     loadingProfile: "Chargement",
     profileLoadFailed:
@@ -863,6 +871,8 @@ export const frFR = {
       memberDisabled: "Désactivé",
       makeAdministrator: "Définir comme administrateur",
       removeAdministrator: "Retirer le rôle d’administrateur",
+      deleteMember: "Supprimer le membre",
+      confirmDeleteMember: "Supprimer {{member}} ({{email}}) ? Ce compte ne pourra plus se connecter. Les données historiques seront conservées.",
       remainingCredits: "{{count}} crédits restants",
       joinedAt: "Membre depuis le {{date}}",
       groupActions: "Actions du groupe",

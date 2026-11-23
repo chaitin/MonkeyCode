@@ -46,7 +46,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		failure(r.Context(), w, 429, "relay_overloaded")
 		return
 	}
-	if !p.Has("device:bind") {
+	if !p.IsRuntime() && !p.Has("device:bind") {
 		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}

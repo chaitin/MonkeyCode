@@ -10,6 +10,7 @@ import (
 const Audience = "monkeyai-api"
 
 var scopeNames = map[string]string{
+	AccountResources:     "以账号身份使用和管理有权访问的 AI 资源",
 	"environment:read":   "读取自己的云环境",
 	"environment:manage": "创建和管理自己的云环境",
 	"device:bind":        "确认本机设备身份",
@@ -45,7 +46,15 @@ func PrincipalFromContext(ctx context.Context) (Principal, bool) {
 }
 
 func (p Principal) Has(scope string) bool {
-	return p.Audience == Audience && slices.Contains(p.Scopes, scope)
+	return p.Purpose != "runtime" && p.Audience == Audience && slices.Contains(p.Scopes, scope)
+}
+
+func (p Principal) IsRuntime() bool {
+	return p.Purpose == "runtime" && p.ClientID == RuntimeClientID && p.Audience == Audience
+}
+
+func (p Principal) CanIssueRuntimeKey() bool {
+	return p.IsRuntime() && p.MachineID != "" && p.KeyID != ""
 }
 
 func RequireScope(scope string) func(http.Handler) http.Handler {
@@ -73,8 +82,8 @@ func parseScopes(clientID, value string) ([]string, error) {
 		if _, ok := scopeNames[scope]; !ok {
 			return nil, oauthError("invalid_scope", "不支持请求的权限")
 		}
-		if clientID == RuntimeClientID && !slices.Contains(runtimeScopes, scope) {
-			return nil, oauthError("invalid_scope", "独立执行授权仅限本设备执行和上报")
+		if scope == AccountResources && clientID != RuntimeClientID {
+			return nil, oauthError("invalid_scope", "此委托权限仅用于设备授权")
 		}
 		if clientID == "monkeyai-mobile" && slices.Contains([]string{"device:bind", "device:publish", "session:report"}, scope) {
 			return nil, oauthError("invalid_scope", "此客户端不能发布执行设备")

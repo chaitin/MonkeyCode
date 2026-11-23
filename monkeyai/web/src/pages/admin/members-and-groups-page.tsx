@@ -117,7 +117,11 @@ type ListedUser = User & {
 }
 
 type MemberAction =
-  "enableMember" | "disableMember" | "makeAdministrator" | "removeAdministrator"
+  | "enableMember"
+  | "disableMember"
+  | "makeAdministrator"
+  | "removeAdministrator"
+  | "deleteMember"
 
 function SupervisorBadge({ groups }: { groups: string[] }) {
   const { t } = useTranslation()
@@ -224,7 +228,7 @@ export function MembersAndGroupsPage() {
   const updateUser = async (
     user: MemberActionUser,
     patch: Partial<Pick<MemberActionUser, "name" | "role" | "status">>,
-    action: MemberAction
+    action: Exclude<MemberAction, "deleteMember">
   ) => {
     setSavingID(user.id)
     try {
@@ -270,10 +274,40 @@ export function MembersAndGroupsPage() {
     })
   }
 
+  const queueMemberDeletion = (user: MemberActionUser) => {
+    setPendingMemberAction({ user, action: "deleteMember" })
+  }
+
+  const deleteMember = async (user: MemberActionUser) => {
+    setSavingID(user.id)
+    try {
+      await api<void>(`/api/admin/v1/users/${user.id}`, { method: "DELETE" })
+      setUsers((current) => current.filter((item) => item.id !== user.id))
+      setSelectedMembers((current) => current.filter((item) => item.id !== user.id))
+      reloadMembersAndGroups()
+      setPendingMemberAction(null)
+      showToast({
+        status: "success",
+        title: t("pages.membersAndGroups.deleteMember"),
+        description: t("pages.membersAndGroups.actionSucceeded", {
+          target: user.name,
+        }),
+      })
+    } catch (reason) {
+      showToast({ status: "error", title: (reason as Error).message })
+    } finally {
+      setSavingID("")
+    }
+  }
+
   const confirmMemberAction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!pendingMemberAction || savingID) return
     const { user, action } = pendingMemberAction
+    if (action === "deleteMember") {
+      await deleteMember(user)
+      return
+    }
     const patch: Parameters<typeof updateUser>[1] =
       action === "makeAdministrator"
         ? { role: "admin" }
@@ -651,6 +685,7 @@ export function MembersAndGroupsPage() {
                   onToggleStatus={toggleUserStatus}
                   onToggleRole={toggleUserRole}
                   onResetPassword={setPasswordResetUser}
+                  onDelete={queueMemberDeletion}
                   multiSelect={multiSelect}
                   selectionDisabled={moving || batchUpdatingStatus}
                   selectedMemberKeys={selectedMemberKeys}
@@ -808,6 +843,7 @@ export function MembersAndGroupsPage() {
                             onToggleStatus={toggleUserStatus}
                             onToggleRole={toggleUserRole}
                             onResetPassword={setPasswordResetUser}
+                            onDelete={queueMemberDeletion}
                           />
                         </ItemActions>
                         <ItemSeparator className="my-0" />
@@ -1179,13 +1215,18 @@ export function MembersAndGroupsPage() {
             </AlertDialogHeader>
             <AlertDialogDescription>
               {pendingMemberAction &&
-                t("pages.membersAndGroups.confirmMemberAction", {
-                  action: t(
-                    `pages.membersAndGroups.${pendingMemberAction.action}`
-                  ),
-                  member: pendingMemberAction.user.name,
-                  email: pendingMemberAction.user.email,
-                })}
+                t(
+                  pendingMemberAction.action === "deleteMember"
+                    ? "pages.membersAndGroups.confirmDeleteMember"
+                    : "pages.membersAndGroups.confirmMemberAction",
+                  {
+                    action: t(
+                      `pages.membersAndGroups.${pendingMemberAction.action}`
+                    ),
+                    member: pendingMemberAction.user.name,
+                    email: pendingMemberAction.user.email,
+                  }
+                )}
             </AlertDialogDescription>
             <AlertDialogFooter>
               <AlertDialogCancel type="button" disabled={Boolean(savingID)}>
@@ -1195,6 +1236,7 @@ export function MembersAndGroupsPage() {
                 type="submit"
                 variant={
                   pendingMemberAction?.action === "disableMember" ||
+                  pendingMemberAction?.action === "deleteMember" ||
                   pendingMemberAction?.action === "removeAdministrator"
                     ? "destructive"
                     : "default"

@@ -58,7 +58,9 @@ sudo /opt/monkeyai-engine/current/bin/monkeyai-engine environment inspect --id e
 
 支持 `network_policy=isolated` 和 `public-only`。Docker 自动分配每实例独立网络、DNS 和 NAT，engine 管理公网出站限制。无需手动配置地址池，详见 [网络说明](NETWORK.md)。
 
-固定 UID/GID 1000，清空 capabilities，no-new-privileges，受限设备和 proc/sys，只允许三种固定持久挂载目标，不接受镜像 VOLUME 自动挂载。Firecracker 可作为新的宿主驱动实现相同生命周期接口；Kubernetes 应在后台增加供应实现，不伪装成宿主驱动。
+收到后台目标时，若省略 `sandbox_root`，仅首次创建（第 1 代、running）的持久环境默认为 UID/GID 0。显式 false 和非持久环境仍为 UID/GID 1000。已有环境重放、停启及 engine 重启均沿用原身份，不原地提权。HOME 挂载位置不变。两种身份均清空 capabilities，启用 no-new-privileges，限制设备和 proc/sys，拒绝镜像 VOLUME 和任意宿主路径。root 环境将 runtime 父卷只读挂载，仅对 state 和 state.maintenance.lock 建立可写子挂载；不能仅靠 Unix 文件所有者保护发行文件。
+
+上文 UID 1000 的 RLIMIT_NPROC 验证不适用于 UID 0。两种身份均保留宿主 cgroup 的 CPU、内存和 pids 上限。部署前须在专用 gVisor 节点验证实际工作负载的限额、网络隔离及持久卷，定期更新宿主内核、Docker 和 runsc。宿主服务不得执行用户可写卷里的程序，也不要把这些卷复用于其他环境。
 
 镜像通过 Docker API 拉取和解包，只接受固定 SHA-256 与匹配的 Linux 架构，拒绝镜像声明匿名卷。准备超时 15 分钟，拉取后镜像报告大小上限 16 GiB；拉取前检查空间余量。Docker 执行解包，不提供原驱动逐层压缩流的硬上限。runsc 使用 `--overlay2=none`，将根文件系统写入 Docker 持久层，避免默认 root:self 写层在停止后丢失修改。持久化不授予 UID 1000 额外系统权限；`/tmp`、`/run`、`/dev/shm` 和进程内存不保留。已有只读容器保持 ReadonlyRootfs，不在接管时修改配置。
 

@@ -291,7 +291,11 @@ func build(s lifecycle.Spec, i imageInfo, mounts []storage.Mount, resolver strin
 		}
 		c.Env = append(c.Env, "PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8")
 	}
-	c.Env = append(c.Env, "HOME=/home/monkey", "USER=monkey", "LOGNAME=monkey")
+	name := "monkey"
+	if s.SandboxRoot {
+		c.User, name = "0:0", "root"
+	}
+	c.Env = append(c.Env, "HOME=/home/monkey", "USER="+name, "LOGNAME="+name)
 	h := HostConfig{Runtime: dockerapi.Runtime, ReadonlyRootfs: !s.PersistentContainer, NetworkMode: "none", CgroupnsMode: "private", IpcMode: "private", CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, Memory: s.Resource.MemoryBytes, MemorySwap: s.Resource.MemoryBytes, NanoCpus: s.Resource.CPUMillis * 1000000, PidsLimit: s.Resource.HostTasks, ShmSize: s.Resource.TemporaryBytes / 4, Ulimits: []Ulimit{{"nofile", 4096, 4096}, {"nproc", sandboxTasks, sandboxTasks}}, Tmpfs: map[string]string{"/tmp": fmt.Sprintf("rw,nosuid,nodev,mode=1777,size=%d", s.Resource.TemporaryBytes/2), "/run": fmt.Sprintf("rw,nosuid,nodev,mode=1777,size=%d", s.Resource.TemporaryBytes/4)}}
 	h.RestartPolicy.Name = "no"
 	h.LogConfig.Type = "json-file"
@@ -299,7 +303,18 @@ func build(s lifecycle.Spec, i imageInfo, mounts []storage.Mount, resolver strin
 	for _, m := range mounts {
 		v := Mount{Type: "bind", Source: m.Source, Target: m.Target}
 		v.BindOptions.Propagation = "rprivate"
-		h.Mounts = append(h.Mounts, v)
+		if s.SandboxRoot && v.Target == "/var/lib/monkeyai" {
+			// 父卷只读，不能依赖宿主 UID 区分沙箱 root 和发行文件所有者。
+			v.ReadOnly = true
+			h.Mounts = append(h.Mounts, v)
+			for _, part := range []string{"state", "state.maintenance.lock"} {
+				child := v
+				child.Source, child.Target, child.ReadOnly = filepath.Join(v.Source, part), filepath.Join(v.Target, part), false
+				h.Mounts = append(h.Mounts, child)
+			}
+		} else {
+			h.Mounts = append(h.Mounts, v)
+		}
 	}
 	body := createBody{Config: c, HostConfig: h}
 	if s.NetworkPolicy == "public-only" {
@@ -353,7 +368,7 @@ func (d *Driver) load(ctx context.Context, s lifecycle.Spec, ref string) (contai
 	}
 	want := build(s, i, mounts, filepath.Join(d.instanceDir(s), "resolv.conf"))
 	// 已有只读容器可原样接管，根文件系统写权限仅在创建时设置。
-	if c.HostConfig.ReadonlyRootfs {
+	if !s.SandboxRoot && c.HostConfig.ReadonlyRootfs {
 		want.HostConfig.ReadonlyRootfs = true
 		for index, value := range want.Env {
 			key, _, _ := strings.Cut(value, "=")
@@ -376,23 +391,20 @@ func (d *Driver) load(ctx context.Context, s lifecycle.Spec, ref string) (contai
 	bindCount := 0
 	for _, m := range c.Mounts {
 		if m.Type == "bind" {
-			if s.NetworkPolicy == "public-only" && m.Source == filepath.Join(d.instanceDir(s), "resolv.conf") && m.Destination == "/etc/resolv.conf" && !m.RW {
-				continue
-			}
 			bindCount++
 		} else if m.Type != "tmpfs" || (m.Destination != "/tmp" && m.Destination != "/run") {
 			return c, errors.New("Docker 存在额外挂载")
 		}
 	}
-	if bindCount != len(mounts) {
+	if bindCount != len(want.HostConfig.Mounts) {
 		return c, errors.New("Docker 存在额外挂载")
 	}
-	for _, m := range mounts {
+	for _, m := range want.HostConfig.Mounts {
 		if !slices.ContainsFunc(c.Mounts, func(v struct {
 			Type, Source, Destination string
 			RW                        bool
 		}) bool {
-			return v.Type == "bind" && v.Source == m.Source && v.Destination == m.Target && v.RW
+			return v.Type == "bind" && v.Source == m.Source && v.Destination == m.Target && v.RW != m.ReadOnly
 		}) {
 			return c, errors.New("Docker 持久卷挂载发生变化")
 		}
@@ -504,6 +516,15 @@ func (d *Driver) guard(ctx context.Context, s lifecycle.Spec, name string) error
 	return dockernet.Guard(ctx, n, fingerprint(s), d.privateCIDRs...)
 }
 func (d *Driver) Start(ctx context.Context, s lifecycle.Spec, ref string) error {
+	if s.SandboxRoot {
+		info, err := d.client.Info(ctx)
+		if err != nil {
+			return err
+		}
+		if err := info.Validate(); err != nil {
+			return err
+		}
+	}
 	c, err := d.load(ctx, s, ref)
 	if err != nil {
 		return err

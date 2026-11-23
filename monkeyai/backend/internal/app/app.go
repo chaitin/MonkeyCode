@@ -10,8 +10,10 @@ import (
 	_ "net/http/pprof"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/extension"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
@@ -21,8 +23,6 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/designcatalog"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/enginehost"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/envimage"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/environment"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
@@ -42,8 +42,8 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rule"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/runtimeartifact"
 	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
@@ -59,24 +59,24 @@ import (
 )
 
 type App struct {
-	servers           []*http.Server
-	database          *pgxpool.Pool
-	shutdownTimeout   time.Duration
-	billing           *billing.Service
-	sessions          *sessionreporting.Service
-	proxy             *proxy.Proxy
-	images            *imagegen.Service
-	videos            *videogen.Service
-	inputs            *imagegen.Inputs
-	runtimeKeys       *apikey.Service
-	relay             *relay.Service
-	endpoints         *endpoint.Service
-	feedback          *feedback.Service
-	connectors        *mcp.Service
-	knowledgeBases    *kb.Service
-	resourceImports   *resourceimport.Service
-	environmentImages *envimage.Service
-	environments      *environment.Service
+	role            config.Role
+	servers         []*http.Server
+	database        *pgxpool.Pool
+	shutdownTimeout time.Duration
+	billing         *billing.Service
+	sessions        *sessionreporting.Service
+	proxy           *proxy.Proxy
+	images          *imagegen.Service
+	videos          *videogen.Service
+	inputs          *imagegen.Inputs
+	runtimeKeys     *apikey.Service
+	relay           *relay.Service
+	endpoints       *endpoint.Service
+	feedback        *feedback.Service
+	connectors      *mcp.Service
+	knowledgeBases  *kb.Service
+	resourceImports *resourceimport.Service
+	modules         []extension.Module
 }
 
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
@@ -131,10 +131,11 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 	}
 
 	return &App{
+		role: cfg.Role,
 		servers: []*http.Server{
 			{
 				Addr:              cfg.Addr,
-				Handler:           handler,
+				Handler:           planeHandler(cfg.Role, handler),
 				ReadHeaderTimeout: 5 * time.Second,
 				IdleTimeout:       2 * time.Minute,
 				MaxHeaderBytes:    1 << 20,
@@ -149,23 +150,22 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 				ErrorLog:          logging.ErrorLog(logger),
 			},
 		},
-		billing:           handler.(*applicationHandler).billing,
-		sessions:          handler.(*applicationHandler).sessions,
-		proxy:             handler.(*applicationHandler).proxy,
-		images:            handler.(*applicationHandler).images,
-		videos:            handler.(*applicationHandler).videos,
-		inputs:            handler.(*applicationHandler).inputs,
-		runtimeKeys:       handler.(*applicationHandler).runtimeKeys,
-		relay:             handler.(*applicationHandler).relay,
-		endpoints:         handler.(*applicationHandler).endpoints,
-		feedback:          handler.(*applicationHandler).feedback,
-		connectors:        handler.(*applicationHandler).connectors,
-		knowledgeBases:    handler.(*applicationHandler).knowledgeBases,
-		resourceImports:   handler.(*applicationHandler).resourceImports,
-		environmentImages: handler.(*applicationHandler).environmentImages,
-		environments:      handler.(*applicationHandler).environments,
-		database:          pool,
-		shutdownTimeout:   cfg.ShutdownTimeout,
+		billing:         handler.(*applicationHandler).billing,
+		sessions:        handler.(*applicationHandler).sessions,
+		proxy:           handler.(*applicationHandler).proxy,
+		images:          handler.(*applicationHandler).images,
+		videos:          handler.(*applicationHandler).videos,
+		inputs:          handler.(*applicationHandler).inputs,
+		runtimeKeys:     handler.(*applicationHandler).runtimeKeys,
+		relay:           handler.(*applicationHandler).relay,
+		endpoints:       handler.(*applicationHandler).endpoints,
+		feedback:        handler.(*applicationHandler).feedback,
+		connectors:      handler.(*applicationHandler).connectors,
+		knowledgeBases:  handler.(*applicationHandler).knowledgeBases,
+		resourceImports: handler.(*applicationHandler).resourceImports,
+		modules:         handler.(*applicationHandler).modules,
+		database:        pool,
+		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
 }
 
@@ -204,18 +204,21 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 }
 
 func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config, users member.UserWriter, groups member.GroupWriter, registrars []AdminRegistrar) (http.Handler, error) {
+	capabilities := licenseReader(registrars)
 	settings := setting.NewService(setting.NewPostgres(pool))
 	sessions := sessionreporting.NewService(pool).WithReportingSettings(settings).WithPurgeAuthorizer(func(ctx context.Context) bool {
 		user, ok := identity.UserFromContext(ctx)
 		return ok && user.Role == "admin"
 	})
-	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings)
+	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings).WithLicense(capabilities)
 	executions := endpoint.NewExecution(pool, identities)
 	sessions.WithHostAuthorizer(executions)
 	identities.WithUserWriter(users)
 	configurePublicLicense(identities, registrars)
-	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
-		return nil, fmt.Errorf("初始化管理员: %w", err)
+	if cfg.Role != config.RoleProxy {
+		if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
+			return nil, fmt.Errorf("初始化管理员: %w", err)
+		}
 	}
 	charges := billing.NewService(pool)
 	if err := charges.Initialize(ctx); err != nil {
@@ -237,8 +240,6 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		return nil, fmt.Errorf("初始化资源 Bucket: %w", err)
 	}
 	identities.WithProfileStorage(storage)
-	settings.WithLogoStorage(storage, cfg.PublicURL)
-	identities.WithBrandingLogo(settings)
 	feedbacks := feedback.NewService(pool, storage)
 	imageRepo := imagegen.NewPostgres(pool)
 	imageInputs := imagegen.NewInputs(imageRepo, storage)
@@ -269,6 +270,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 
 	admin := chi.NewRouter()
 	admin.Use(identities.RequireAdmin)
+	admin.Use(rootgroup.Middleware(settings))
 	audits := audit.NewService(pool, logger)
 	admin.Use(audits.Middleware(func(r *http.Request) audit.Actor {
 		user, _ := identity.UserFromContext(r.Context())
@@ -277,7 +279,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
 	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion)
-	if cfg.EngineReleaseDir != "" {
+	if cfg.EngineReleaseDir != "" && cfg.Role != config.RoleControl {
 		stateDir := cfg.RuntimeStateDir
 		if stateDir == "" {
 			stateDir = "data/runtime"
@@ -288,17 +290,9 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 		engineHosts.WithEnrollmentKey(key)
 	}
-	environments := environment.NewService(pool).WithBilling(charges)
-	engineHosts.WithCommands(environments)
-	environments.RegisterAdmin(admin)
 	engineHosts.RegisterAdmin(admin)
 	groupService := group.NewService(pool).WithAccountPreserver(charges).WithMemberWriter(groups)
 	groupService.RegisterAdmin(admin)
-	for _, registrar := range registrars {
-		if registrar != nil {
-			registrar.RegisterAdmin(admin)
-		}
-	}
 	settings.RegisterAdmin(admin)
 	charges.RegisterAdmin(admin)
 	stats.NewService(pool).RegisterAdmin(admin)
@@ -319,11 +313,15 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
-	environments.RegisterAgent(agent)
+	agent.Use(rootgroup.Middleware(settings))
+	interactive := agent.With(identity.RequireInteractive)
+	account := agent.With(identity.RequireAccountResources)
 	endpointStore := endpoint.NewPostgres(pool).WithDeviceAuthorizer(identities)
 	var instanceID string
+	var lookupInstance func(context.Context) (string, error)
 	for _, registrar := range registrars {
 		if source, ok := registrar.(InstanceIdentity); ok {
+			lookupInstance = source.InstanceID
 			instanceID, err = source.InstanceID(ctx)
 			if err != nil {
 				logger.WarnContext(ctx, "读取部署实例身份失败，设计资源签发不可用", "error", err)
@@ -332,35 +330,38 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 			break
 		}
 	}
-	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
+	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, LookupInstance: lookupInstance, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
 	resourceImports.WithDesignCatalog(designs).WithKnowledgeCatalog(knowledgeBases)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
 	endpoints.RegisterAdmin(admin)
 	identities.RegisterAgent(agent)
-	group.NewService(pool).RegisterAgent(agent)
-	keys.RegisterAgent(agent)
-	models.RegisterAgent(agent)
-	rules.RegisterAgent(agent)
-	skills.RegisterAgent(agent)
-	experts.RegisterAgent(agent)
-	knowledgeBases.RegisterAgent(agent)
-	store.RegisterSharing(agent, map[string]resource.Shareable{"model": modelRepo, "rule": rules, "skill": skills.CRUD, "connector": connectors.Connectors, "expert": experts.CRUD, "kb": knowledgeBases.CRUD})
+	group.NewService(pool).RegisterAgent(interactive)
+	keys.RegisterAgent(agent.With(identity.RequireGatewayKeys))
+	models.RegisterAgent(account)
+	rules.RegisterAgent(account)
+	skills.RegisterAgent(account)
+	experts.RegisterAgent(account)
+	knowledgeBases.RegisterAgent(account)
+	store.RegisterSharing(account, map[string]resource.Shareable{"model": modelRepo, "rule": rules, "skill": skills.CRUD, "connector": connectors.Connectors, "expert": experts.CRUD, "kb": knowledgeBases.CRUD})
 	settings.RegisterAgent(agent)
-	connectors.RegisterAgent(agent)
-	resources.RegisterAgent(agent)
-	charges.RegisterAgent(agent)
-	feedbacks.RegisterAgent(agent)
+	connectors.RegisterAgent(account)
+	resources.RegisterAgent(account)
+	charges.RegisterAgent(interactive)
+	feedbacks.RegisterAgent(interactive)
 	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
 
 	router.Use(web.New(logger).Middleware)
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
+	requireResource := func(next http.Handler) http.Handler {
+		return identities.RequireAgent(identity.RequireAccountResources(next))
+	}
 	router.With(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("Authorization") != "" {
-				identities.RequireAgent(next).ServeHTTP(w, r)
+				requireResource(next).ServeHTTP(w, r)
 			} else {
 				identities.RequireBrowser(next).ServeHTTP(w, r)
 			}
@@ -368,8 +369,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	}).Get("/api/kb/{id}/assets/{name}", knowledgeBases.ServeAsset)
 	router.NotFound(web.NotFound)
 	router.MethodNotAllowed(web.MethodNotAllowed)
-	engineHosts.Register(router)
-	designs.RegisterCatalog(router, identities.RequireAgent)
+	designs.RegisterCatalog(router, requireResource)
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
 		WithSessionResolver(sessionResolver).
@@ -383,13 +383,12 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
 	knowledgeBases.RegisterMCP(router, keys)
 	var runtimeRelay *relay.Service
-	if cfg.RuntimeRelay {
+	if cfg.RuntimeRelay && cfg.Role != config.RoleControl {
 		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
 		if err != nil {
 			return nil, fmt.Errorf("初始化远程执行中转: %w", err)
 		}
-		identities.WithDeviceAuthorization(runtimeRelay.Metadata()["server_id"].(string), runtimeRelay.DeviceAuthorizationKey(), executions).WithRuntimeAccess(environments)
-		environments.WithRuntime(cfg.PublicURL, runtimeRelay.Metadata()["server_id"].(string), identities).WithDisconnect(runtimeRelay.DisconnectRuntime).WithReadiness(runtimeRelay)
+		identities.WithDeviceAuthorization(runtimeRelay.Metadata()["server_id"].(string), runtimeRelay.DeviceAuthorizationKey(), executions)
 		runtimeRelay.Register(router)
 		sessions.WithRuntimeStatus(runtimeRelay)
 		identities.WithRuntimeFeatures(func(ctx context.Context) (map[string]bool, error) {
@@ -411,6 +410,56 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
 	router.Mount("/oauth", identities.OAuthRouter())
+	services := extension.Services{
+		Pool: pool, Storage: storage, Credits: charges, PublicURL: cfg.PublicURL,
+		ImageStateDir: cfg.ImageStateDir, ImageImportDir: cfg.ImageImportDir,
+		RuntimeReleaseDir: cfg.RuntimeReleaseDir, RuntimeVersion: cfg.RuntimeVersion,
+		RegistryAuthorized: engineHosts.RegistryAuthorized,
+	}
+	if runtimeRelay != nil {
+		services.Runtime = extension.Runtime{
+			ServerID: runtimeRelay.Metadata()["server_id"].(string), Authorizer: identities,
+			Readiness: runtimeRelay, Disconnect: runtimeRelay.DisconnectRuntime,
+		}
+	}
+	modules, bindings, err := initializeModules(ctx, registrars, services)
+	if err != nil {
+		return nil, fmt.Errorf("初始化宿主扩展: %w", err)
+	}
+	for _, binding := range bindings {
+		if binding.Branding != nil {
+			settings.WithBranding(binding.Branding)
+			identities.WithBranding(binding.Branding)
+		}
+		if binding.RuntimeAccess != nil {
+			identities.WithRuntimeAccess(binding.RuntimeAccess)
+		}
+		if binding.Pricing != nil {
+			charges.WithPricing(binding.Pricing)
+		}
+		if binding.HostCounts != nil {
+			engineHosts.WithHostCounts(binding.HostCounts)
+		}
+		if binding.DeviceNames != nil {
+			endpointStore.WithNames(binding.DeviceNames)
+			executions.WithNames(binding.DeviceNames)
+		}
+		if binding.Commands != nil {
+			engineHosts.WithCommands(binding.Commands)
+		}
+	}
+	engineHosts.Register(router)
+	authRouter := identities.AuthRouter()
+	for _, registrar := range registrars {
+		if registrar != nil {
+			registrar.RegisterAdmin(admin)
+		}
+	}
+	for _, module := range modules {
+		module.RegisterAgent(interactive)
+		module.RegisterPublic(router)
+		module.RegisterAuth(authRouter)
+	}
 	auth := audits.Middleware(func(r *http.Request) audit.Actor {
 		switch r.URL.Path {
 		case "/api/auth/v1/admin/login", "/api/auth/v1/admin/email/login":
@@ -423,31 +472,9 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		default:
 			return audit.Actor{}
 		}
-	})(identities.AuthRouter())
-	if cfg.RuntimeReleaseDir != "" {
-		runtimes := runtimeartifact.New(cfg.RuntimeReleaseDir, cfg.RuntimeVersion)
-		environments.WithRuntimeCatalog(runtimes)
-		runtimes.RegisterHost(router)
-	}
-	var environmentImages *envimage.Service
-	if cfg.ImageStateDir != "" {
-		environmentImages, err = envimage.New(ctx, cfg.ImageStateDir, cfg.PublicURL)
-		if err != nil {
-			return nil, fmt.Errorf("初始化环境镜像仓库: %w", err)
-		}
-		environmentImages.WithAuthorize(engineHosts.RegistryAuthorized)
-		if cfg.ImageImportDir != "" {
-			if err := environmentImages.Import(ctx, cfg.ImageImportDir); err != nil {
-				environmentImages.Close()
-				return nil, fmt.Errorf("导入环境镜像资源: %w", err)
-			}
-		}
-		environments.WithImages(environmentImages)
-		environmentImages.RegisterAdmin(admin)
-		environmentImages.RegisterHost(router)
-	}
+	})(authRouter)
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{environments: environments, environmentImages: environmentImages, Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, knowledgeBases: knowledgeBases, resourceImports: resourceImports}, nil
+	return &applicationHandler{modules: modules, Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, knowledgeBases: knowledgeBases, resourceImports: resourceImports}, nil
 }
 
 type sessionAdapter struct{ service *sessionreporting.Service }
@@ -479,103 +506,34 @@ func (r modelResolver) Resolve(ctx context.Context, credential, requestedModel s
 
 func (a *App) Run(ctx context.Context) error {
 	defer a.database.Close()
-	if a.environmentImages != nil {
-		defer a.environmentImages.Close()
-	}
+	defer logModuleClose(a.modules)
 	workerCtx, stopWorker := context.WithCancel(context.Background())
-	sessionsDone := make(chan struct{})
-	go func() {
-		defer close(sessionsDone)
-		if a.sessions != nil {
-			a.sessions.Run(workerCtx)
-		}
-	}()
-	workerDone := make(chan struct{})
-	go func() { defer close(workerDone); a.billing.Run(workerCtx) }()
-	environmentDone := make(chan struct{})
-	go func() {
-		defer close(environmentDone)
-		if a.environments != nil {
-			a.environments.Run(workerCtx)
-		}
-	}()
-	relayDone := make(chan struct{})
-	go func() {
-		defer close(relayDone)
+	var workers sync.WaitGroup
+	start := func(run func(context.Context)) { workers.Go(func() { run(workerCtx) }) }
+	if a.role != config.RoleControl {
+		start(a.billing.Run)
+		start(a.sessions.Run)
+		start(a.endpoints.Observe)
+		start(a.images.Run)
+		start(a.videos.Run)
+		start(a.connectors.Run)
+		start(func(ctx context.Context) { runImageCleanup(ctx, a.inputs) })
 		if a.relay != nil {
-			cleanupKeys := time.NewTicker(time.Minute)
-			defer cleanupKeys.Stop()
-			cleanupRelayDone := make(chan struct{})
-			go func() { defer close(cleanupRelayDone); a.relay.Run(workerCtx) }()
-			defer func() { <-cleanupRelayDone }()
-			for {
-				select {
-				case <-workerCtx.Done():
-					return
-				case <-cleanupKeys.C:
-					ctx, cancel := context.WithTimeout(workerCtx, 5*time.Second)
-					if err := a.runtimeKeys.CleanupRuntimeKeys(ctx); err != nil && workerCtx.Err() == nil {
-						if err != nil {
-							slog.WarnContext(ctx, "操作失败", "module", "app", "operation", "Run", "error", err)
-						}
-						logging.Event(ctx, slog.Default(), slog.LevelWarn, "worker.scan.failed", "回收独立执行密钥失败", "module", "app", "operation", "Run", "dependency", "storage", "reason", "storage_unavailable")
-					}
-					cancel()
-				}
+			start(a.relay.Run)
+			start(a.cleanupRuntimeKeys)
+		}
+	}
+	if a.role != config.RoleProxy {
+		start(a.knowledgeBases.Run)
+		start(a.resourceImports.Run)
+		start(func(ctx context.Context) {
+			if err := a.feedback.Run(ctx, time.Hour); err != nil {
+				slog.Error("清理反馈失败", "error", err)
 			}
-		}
-	}()
-	connectorsDone := make(chan struct{})
-	go func() {
-		defer close(connectorsDone)
-		if a.connectors != nil {
-			a.connectors.Run(workerCtx)
-		}
-	}()
-	knowledgeDone := make(chan struct{})
-	go func() {
-		defer close(knowledgeDone)
-		if a.knowledgeBases != nil {
-			a.knowledgeBases.Run(workerCtx)
-		}
-	}()
-	observeDone := make(chan struct{})
-	go func() { defer close(observeDone); a.endpoints.Observe(workerCtx) }()
-	imageDone := make(chan struct{})
-	go func() { defer close(imageDone); a.images.Run(workerCtx) }()
-	videoDone := make(chan struct{})
-	go func() { defer close(videoDone); a.videos.Run(workerCtx) }()
-	cleanupDone := make(chan struct{})
-	go func() { defer close(cleanupDone); runImageCleanup(workerCtx, a.inputs) }()
-	feedbackCleanupDone := make(chan struct{})
-	go func() {
-		defer close(feedbackCleanupDone)
-		if err := a.feedback.Run(workerCtx, time.Hour); err != nil {
-			slog.Error("操作失败", "module", "app", "operation", "Run", "error", err)
-		}
-	}()
-	uploadCleanupDone := make(chan struct{})
-	go func() {
-		defer close(uploadCleanupDone)
-		if a.resourceImports != nil {
-			a.resourceImports.Run(workerCtx)
-		}
-	}()
-	defer func() {
-		stopWorker()
-		<-workerDone
-		<-environmentDone
-		<-sessionsDone
-		<-relayDone
-		<-connectorsDone
-		<-knowledgeDone
-		<-observeDone
-		<-imageDone
-		<-videoDone
-		<-cleanupDone
-		<-feedbackCleanupDone
-		<-uploadCleanupDone
-	}()
+		})
+	}
+	modulesDone := runModules(workerCtx, a.modules)
+	defer func() { stopWorker(); workers.Wait(); <-modulesDone }()
 
 	result := make(chan error, len(a.servers))
 	for _, server := range a.servers {
@@ -631,6 +589,24 @@ func (a *App) Run(ctx context.Context) error {
 		completed++
 	}
 	return errors.Join(runErrors...)
+}
+
+func (a *App) cleanupRuntimeKeys(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			scan, cancel := context.WithTimeout(ctx, 5*time.Second)
+			err := a.runtimeKeys.CleanupRuntimeKeys(scan)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logging.Event(ctx, slog.Default(), slog.LevelWarn, "worker.scan.failed", "回收独立执行密钥标记失败", "module", "app", "error", err)
+			}
+		}
+	}
 }
 
 type readiness struct {

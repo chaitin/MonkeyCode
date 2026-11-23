@@ -1,6 +1,14 @@
 import { enUS } from "./en-US.ts"
 
 export const ar = {
+  licenseCapabilities: {
+    cloudComputer: "أجهزة الكمبيوتر السحابية",
+    customBranding: "تخصيص العلامة التجارية",
+    granted: "متاح",
+    notGranted: "غير متاح",
+    cloudLocked: "إنشاء أجهزة كمبيوتر سحابية غير متاح حاليًا.",
+    brandingLocked: "تخصيص العلامة التجارية غير متاح حاليًا.",
+  },
   accountSettings: {
     loadingProfile: "جارٍ التحميل",
     profileLoadFailed: "تعذر تحميل إعدادات الحساب. حاول مجددًا.",
@@ -813,6 +821,8 @@ export const ar = {
       memberDisabled: "معطّل",
       makeAdministrator: "تعيين كمسؤول",
       removeAdministrator: "إلغاء صلاحية المسؤول",
+      deleteMember: "حذف العضو",
+      confirmDeleteMember: "هل تريد حذف {{member}} ({{email}})؟ لن يتمكن العضو من تسجيل الدخول بهذا الحساب، وستبقى السجلات السابقة محفوظة.",
       remainingCredits: "{{count}} رصيد متبقٍ",
       joinedAt: "تاريخ الانضمام: {{date}}",
       groupActions: "إجراءات المجموعة",

@@ -51,7 +51,10 @@ type Store interface {
 	Touch(context.Context, string, string, time.Time) error
 }
 
+func (p *Postgres) WithNames(r nameReader) { p.names = r }
+
 type Postgres struct {
+	names            nameReader
 	pool             *pgxpool.Pool
 	auth             DeviceAuthorizer
 	executionRevoker func(string, string, int64)
@@ -104,7 +107,7 @@ func (p *Postgres) Active(ctx context.Context, user string) ([]Endpoint, error) 
 	if err != nil {
 		return nil, err
 	}
-	names, err := cloudNames(ctx, q, user, rows)
+	names, err := p.names.lookup(ctx, p.pool, user, rows)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +123,7 @@ func (p *Postgres) Get(ctx context.Context, user, machine string) (Endpoint, err
 		return Endpoint{}, missing(err)
 	}
 	rows := []sqlc.Endpoint{row}
-	names, err := cloudNames(ctx, sqlc.New(p.pool), user, rows)
+	names, err := p.names.lookup(ctx, p.pool, user, rows)
 	if err != nil {
 		return Endpoint{}, err
 	}
@@ -149,7 +152,7 @@ func (p *Postgres) Page(ctx context.Context, user string, page, size int) (Page,
 	if err != nil {
 		return Page{}, err
 	}
-	names, err := cloudNames(ctx, q, user, rows)
+	names, err := p.names.lookup(ctx, tx, user, rows)
 	if err != nil {
 		return Page{}, err
 	}
@@ -175,7 +178,7 @@ func (p *Postgres) transaction(ctx context.Context, user string, fn func(*sqlc.Q
 		return Endpoint{}, err
 	}
 	rows := []sqlc.Endpoint{row}
-	names, err := cloudNames(ctx, q, user, rows)
+	names, err := p.names.lookup(ctx, tx, user, rows)
 	if err != nil {
 		return Endpoint{}, err
 	}
@@ -239,7 +242,7 @@ func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r R
 	})
 }
 func (p *Postgres) Update(ctx context.Context, user, machine, action string, alias *string) (Endpoint, error) {
-	revokedGrant := ""
+	var revokedGrants []string
 	result, err := p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
 		old, err := q.Get(ctx, sqlc.GetParams{UserID: user, MachineID: machine})
 		if err != nil {
@@ -270,13 +273,10 @@ func (p *Postgres) Update(ctx context.Context, user, machine, action string, ali
 			if action == "restore" {
 				status = "active"
 			}
-			if action == "revoke" && old.DeploymentMode != nil && *old.DeploymentMode == "standalone" && old.ActiveGrantID != nil {
-				revoked, err := p.auth.RevokeRuntimeGrant(ctx, tx, user, machine, *old.ActiveGrantID)
+			if action == "revoke" && p.auth != nil {
+				revokedGrants, err = p.auth.RevokeDeviceGrants(ctx, tx, user, machine, "device_revoked")
 				if err != nil {
 					return old, err
-				}
-				if revoked {
-					revokedGrant = *old.ActiveGrantID
 				}
 			}
 			securityChanged := false
@@ -304,8 +304,10 @@ func (p *Postgres) Update(ctx context.Context, user, machine, action string, ali
 		err = audit.Write(ctx, tx, audit.Event{ActorID: user, Action: "endpoint." + action, Category: "security", TargetType: "endpoint", TargetID: row.ID, Params: map[string]string{"machine_id": machine}})
 		return row, err
 	})
-	if err == nil && revokedGrant != "" {
-		p.auth.NotifyGrantRevoked(revokedGrant)
+	if err == nil {
+		for _, id := range revokedGrants {
+			p.auth.NotifyGrantRevoked(id)
+		}
 	}
 	if err == nil && action == "revoke" && p.executionRevoker != nil {
 		p.executionRevoker(user, machine, result.grantVersion)

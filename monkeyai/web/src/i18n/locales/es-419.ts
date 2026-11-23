@@ -1,6 +1,14 @@
 import { enUS } from "./en-US.ts"
 
 export const es419 = {
+  licenseCapabilities: {
+    cloudComputer: "Computadoras en la nube",
+    customBranding: "Marca personalizada",
+    granted: "Disponible",
+    notGranted: "No disponible",
+    cloudLocked: "Por ahora no se pueden crear computadoras en la nube.",
+    brandingLocked: "La personalización de la marca no está disponible.",
+  },
   accountSettings: {
     loadingProfile: "Cargando",
     profileLoadFailed:
@@ -852,6 +860,8 @@ export const es419 = {
       memberDisabled: "Deshabilitado",
       makeAdministrator: "Hacer administrador",
       removeAdministrator: "Quitar como administrador",
+      deleteMember: "Eliminar miembro",
+      confirmDeleteMember: "¿Eliminar a {{member}} ({{email}})? Ya no podrá iniciar sesión con esta cuenta. Se conservarán los registros históricos.",
       remainingCredits: "{{count}} créditos restantes",
       joinedAt: "Se unió el {{date}}",
       groupActions: "Acciones del grupo",

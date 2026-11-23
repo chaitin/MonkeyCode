@@ -82,7 +82,7 @@ func TestRuntimeGatewayKeysStayWithinExecutionGrant(t *testing.T) {
 		}
 		in := endpoint.Enrollment{MachineID: uuid.New().String(), PublicKey: public, DisplayName: name, Platform: "linux", Arch: "amd64", Intent: "publish", DeploymentMode: "standalone"}
 		var grant string
-		scopes := []string{"device:bind", "device:publish", "session:report"}
+		scopes := []string{identity.AccountResources, "device:bind", "device:publish", "session:report"}
 		if err = pool.QueryRow(t.Context(), `INSERT INTO oauth_grants(user_id,client_id,scopes,purpose,requested_machine_id,requested_key_id,expires_at)
 		VALUES($1,'monkeyai-runtime',$2,'runtime',$3,$4,now()+interval '1 day') RETURNING id`, user, scopes, in.MachineID, endpoint.KeyID(public)).Scan(&grant); err != nil {
 			t.Fatal(err)
@@ -150,6 +150,16 @@ func TestRuntimeGatewayKeysStayWithinExecutionGrant(t *testing.T) {
 	}
 	if _, err := keys.Authenticate(t.Context(), host.APIKey, ScopeModelInvoke); err != nil {
 		t.Fatal("独立撤销影响托管密钥")
+	}
+	var legacy CreatedKey
+	if err := json.Unmarshal(call(second, "POST", "/api-keys", `{"name":"升级前的密钥","scopes":["mcp:invoke"]}`, 201), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), "UPDATE oauth_grants SET scopes='{}' WHERE id=$1", second.grant); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := keys.Authenticate(t.Context(), legacy.APIKey, ScopeMCPInvoke); err != nil || got != user {
+		t.Fatal("旧 OAuth scope 不应影响已绑定的派生密钥", err)
 	}
 	if err := keys.RevokeRuntimeKeys(t.Context(), first.grant); err != nil {
 		t.Fatal(err)

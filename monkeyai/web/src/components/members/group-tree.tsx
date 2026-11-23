@@ -71,6 +71,7 @@ type Props = {
   onToggleStatus: (user: MemberActionUser) => void
   onToggleRole: (user: MemberActionUser) => void
   onResetPassword: (user: MemberActionUser) => void
+  onDelete: (user: MemberActionUser) => void
   multiSelect: boolean
   selectionDisabled: boolean
   selectedMemberKeys: ReadonlySet<string>
@@ -398,6 +399,7 @@ function GroupTreeMemberRow({
   onToggleStatus,
   onToggleRole,
   onResetPassword,
+  onDelete,
   multiSelect,
   selectionDisabled,
   selected,
@@ -415,6 +417,7 @@ function GroupTreeMemberRow({
   | "onToggleStatus"
   | "onToggleRole"
   | "onResetPassword"
+  | "onDelete"
   | "multiSelect"
   | "selectionDisabled"
 > & {
@@ -531,6 +534,7 @@ function GroupTreeMemberRow({
             onToggleStatus={onToggleStatus}
             onToggleRole={onToggleRole}
             onResetPassword={onResetPassword}
+            onDelete={onDelete}
           />
         </div>
       </div>
