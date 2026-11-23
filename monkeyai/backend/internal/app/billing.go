@@ -37,6 +37,7 @@ type applicationHandler struct {
 	endpoints       *endpoint.Service
 	runtimeKeys     *apikey.Service
 	relay           *relay.Service
+	relayClient     *relay.Control
 	feedback        *feedback.Service
 	connectors      *mcp.Service
 	knowledgeBases  *kb.Service

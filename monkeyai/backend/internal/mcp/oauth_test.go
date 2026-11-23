@@ -199,7 +199,7 @@ func TestConcurrentAutomaticRefresh(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	var workers sync.WaitGroup
-	workers.Go(func() { f.service.Run(ctx) })
+	workers.Go(func() { f.service.RunCredentials(ctx) })
 	<-started
 	workers.Go(func() { f.service.refreshCredentials(t.Context()) })
 	workers.Go(func() {

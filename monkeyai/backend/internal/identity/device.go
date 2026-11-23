@@ -47,6 +47,7 @@ type deviceWindow struct {
 type deviceAuthorization struct {
 	serverID string
 	key      []byte
+	load     func() (string, []byte, error)
 	registry DeviceRegistry
 	mu       sync.Mutex
 	limits   map[string]deviceWindow
@@ -56,8 +57,40 @@ func (s *Service) WithDeviceAuthorization(serverID string, key []byte, registry 
 	s.device = &deviceAuthorization{serverID: serverID, key: slices.Clone(key), registry: registry, limits: map[string]deviceWindow{}}
 	return s
 }
+
+func (s *Service) WithDeviceAuthorizationSource(load func() (string, []byte, error), registry DeviceRegistry) *Service {
+	s.device = &deviceAuthorization{load: load, registry: registry, limits: map[string]deviceWindow{}}
+	return s
+}
+
+func (s *Service) DeviceServerID() (string, error) {
+	id, _, err := s.deviceCredentials()
+	return id, err
+}
+
+func (s *Service) deviceCredentials() (string, []byte, error) {
+	if s.device == nil || s.device.registry == nil {
+		return "", nil, ErrRuntimeUnavailable
+	}
+	d := s.device
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.key) < 32 && d.load != nil {
+		id, key, err := d.load()
+		if err != nil {
+			return "", nil, err
+		}
+		d.serverID, d.key = id, key
+	}
+	if len(d.key) < 32 {
+		return "", nil, ErrRuntimeUnavailable
+	}
+	return d.serverID, d.key, nil
+}
+
 func (s *Service) deviceEnabled() bool {
-	return s.device != nil && len(s.device.key) >= 32 && s.device.registry != nil
+	_, _, err := s.deviceCredentials()
+	return err == nil
 }
 func (s *Service) deviceLimit(r *http.Request, kind string, limit int) bool {
 	if !s.deviceEnabled() {
@@ -94,7 +127,11 @@ func (s *Service) deviceLimit(r *http.Request, kind string, limit int) bool {
 	return true
 }
 func (s *Service) userCodeHash(code string) string {
-	mac := hmac.New(sha256.New, s.device.key)
+	_, key, err := s.deviceCredentials()
+	if err != nil {
+		return ""
+	}
+	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte("monkeyai:device-user-code:v1:" + code))
 	return hex.EncodeToString(mac.Sum(nil))
 }
@@ -466,7 +503,8 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, clientID, code string)
 	if err != nil {
 		return Token{}, err
 	}
-	token := Token{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer", ExpiresIn: int64(s.accessTTL.Seconds()), ExpiresAt: now.Add(s.accessTTL), GrantID: grant.ID, Scope: runtimeTokenScope, ServerID: s.device.serverID, MachineID: request.MachineID}
+	serverID, _ := s.DeviceServerID()
+	token := Token{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer", ExpiresIn: int64(s.accessTTL.Seconds()), ExpiresAt: now.Add(s.accessTTL), GrantID: grant.ID, Scope: runtimeTokenScope, ServerID: serverID, MachineID: request.MachineID}
 	if _, err = q.CreateToken(ctx, sqlc.CreateTokenParams{UserID: grant.UserID, ClientID: RuntimeClientID, GrantID: grant.ID, AccessTokenHash: tokenHash(access), RefreshTokenHash: tokenHash(refresh), AccessExpiresAt: token.ExpiresAt, RefreshExpiresAt: grant.ExpiresAt}); err != nil {
 		return Token{}, err
 	}
