@@ -1,6 +1,6 @@
 # React + TypeScript + Vite + shadcn/ui
 
-MonkeyAI 管理端使用 React、TypeScript、Vite 和 Tailwind CSS 3.4。降级前的完整回退基线为提交 `5789bb73`。
+MonkeyAI Web 前端包含管理端和客户端页面，使用 React、TypeScript、Vite 和 Tailwind CSS 3.4。降级前的完整回退基线为提交 `5789bb73`。
 
 ## Chrome 86 兼容
 

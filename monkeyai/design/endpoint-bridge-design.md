@@ -479,7 +479,7 @@ backend/internal/endpoint/
 - `go.mod/go.sum`：新增 coder/websocket，由集成步骤统一处理。
 - `migrations`、sqlc 配置与 schema 生成：生成新迁移和查询代码，禁止手改生成产物。
 - `api/agent.yaml`：HTTP 契约和 Upgrade 描述；帧协议以本文为依据并由测试固化。
-- `admin/nginx/app.conf`：为精确路径 `/api/v1/endpoints/connect` 增加 HTTP/1.1、Upgrade、Connection 头透传，保持 Host、转发头和禁用缓冲；不把所有普通 API 都强制设置为 Upgrade。
+- `web/nginx/app.conf`：为精确路径 `/api/v1/endpoints/connect` 增加 HTTP/1.1、Upgrade、Connection 头透传，保持 Host、转发头和禁用缓冲；不把所有普通 API 都强制设置为 Upgrade。
 - `admin/vite.config.ts`：仅所需开发代理启用 `ws: true`。
 - 部署说明：单后端进程、生产 WSS、代理空闲超时大于 40 秒并留余量（建议保持现有 90 秒），不新增 Redis 服务。
 

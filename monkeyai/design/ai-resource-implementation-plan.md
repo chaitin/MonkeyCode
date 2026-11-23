@@ -12,7 +12,7 @@
 >
 > 基线：2026-09-07 的 main，提交 `1d1e9181`。
 >
-> 范围：当前 `monkeyai/admin`、`monkeyai/backend`，以及面向工作 Agent 的资源下发契约。
+> 范围：当前 `monkeyai/web`、`monkeyai/backend`，以及面向工作 Agent 的资源下发契约。
 >
 > 存储选型：引入 RustFS，作为资源文件的默认对象存储，通过 S3 兼容 API 接入。
 >
@@ -52,7 +52,7 @@
 - 四类资源主要使用模拟分组和成员 ID；模型页已经使用真实授权对象，可以沿用其数据装配方式。
 - 成员页当前只提供全部用户和管理员视图，不能把 `engineering` 等原型分组当成数据库记录。
 - 当前迁移仍有 `skills.instructions`、`mcp_servers`、`expert_mcp_tools`；本次将现有四版 schema 与目标资源结构整理为一版最终初始化 DDL，供重新部署使用。
-- `admin/src/lib/api.ts` 默认给有请求体的请求设置 JSON 类型，需要支持 `FormData`，让浏览器生成 multipart boundary。
+- `web/src/lib/api.ts` 默认给有请求体的请求设置 JSON 类型，需要支持 `FormData`，让浏览器生成 multipart boundary。
 
 ## 3. 数据模型取舍
 

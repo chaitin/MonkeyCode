@@ -65,7 +65,7 @@
 | 导入补偿和每分钟上传清理直接打印原始 error，补偿还打印存储 key | `backend/internal/resourceimport/service.go:214`、`backend/internal/resourceimport/upload.go:414` | 保留独立副作用诊断；改安全字段，清理故障按批次汇总 |
 | readiness 检查端点停止状态、数据库和对象存储，路由却统称数据库失败 | `backend/internal/app/app.go:484`、`backend/internal/httpapi/router.go:31` | 保留检查顺序、超时与状态码，以安全依赖分类准确归因 |
 | 应用已包含 relay 排空、HTTP 关闭、异步 Wait 和上传清理 worker 等待 | `backend/internal/app/app.go:402`、`backend/internal/app/app.go:444` | 沿用既有退出顺序；创建方最后刷新日志，不在单个组件关闭时提前关闭 logger |
-| Nginx 普通路由仍使用默认 access log，若干敏感路径已关闭 access/error log | `admin/nginx.conf:14`、`admin/nginx/app.conf:4`、`admin/nginx/app.conf:43`、`admin/nginx/preview.conf.template:7` | 本次暂缓 Nginx 日志改造，保留原有配置 |
+| Nginx 普通路由仍使用默认 access log，若干敏感路径已关闭 access/error log | `web/nginx.conf:14`、`web/nginx/app.conf:4`、`web/nginx/app.conf:43`、`web/nginx/preview.conf.template:7` | 本次暂缓 Nginx 日志改造，保留原有配置 |
 
 现有安全测试必须保留并扩展：
 
@@ -332,7 +332,7 @@ pprof 是独立监听入口：仅统一安全的服务器日志，不把业务�
 - 保持 `app.conf` 中 `/preview/`、`/device`、设备授权请求、远程端点代理/文件路径，以及 `preview.conf.template` 整个预览站点现有的 `access_log off` / `error_log /dev/null` 策略；不因新增全局格式而在这些路径重新开启日志。必要诊断由后端以受控事件提供，不能在两层都默认记录全量访问。
 - 本地请求 ID 默认由后端生成，Nginx 自身拒绝且未到达后端的请求可以没有该 ID，不能伪造后端 ID；敏感路径不为记录该 ID 而恢复访问日志。
 - 单独审计仍启用日志的 OAuth 回调及其他敏感入口的 Nginx error log；access log 改格式不代表 error log 已安全。检查 location 选择前的拒绝、连接错误与上层继承日志，不能只验证应用已收到的请求，也不能依赖应用 Handler 为 Nginx 输出脱敏。
-- 配置由 `admin/entrypoint.sh` 生成并包含主站点/预览站点，验收最终展开的配置而不是只看模板。保留现有分卷上传的 64 MiB、传统导入的 2064 MiB 请求体上限、关闭请求缓冲、长超时、SSE 和 Upgrade 设置。
+- 配置由 `web/entrypoint.sh` 生成并包含主站点/预览站点，验收最终展开的配置而不是只看模板。保留现有分卷上传的 64 MiB、传统导入的 2064 MiB 请求体上限、关闭请求缓冲、长超时、SSE 和 Upgrade 设置。
 - Nginx 配置属于部署变更，在单独实施步骤验证，不随设计文档直接修改线上配置。
 
 ## 七、HTTP、模型调用与任务完成日志
@@ -633,7 +633,7 @@ sample_request_ids / sample_job_ids / sample_transaction_ids
 | `backend/internal/relay/` | 代理 cause 安全分类、请求/设备/通道关联、生命周期与传输结果，保留授权和预览安全边界 |
 | `backend/internal/resourceimport/` | 分卷续传/块关联、封存与导入结果、独立补偿及清理聚合，不改事务与幂等 |
 | `backend/internal/billing/`、`imagegen/`、`videogen/`、`mcp/` | 重试、状态事件、恢复及关键业务保护 |
-| `admin/nginx.conf`、`admin/nginx/` 与 `admin/entrypoint.sh` | Nginx 日志改造暂缓，本次不修改配置 |
+| `web/nginx.conf`、`web/nginx/` 与 `web/entrypoint.sh` | Nginx 日志改造暂缓，本次不修改配置 |
 | `docker-compose.yml` 与部署说明 | 默认容器日志构造选项、轮转与部署检查；不修改数据库 |
 
 ## 十三、测试与验收标准

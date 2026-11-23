@@ -211,7 +211,7 @@ MONKEYAI_RUNTIME_SIGNING_KEY_FILE=/run/secrets/runtime-access.pem
 
 本人会话目录位于 GET `/api/v1/sessions` 和 `/api/v1/sessions/{id}`，要求 session:read 并遵循会话上报策略；stats 级不返回标题。仅认证宿主摘要进入目录，离线、旧 boot/epoch 或实时报告超时标记 stale。`session_index` 能力随策略动态发布。
 
-[Nginx 配置](../admin/nginx/app.conf) 已增加所需 Upgrade 和流式转发，文件及目标代理入口关闭 access/error 原始路径日志，业务诊断使用后端脱敏路由模板。共享文件 origin 强制下载；HTTP 执行预览需额外配置独立泛域名与证书：
+[Nginx 配置](../web/nginx/app.conf) 已增加所需 Upgrade 和流式转发，文件及目标代理入口关闭 access/error 原始路径日志，业务诊断使用后端脱敏路由模板。共享文件 origin 强制下载；HTTP 执行预览需额外配置独立泛域名与证书：
 
 ```text
 MONKEYAI_RUNTIME_PREVIEW_ORIGIN_TEMPLATE=https://{artifact}.preview.example.net

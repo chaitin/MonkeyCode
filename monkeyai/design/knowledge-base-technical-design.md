@@ -53,9 +53,9 @@ flowchart LR
 | `backend/internal/kb/query.sql` / `repository.go` | SQL 与资源仓储适配；`sqlc/` 为生成代码 |
 | `backend/internal/model/embedding*.go` | 向量模型约束、上游探测、测试和 `EmbedText` |
 | `backend/internal/app/app.go` | 依赖装配、REST/MCP 路由注册、启动和停止知识库 worker |
-| `admin/src/pages/admin/kb-page.tsx` | 知识库列表与文档列表弹窗、添加内容、学习状态和分片查看 |
-| `admin/src/pages/admin/kb-document-page.tsx` | 独立文档加载、权限判断、草稿、保存及返回导航 |
-| `admin/src/components/markdown-editor.tsx` | `@ctzhian/tiptap` Markdown 编辑器、主题适配和保存回调 |
+| `web/src/pages/admin/kb-page.tsx` | 知识库列表与文档列表弹窗、添加内容、学习状态和分片查看 |
+| `web/src/pages/admin/kb-document-page.tsx` | 独立文档加载、权限判断、草稿、保存及返回导航 |
+| `web/src/components/markdown-editor.tsx` | `@ctzhian/tiptap` Markdown 编辑器、主题适配和保存回调 |
 
 ## 3. 所有权与权限
 

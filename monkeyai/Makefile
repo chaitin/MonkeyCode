@@ -23,7 +23,7 @@ image-admin:
 	  --tag $(ADMIN_IMAGE) \
 	  --build-arg NGINX_ACME_IMAGE=$(NGINX_ACME_IMAGE) \
 	  --load \
-	  ./admin
+	  ./web
 	@echo "Admin image: $(ADMIN_IMAGE)"
 
 image-backend:
@@ -53,10 +53,10 @@ image-migrate:
 image-nginx-acme:
 	docker buildx build \
 	  --platform $(PLATFORM) \
-	  --file ./admin/Dockerfile.nginx-acme \
+	  --file ./web/Dockerfile.nginx-acme \
 	  --tag $(NGINX_ACME_IMAGE) \
 	  --load \
-	  ./admin
+	  ./web
 	@echo "Nginx ACME image: $(NGINX_ACME_IMAGE)"
 
 push: push-admin push-backend push-migrate
@@ -67,7 +67,7 @@ push-admin:
 	  --tag $(ADMIN_IMAGE) \
 	  --build-arg NGINX_ACME_IMAGE=$(NGINX_ACME_IMAGE) \
 	  --push \
-	  ./admin
+	  ./web
 	@echo "Pushed: $(ADMIN_IMAGE)"
 
 push-backend:
@@ -97,10 +97,10 @@ push-migrate:
 push-nginx-acme:
 	docker buildx build \
 	  --platform $(PLATFORM) \
-	  --file ./admin/Dockerfile.nginx-acme \
+	  --file ./web/Dockerfile.nginx-acme \
 	  --tag $(NGINX_ACME_IMAGE) \
 	  --push \
-	  ./admin
+	  ./web
 	@echo "Pushed: $(NGINX_ACME_IMAGE)"
 
 images:

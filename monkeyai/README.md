@@ -40,7 +40,7 @@ Nginx access 日志以 JSON 逐行输出到 stdout，error 日志继续以 `info
 真实 Nginx 日志验证可复用已有 Admin 镜像，无需启动数据库或业务后端；测试会创建并清理隔离容器及网络：
 
 ```bash
-python3 admin/test/accesslog.py --image <admin-image>
+python3 web/test/accesslog.py --image <admin-image>
 ```
 
 ## 设计资源导入与离线分发
@@ -51,7 +51,7 @@ python3 admin/test/accesslog.py --image <admin-image>
 
 ## 客户端下载
 
-首页的客户端下载地址配置在 [`admin/public/downloads.json`](admin/public/downloads.json)。按平台填入 HTTPS 下载地址或同站点的绝对路径；Linux 分别配置 `linux_arm64` 和 `linux_x64`，Mac 分别配置 `macos_arm64` 和 `macos_x64`。空地址在页面上显示“敬请期待”，不会跳转。首次部署可修改该文件后重建 Admin 镜像；如需不重建镜像就更新链接，可将配置文件只读挂载到 Admin 容器的 `/usr/share/nginx/html/downloads.json`。
+首页的客户端下载地址配置在 [`web/public/downloads.json`](web/public/downloads.json)。按平台填入 HTTPS 下载地址或同站点的绝对路径；Linux 分别配置 `linux_arm64` 和 `linux_x64`，Mac 分别配置 `macos_arm64` 和 `macos_x64`。空地址在页面上显示“敬请期待”，不会跳转。首次部署可修改该文件后重建 Admin 镜像；如需不重建镜像就更新链接，可将配置文件只读挂载到 Admin 容器的 `/usr/share/nginx/html/downloads.json`。
 
 ## 后端出站代理
 
@@ -71,7 +71,7 @@ python3 admin/test/accesslog.py --image <admin-image>
 
 Admin 镜像包含 Nginx 官方 ACME 模块，自动申请、续期并动态加载证书。功能默认关闭；Go 后端不参与证书管理。启用前，将域名解析到部署服务器，确保公网 TCP 80、443 可达，容器能够解析并访问 CA 的 HTTPS 接口。如果域名配置了 AAAA 记录，其 IPv6 入口也必须能完成验证。
 
-Admin 复用独立的 Nginx ACME 基础镜像，固定 Nginx 1.31.9（Debian）和 ACME 0.4.1，不再在每次业务构建时编译模块。`admin/Dockerfile.nginx-acme` 固定官方镜像摘要并校验源码的 SHA-256，构建时应用 `admin/patches/acme-renewal-retry.patch`，修复订单失败后可能延迟 24 小时才重试的问题；升级模块时应检查上游是否已合入该修复。Rust 和 C 编译工具仅存在于基础镜像的构建阶段。
+Admin 复用独立的 Nginx ACME 基础镜像，固定 Nginx 1.31.9（Debian）和 ACME 0.4.1，不再在每次业务构建时编译模块。`web/Dockerfile.nginx-acme` 固定官方镜像摘要并校验源码的 SHA-256，构建时应用 `web/patches/acme-renewal-retry.patch`，修复订单失败后可能延迟 24 小时才重试的问题；升级模块时应检查上游是否已合入该修复。Rust 和 C 编译工具仅存在于基础镜像的构建阶段。
 
 在 `.env` 中配置：
 
@@ -118,8 +118,8 @@ docker compose logs -f admin
 本地集成验证需要 Docker、Python 3.9+ 和 OpenSSL，以及已发布的 Nginx ACME 基础镜像（或按下文构建本地基础镜像，并通过 `--build-arg NGINX_ACME_IMAGE=nginx-acme:local` 指定）。测试使用独立网络、临时数据卷和本地 Pebble CA，不请求公网 CA；结束后清理测试容器、网络及数据卷：
 
 ```bash
-docker build -t monkeyai-admin:acme-test ./admin
-python3 admin/test/acme.py --image monkeyai-admin:acme-test
+docker build -t monkeyai-admin:acme-test ./web
+python3 web/test/acme.py --image monkeyai-admin:acme-test
 ```
 
 测试覆盖开关和配置校验、空卷首次签发、CA 不可用时重建复用、自动续期、续期失败重试、代理协议头及流式连接。它不代替实际部署域名的公网 DNS、端口和 OAuth 提供方联调。
@@ -283,7 +283,7 @@ go vet ./...
 MONKEYAI_TEST_DATABASE_URL='<测试库连接串>' MONKEYAI_S3_ENDPOINT='<测试 RustFS 地址>' \
 MONKEYAI_S3_BUCKET='<测试 Bucket>' MONKEYAI_S3_ACCESS_KEY='<测试访问键>' \
 MONKEYAI_S3_SECRET_KEY='<测试密钥>' go test ./... -count=1
-cd ../admin
+cd ../web
 npm test
 npm run lint
 npm run build

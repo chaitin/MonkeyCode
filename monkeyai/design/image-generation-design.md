@@ -929,7 +929,7 @@ backend/internal/imagegen/
 - `backend/internal/billing/reconcile.go`
 - `backend/api/admin.yaml`
 - `backend/api/agent.yaml`
-- `admin/src/pages/admin/models-page.tsx`
+- `web/src/pages/admin/models-page.tsx`
 - 对应 i18n 文件和数据库迁移
 
 业务包暴露明确的路由注册方法，由 `internal/app` 统一装配，不使用全局可变状态。

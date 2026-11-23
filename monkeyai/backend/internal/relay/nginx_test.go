@@ -47,7 +47,7 @@ func TestNginxRelay(t *testing.T) {
 			t.Errorf("清理测试 Nginx：%s", data)
 		}
 	})
-	appPath, err := filepath.Abs("../../../admin/nginx/app.conf")
+	appPath, err := filepath.Abs("../../../web/nginx/app.conf")
 	if err != nil {
 		t.Fatal(err)
 	}

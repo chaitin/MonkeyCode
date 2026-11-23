@@ -55,7 +55,7 @@ func TestNginxPreviewTLS(t *testing.T) {
 	if err = os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0600); err != nil {
 		t.Fatal(err)
 	}
-	previewData, err := os.ReadFile("../../../admin/nginx/preview.conf.template")
+	previewData, err := os.ReadFile("../../../web/nginx/preview.conf.template")
 	if err != nil {
 		t.Fatal(err)
 	}

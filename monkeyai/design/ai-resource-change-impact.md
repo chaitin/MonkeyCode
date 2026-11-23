@@ -2,7 +2,7 @@
 
 > 状态：方案改动总结
 >
-> 范围：`monkeyai/admin`、`monkeyai/design/admin-data-model.md`、`desktop`、OhMyAgent
+> 范围：`monkeyai/web`、`monkeyai/design/admin-data-model.md`、`desktop`、OhMyAgent
 
 ## 1. 总览
 

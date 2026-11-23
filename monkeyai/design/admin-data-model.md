@@ -6,7 +6,7 @@
 >
 > 数据库语义：PostgreSQL
 >
-> 覆盖范围：`monkeyai/admin` 第一期管理能力，不包含知识库
+> 覆盖范围：`monkeyai/web` 第一期管理能力，不包含知识库
 
 ## 1. 目标与范围
 

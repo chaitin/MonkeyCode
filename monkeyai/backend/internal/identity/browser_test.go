@@ -19,7 +19,7 @@ func TestBrowserDeviceConsent(t *testing.T) {
 	s, _, cookie, _ := deviceService(t)
 	s.publicURL = ""
 	s.secureCookie = false
-	dist, err := filepath.Abs("../../../admin/dist")
+	dist, err := filepath.Abs("../../../web/dist")
 	if err != nil {
 		t.Fatal(err)
 	}

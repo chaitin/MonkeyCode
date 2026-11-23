@@ -149,7 +149,7 @@ bash -c "$(curl -kfsSL https://release.monkeycode-ai.com/public/monkeyai-install
 
 - [服务部署与运维](./monkeyai/README.md)
 - [后端开发说明](./monkeyai/backend/README.md)与 [API 文档](./monkeyai/backend/api/README.md)
-- [企业管理后台开发说明](./monkeyai/admin/README.md)
+- [企业 Web 前端开发说明](./monkeyai/web/README.md)
 - [官网开发说明](./monkeyai/landing/README.md)与[官网源码](./monkeyai/landing/)
 
 原 MonkeyCode 项目介绍保留在 [README.monkeycode.md](./README.monkeycode.md)，原中文介绍见 [readme.cn.md](./readme.cn.md)。

@@ -30,7 +30,7 @@ func TestNginxUpgrade(t *testing.T) {
 	if err = os.WriteFile(configPath, []byte(config), 0600); err != nil {
 		t.Fatal(err)
 	}
-	appPath, err := filepath.Abs("../../../admin/nginx/app.conf")
+	appPath, err := filepath.Abs("../../../web/nginx/app.conf")
 	if err != nil {
 		t.Fatal(err)
 	}
