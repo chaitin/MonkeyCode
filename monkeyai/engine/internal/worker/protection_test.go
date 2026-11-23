@@ -38,7 +38,10 @@ func TestWorkerPersistsProtectionAndNeverTreatsPauseAsExit(t *testing.T) {
 	}
 	defer w.Close()
 	e := entry{Target: s, Result: &Observation{EnvironmentID: s.EnvironmentID, InstanceID: s.InstanceID, Generation: s.Generation, Phase: "running"}}
-	if err := w.save(e); err != nil {
+	w.mu.Lock()
+	err = w.saveLocked(e)
+	w.mu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
 	w.execute(t.Context(), e, false)

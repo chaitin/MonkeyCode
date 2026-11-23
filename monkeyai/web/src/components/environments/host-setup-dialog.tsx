@@ -129,7 +129,9 @@ function SetupForm({
 }) {
   const { t, i18n } = useTranslation()
   const [name, setName] = useState(value.host_name)
-  const [disk, setDisk] = useState(String((value.disk_bytes ?? 120 * GiB) / GiB))
+  const [disk, setDisk] = useState(
+    String((value.disk_bytes ?? 120 * GiB) / GiB)
+  )
   const [grantsChanged, setGrantsChanged] = useState(false)
   const root = groups.find((group) => !group.parentId)?.id
   const [authorization, setAuthorization] = useState(() => ({
@@ -161,7 +163,8 @@ function SetupForm({
       }
     }
     const body = {
-      ...(diskBytes !== undefined && diskBytes !== value.disk_bytes && { disk_bytes: diskBytes }),
+      ...(diskBytes !== undefined &&
+        diskBytes !== value.disk_bytes && { disk_bytes: diskBytes }),
       ...(normalizedName !== value.host_name && { name: normalizedName }),
       ...(grantsChanged && {
         grants: [
@@ -232,9 +235,22 @@ function SetupForm({
           </Field>
           {value.driver === "firecracker" && (
             <Field>
-              <FieldLabel htmlFor="setup-disk">{t("environmentAdmin.setupDisk")} (GiB)</FieldLabel>
-              <Input id="setup-disk" type="number" required min="0.0625" max="16384" step="any" value={disk} onChange={(event) => setDisk(event.target.value)} />
-              <p className="text-xs text-muted-foreground">{t("environmentAdmin.setupDiskHint")}</p>
+              <FieldLabel htmlFor="setup-disk">
+                {t("environmentAdmin.setupDisk")} (GiB)
+              </FieldLabel>
+              <Input
+                id="setup-disk"
+                type="number"
+                required
+                min="0.0625"
+                max="16384"
+                step="any"
+                value={disk}
+                onChange={(event) => setDisk(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("environmentAdmin.setupDiskHint")}
+              </p>
             </Field>
           )}
         </fieldset>

@@ -13,6 +13,7 @@ type safetyLoop struct {
 	called chan struct{}
 }
 
+func (s *safetyLoop) SetConcurrency(int, int) error               { return nil }
 func (s *safetyLoop) Tick(context.Context, *Client, Config) error { return nil }
 func (s *safetyLoop) Close()                                      {}
 func (s *safetyLoop) NetworkPolicies(context.Context) []string    { return nil }
