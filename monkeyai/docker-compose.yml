@@ -140,6 +140,8 @@ services:
       <<: *backend_environment
       TMPDIR: /tmp
       MONKEYAI_SERVICE_ROLE: proxy
+      MONKEYAI_ENGINE_RELEASE_DIR: ""
+      MONKEYAI_ENGINE_VERSION: ""
       MONKEYAI_INITIAL_ADMIN_EMAIL: ""
       MONKEYAI_INITIAL_ADMIN_PASSWORD: ""
     volumes:

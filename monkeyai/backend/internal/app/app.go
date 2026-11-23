@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"path/filepath"
@@ -71,6 +72,8 @@ type App struct {
 	inputs          *imagegen.Inputs
 	runtimeKeys     *apikey.Service
 	relay           *relay.Service
+	relayStateDir   string
+	relayClient     *relay.Control
 	endpoints       *endpoint.Service
 	feedback        *feedback.Service
 	connectors      *mcp.Service
@@ -158,6 +161,8 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 		inputs:          handler.(*applicationHandler).inputs,
 		runtimeKeys:     handler.(*applicationHandler).runtimeKeys,
 		relay:           handler.(*applicationHandler).relay,
+		relayStateDir:   cfg.RuntimeStateDir,
+		relayClient:     handler.(*applicationHandler).relayClient,
 		endpoints:       handler.(*applicationHandler).endpoints,
 		feedback:        handler.(*applicationHandler).feedback,
 		connectors:      handler.(*applicationHandler).connectors,
@@ -227,7 +232,9 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	identities.WithAccountPreserver(charges)
 	keys := apikey.NewService(apikey.NewPostgres(pool))
 	modelRepo := model.NewPostgres(pool)
-	charges.WithUsageReconciler(modelUsageReconciler{models: modelRepo, proxies: settings, responses: proxy.NewResponseReconciler()})
+	if cfg.Role != config.RoleProxy {
+		charges.WithUsageReconciler(modelUsageReconciler{models: modelRepo, proxies: settings, responses: proxy.NewResponseReconciler()})
+	}
 	models := model.NewService(modelRepo).WithProxyResolver(settings).WithKeyAuthenticator(keys).WithGatewayURL(strings.TrimRight(cfg.PublicURL, "/") + "/v1")
 	storage, err := resource.NewS3(ctx)
 	if err != nil {
@@ -238,6 +245,13 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("初始化资源 Bucket: %w", err)
+	}
+	store := resource.NewStore(pool)
+	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings).WithNetworkSettings(settings)
+	knowledgeBases := kb.NewService(store, models).WithStorage(storage)
+	execution := executionServices{pool: pool, settings: settings, sessions: sessions, identities: identities, executions: executions, keys: keys, charges: charges, modelRepo: modelRepo, models: models, storage: storage, connectors: connectors, knowledgeBases: knowledgeBases}
+	if cfg.Role == config.RoleProxy {
+		return execution.proxyHandler(ctx, cfg, logger, registrars)
 	}
 	identities.WithProfileStorage(storage)
 	feedbacks := feedback.NewService(pool, storage)
@@ -258,12 +272,9 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	imageService.WithAdapter(model.ProviderXAI, imagegen.Adapter{Capabilities: grok.Capabilities, DefaultCapabilities: grok.DefaultCapabilities, Generator: grok, Editor: grok})
 	models.WithImageCapabilities(imageService.Capabilities)
 	videoService := videogen.NewService(pool, storage, charges, modelRepo).WithProxyResolver(settings)
-	store := resource.NewStore(pool)
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)
-	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings).WithNetworkSettings(settings)
 	experts := expert.NewService(store).WithStorage(storage)
-	knowledgeBases := kb.NewService(store, models).WithStorage(storage)
 
 	models.WithEmbeddingChangeHook(knowledgeBases.SyncEmbeddingModels)
 	resources := agentconfig.NewResources(store, connectors, skills)
@@ -279,7 +290,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
 	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion).WithLicense(capabilities)
-	if cfg.EngineReleaseDir != "" && cfg.Role != config.RoleControl {
+	if cfg.EngineReleaseDir != "" {
 		stateDir := cfg.RuntimeStateDir
 		if stateDir == "" {
 			stateDir = "data/runtime"
@@ -333,11 +344,15 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, LookupInstance: lookupInstance, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
 	resourceImports.WithDesignCatalog(designs).WithKnowledgeCatalog(knowledgeBases)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
-	endpoints.RegisterAgent(agent)
+	if cfg.Role != config.RoleControl {
+		endpoints.RegisterAgent(agent)
+	}
 	endpoints.RegisterAdmin(admin)
 	identities.RegisterAgent(agent)
 	group.NewService(pool).RegisterAgent(interactive)
-	keys.RegisterAgent(agent.With(identity.RequireGatewayKeys))
+	if cfg.Role != config.RoleControl {
+		keys.RegisterAgent(agent.With(identity.RequireGatewayKeys))
+	}
 	models.RegisterAgent(account)
 	rules.RegisterAgent(account)
 	skills.RegisterAgent(account)
@@ -349,7 +364,10 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	resources.RegisterAgent(account)
 	charges.RegisterAgent(interactive)
 	feedbacks.RegisterAgent(interactive)
-	sessions.RegisterAgent(agent)
+	sessions.RegisterIndex(agent)
+	if cfg.Role != config.RoleControl {
+		sessions.RegisterReporting(agent)
+	}
 
 	router := chi.NewRouter()
 
@@ -371,56 +389,38 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	router.MethodNotAllowed(web.MethodNotAllowed)
 	designs.RegisterCatalog(router, requireResource)
 	sessionResolver := sessionAdapter{service: sessions}
-	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
-		WithSessionResolver(sessionResolver).
-		WithBilling(modelBilling{service: charges}).
-		WithUsageRecorder(modelUsageRecorder{models: modelRepo})
-	modelProxy.Register(router)
+	var modelProxy *proxy.Proxy
+	if cfg.Role != config.RoleControl {
+		modelProxy = execution.registerGateway(router, logger)
+	}
 	imageproxy.NewProxy(modelResolver{service: models}, keys, imageService, imageService, imageService).
 		WithSessionResolver(sessionResolver).
 		WithInputs(imageUploader{inputs: imageInputs}).WithOutputs(imageOutputs).Register(router)
 	videoproxy.New(modelResolver{service: models}, keys, sessionResolver, videoService).Register(router)
-	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
-	knowledgeBases.RegisterMCP(router, keys)
 	var runtimeRelay *relay.Service
-	if cfg.RuntimeRelay && cfg.Role != config.RoleControl {
-		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
-		if err != nil {
-			return nil, fmt.Errorf("初始化远程执行中转: %w", err)
-		}
-		identities.WithDeviceAuthorization(runtimeRelay.Metadata()["server_id"].(string), runtimeRelay.DeviceAuthorizationKey(), executions)
-		runtimeRelay.Register(router)
-		sessions.WithRuntimeStatus(runtimeRelay)
-		identities.WithRuntimeFeatures(func(ctx context.Context) (map[string]bool, error) {
-			enabled, err := sessions.IndexEnabled(ctx)
-			return map[string]bool{"session_index": enabled, "device_grant": true}, err
-		})
-		endpoints.WithRuntimeDirectory(runtimeRelay.Directory())
-		endpointStore.WithExecutionRevoker(runtimeRelay.InvalidateDevice)
-		identities.WithRuntimeMetadata(runtimeRelay.Metadata()).WithGrantRevoker(func(id string) {
-			runtimeRelay.InvalidateGrant(id)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := keys.RevokeRuntimeKeys(ctx, id); err != nil {
-				slog.WarnContext(ctx, "操作失败", "module", "app", "operation", "newApplicationHandlerWithMembers", "error", err)
-				logging.Event(ctx, logger, slog.LevelWarn, "app.operation.warn", "撤销独立执行密钥标记失败", "module", "app", "operation", "newApplicationHandlerWithMembers", "grant_id", id, "reason", "storage_unavailable")
+	var relayClient *relay.Control
+	var runtimeServices extension.Runtime
+	if cfg.RuntimeRelay {
+		if cfg.Role == config.RoleControl {
+			relayClient, runtimeServices = execution.remoteRuntime(cfg, logger)
+		} else {
+			runtimeRelay, err = execution.attachRelay(cfg, logger, router, endpoints, endpointStore)
+			if err != nil {
+				return nil, err
 			}
-		})
+			runtimeServices = extension.Runtime{ServerID: identities.DeviceServerID, Authorizer: identities, Readiness: runtimeRelay, Disconnect: runtimeRelay.DisconnectRuntime}
+		}
 	}
-	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
-	router.Mount("/oauth", identities.OAuthRouter())
+	if cfg.Role != config.RoleControl {
+		registerOAuth(router, identities)
+	}
 	services := extension.Services{
 		Pool: pool, Storage: storage, Credits: charges, PublicURL: cfg.PublicURL,
 		ImageStateDir: cfg.ImageStateDir, ImageImportDir: cfg.ImageImportDir,
 		RuntimeReleaseDir: cfg.RuntimeReleaseDir, RuntimeVersion: cfg.RuntimeVersion,
 		RegistryAuthorized: engineHosts.RegistryAuthorized,
-	}
-	if runtimeRelay != nil {
-		services.Runtime = extension.Runtime{
-			ServerID: runtimeRelay.Metadata()["server_id"].(string), Authorizer: identities,
-			Readiness: runtimeRelay, Disconnect: runtimeRelay.DisconnectRuntime,
-		}
+		Runtime:            runtimeServices,
 	}
 	modules, bindings, err := initializeModules(ctx, registrars, services)
 	if err != nil {
@@ -474,7 +474,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	})(authRouter)
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{modules: modules, Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, knowledgeBases: knowledgeBases, resourceImports: resourceImports}, nil
+	return &applicationHandler{modules: modules, Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, relayClient: relayClient, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, knowledgeBases: knowledgeBases, resourceImports: resourceImports}, nil
 }
 
 type sessionAdapter struct{ service *sessionreporting.Service }
@@ -507,23 +507,38 @@ func (r modelResolver) Resolve(ctx context.Context, credential, requestedModel s
 func (a *App) Run(ctx context.Context) error {
 	defer a.database.Close()
 	defer logModuleClose(a.modules)
+	if a.relayClient != nil {
+		defer a.relayClient.Close()
+	}
+	var controlServer *http.Server
+	var controlListener net.Listener
+	if a.role == config.RoleProxy && a.relay != nil {
+		var err error
+		controlListener, err = relay.ListenControl(a.relayStateDir)
+		if err != nil {
+			return fmt.Errorf("监听 Relay 内部套接字: %w", err)
+		}
+		controlServer = &http.Server{Handler: a.relay.ControlHandler(revokeGrant(a.relay, a.runtimeKeys)), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 15 * time.Second}
+		a.servers = append(a.servers, controlServer)
+	}
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	var workers sync.WaitGroup
 	start := func(run func(context.Context)) { workers.Go(func() { run(workerCtx) }) }
 	if a.role != config.RoleControl {
-		start(a.billing.Run)
 		start(a.sessions.Run)
 		start(a.endpoints.Observe)
-		start(a.images.Run)
-		start(a.videos.Run)
-		start(a.connectors.Run)
-		start(func(ctx context.Context) { runImageCleanup(ctx, a.inputs) })
+		start(a.connectors.RunCredentials)
 		if a.relay != nil {
 			start(a.relay.Run)
 			start(a.cleanupRuntimeKeys)
 		}
 	}
 	if a.role != config.RoleProxy {
+		start(a.billing.Run)
+		start(a.images.Run)
+		start(a.videos.Run)
+		start(a.connectors.RunToolRefresh)
+		start(func(ctx context.Context) { runImageCleanup(ctx, a.inputs) })
 		start(a.knowledgeBases.Run)
 		start(a.resourceImports.Run)
 		start(func(ctx context.Context) {
@@ -538,7 +553,12 @@ func (a *App) Run(ctx context.Context) error {
 	result := make(chan error, len(a.servers))
 	for _, server := range a.servers {
 		go func() {
-			err := server.ListenAndServe()
+			var err error
+			if server == controlServer {
+				err = server.Serve(controlListener)
+			} else {
+				err = server.ListenAndServe()
+			}
 			if errors.Is(err, http.ErrServerClosed) {
 				err = nil
 			} else if err != nil {
@@ -575,14 +595,20 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}
 
-	if err := a.proxy.Wait(shutdownCtx); err != nil {
-		runErrors = append(runErrors, err)
+	if a.proxy != nil {
+		if err := a.proxy.Wait(shutdownCtx); err != nil {
+			runErrors = append(runErrors, err)
+		}
 	}
-	if err := a.images.Wait(shutdownCtx); err != nil {
-		runErrors = append(runErrors, err)
+	if a.images != nil {
+		if err := a.images.Wait(shutdownCtx); err != nil {
+			runErrors = append(runErrors, err)
+		}
 	}
-	if err := a.videos.Wait(shutdownCtx); err != nil {
-		runErrors = append(runErrors, err)
+	if a.videos != nil {
+		if err := a.videos.Wait(shutdownCtx); err != nil {
+			runErrors = append(runErrors, err)
+		}
 	}
 	for completed < len(a.servers) {
 		runErrors = append(runErrors, <-result)

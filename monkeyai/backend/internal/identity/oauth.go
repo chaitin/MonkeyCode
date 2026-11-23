@@ -64,14 +64,28 @@ func (s *Service) AuthRouter() chi.Router {
 	router.With(s.RequireBrowser).Post("/profile/password", s.changePassword)
 	router.Get("/avatars/{userID}/{avatarID}", s.avatar)
 	router.Post("/logout", s.logout)
-	router.With(s.RequireBrowser).Post("/device/decision", s.deviceDecision)
-	router.Get("/client-requests/{requestID}", s.clientRequest)
-	router.With(s.RequireBrowser).Post("/client-requests/{requestID}/complete", s.completeClientRequest)
+	s.registerExecutionAuth(router)
 	router.Get("/oauth/{connectionID}/start", s.startUpstream)
 	router.Get("/oauth/{connectionID}/web-start", func(w http.ResponseWriter, r *http.Request) { s.beginUpstream(w, r, "", loginPurposeWeb) })
 	router.Get("/oauth/{connectionID}/admin-start", s.startAdminUpstream)
 	router.Get("/oauth/callback", s.upstreamCallback)
 	return router
+}
+
+func (s *Service) RegisterExecutionAuth(router chi.Router) {
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			next.ServeHTTP(w, r)
+		})
+	})
+	s.registerExecutionAuth(router)
+}
+
+func (s *Service) registerExecutionAuth(router chi.Router) {
+	router.With(s.RequireBrowser).Post("/device/decision", s.deviceDecision)
+	router.Get("/client-requests/{requestID}", s.clientRequest)
+	router.With(s.RequireBrowser).Post("/client-requests/{requestID}/complete", s.completeClientRequest)
 }
 
 func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {

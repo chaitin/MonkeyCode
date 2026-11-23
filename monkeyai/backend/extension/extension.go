@@ -39,7 +39,7 @@ type Credits interface {
 	ChargeCompute(context.Context, pgx.Tx, billing.ComputeCharge) error
 }
 type Runtime struct {
-	ServerID   string
+	ServerID   func() (string, error)
 	Authorizer RuntimeAuthorizer
 	Readiness  RuntimeReadiness
 	Disconnect func(string, string)

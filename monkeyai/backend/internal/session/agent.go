@@ -16,8 +16,16 @@ import (
 )
 
 func (s *Service) RegisterAgent(router chi.Router) {
+	s.RegisterIndex(router)
+	s.RegisterReporting(router)
+}
+
+func (s *Service) RegisterIndex(router chi.Router) {
 	router.With(identity.RequireScope("session:read")).Get("/sessions", s.sessionIndex)
 	router.With(identity.RequireScope("session:read")).Get("/sessions/{id}", s.sessionIndex)
+}
+
+func (s *Service) RegisterReporting(router chi.Router) {
 	router.Put("/sessions/{id}", s.putSession)
 	router.Post("/sessions/{id}/turns", s.postTurns)
 }
