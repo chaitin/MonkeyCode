@@ -125,7 +125,7 @@ function SupervisorBadge({ groups }: { groups: string[] }) {
     <Tooltip>
       <Badge
         variant="outline"
-        className="cursor-help border-blue-500/40 text-blue-700 dark:border-blue-400/40 dark:text-blue-400"
+        className="cursor-help border-amber-600/40 text-amber-600 dark:border-amber-400/40 dark:text-amber-400"
         render={<TooltipTrigger render={<span />} tabIndex={0} />}
       >
         {t("pages.membersAndGroups.supervisorBadge")}
