@@ -371,7 +371,7 @@ func TestDataOverloadLeavesControlChannelAvailable(t *testing.T) {
 	f.s.mu.Unlock()
 	permits := make([]*dataPermit, 0, 15)
 	for range 15 {
-		permit := budget.reserve(false, false, func() {})
+		permit := budget.reserve("read_file", false, func() {})
 		if permit == nil {
 			t.Fatal("未能占满常规数据流")
 		}
@@ -383,13 +383,14 @@ func TestDataOverloadLeavesControlChannelAvailable(t *testing.T) {
 		}
 	}()
 	request, _ := http.NewRequestWithContext(t.Context(), "PUT", f.server.URL+"/api/v1/endpoints/"+runtime.hello.MachineID+"/proxy/uploads/test", strings.NewReader("data"))
+	request.Header.Set("Origin", "app://monkeyai")
 	request.Header.Set("Authorization", "Bearer "+connection.Ticket)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != 429 || response.Header.Get("Retry-After") == "" {
+	if response.StatusCode != 429 || response.Header.Get("Retry-After") != "1" || !strings.Contains(response.Header.Get("Access-Control-Expose-Headers"), "Retry-After") {
 		t.Fatal("数据流超载没有受控拒绝")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)

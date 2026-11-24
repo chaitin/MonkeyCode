@@ -345,6 +345,8 @@ ticket 的默认寿命是 15 分钟。正常轮换只增加 `ticket_version`；�
 
 配额作用于完整设备身份和具体数据隧道实例，不能只用裸 machine_id，也不能按每张 ticket 各给一份预算。重连或更换数据通道后，旧回调只能释放旧预算对象。
 
+数据通道首次拒绝后开启 5 秒统计窗口，窗口结束输出一条 WARN 事件 `relay.data.overload`。按 `machine_id`、`boot_id` 和 `lease_epoch` 定位设备；`rejected_by_operation` 为窗口内按操作统计的拒绝次数。`peak_active` 是各次拒绝瞬间的最大占用数（含重连候选），`active_by_operation` 和 `oldest_ms_by_operation` 是首次达到该峰值时各操作的占用数与最长占用毫秒数，不是窗口结束时的值。原有逐请求 429 仍保留，允许的跨域来源可读取 `Retry-After`。
+
 ### 7.2 中转状态机
 
 为活动数据隧道保存 `regularCount`、`terminalCount`、`candidate`。普通请求和终端请求使用同一份数据总量计数。名额从准入开始保留，直到失败回收或实际流关闭。

@@ -249,6 +249,8 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		previous := old.data
 		old.data = mux
 		old.dataBudget = newDataBudget(&s.metrics)
+		old.dataBudget.logger = s.logger.With("module", "relay", "server_id", s.config.ServerID, "user_id", p.UserID,
+			"machine_id", hello.MachineID, "boot_id", hello.BootID, "lease_epoch", state.LeaseEpoch)
 		s.mu.Unlock()
 		gate.Unlock()
 		logging.Event(r.Context(), s.logger, slog.LevelInfo, "relay.bridge.ready", "设备数据通道已就绪")

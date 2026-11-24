@@ -34,7 +34,7 @@ func TestCanceledOpenReclaimsLateStreamAndKeepsBudget(t *testing.T) {
 	defer first.Close()
 	s := &Service{}
 	b := newDataBudget(&s.metrics)
-	permit := b.reserve(true, false, func() {})
+	permit := b.reserve("terminal", false, func() {})
 	ctx, cancel := context.WithCancel(t.Context())
 	a := &access{expiresAt: time.Now().Add(time.Minute), verifiedAt: time.Now(), cancel: cancel}
 	done := make(chan error, 1)

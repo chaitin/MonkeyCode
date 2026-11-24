@@ -135,7 +135,7 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 	if origin := r.Header.Get("Origin"); origin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
-		w.Header().Set("Access-Control-Expose-Headers", "Upload-Session-ID,Upload-Offset,Upload-Length,Mcp-Session-Id,MCP-Protocol-Version,Last-Event-ID,ETag,Last-Modified,Content-Length,Content-Range,Accept-Ranges,X-Request-ID")
+		w.Header().Set("Access-Control-Expose-Headers", "Upload-Session-ID,Upload-Offset,Upload-Length,Mcp-Session-Id,MCP-Protocol-Version,Last-Event-ID,ETag,Last-Modified,Content-Length,Content-Range,Accept-Ranges,X-Request-ID,Retry-After")
 	}
 	if r.Method == http.MethodOptions {
 		_, _, allowed := routeScope(r.Header.Get("Access-Control-Request-Method"), p)
@@ -347,7 +347,7 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 	a.cancel = cancel
 	defer cancel()
 	if data {
-		permit = budget.reserve(terminal, candidate, func() { a.closeReason("candidate_timeout") })
+		permit = budget.reserve(operation, candidate, func() { a.closeReason("candidate_timeout") })
 		if permit == nil {
 			reason = "limit_reached"
 			w.Header().Set("Retry-After", "1")

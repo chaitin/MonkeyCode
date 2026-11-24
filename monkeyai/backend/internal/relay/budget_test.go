@@ -13,25 +13,25 @@ func TestDataBudgetFullReattachAndPromotion(t *testing.T) {
 		b := newDataBudget(&relayMetrics{})
 		terminals := make([]*dataPermit, 8)
 		for i := range terminals {
-			terminals[i] = b.reserve(true, false, func() {})
+			terminals[i] = b.reserve("terminal", false, func() {})
 			if terminals[i] == nil {
 				t.Fatal("终端准入失败")
 			}
 		}
 		files := make([]*dataPermit, 7)
 		for i := range files {
-			files[i] = b.reserve(false, false, func() {})
+			files[i] = b.reserve("read_file", false, func() {})
 			if files[i] == nil {
 				t.Fatal("文件准入失败")
 			}
 		}
-		if b.reserve(true, false, func() {}) != nil || b.reserve(false, false, func() {}) != nil {
+		if b.reserve("terminal", false, func() {}) != nil || b.reserve("read_file", false, func() {}) != nil {
 			t.Fatal("超过常规名额")
 		}
 		for range 4 {
 			closed := false
-			next := b.reserve(true, true, func() { closed = true })
-			if next == nil || b.reserve(true, true, func() {}) != nil {
+			next := b.reserve("terminal", true, func() { closed = true })
+			if next == nil || b.reserve("terminal", true, func() {}) != nil {
 				t.Fatal("候选名额错误")
 			}
 			terminals[0].release()
@@ -61,10 +61,10 @@ func TestCandidateTimeoutAndFailedReplacement(t *testing.T) {
 		b := newDataBudget(&relayMetrics{})
 		old := make([]*dataPermit, 8)
 		for i := range old {
-			old[i] = b.reserve(true, false, func() {})
+			old[i] = b.reserve("terminal", false, func() {})
 		}
 		closed := false
-		p := b.reserve(true, true, func() { closed = true })
+		p := b.reserve("terminal", true, func() { closed = true })
 		time.Sleep(candidateTTL)
 		synctest.Wait()
 		if !closed {
@@ -72,7 +72,7 @@ func TestCandidateTimeoutAndFailedReplacement(t *testing.T) {
 		}
 		p.release()
 		for range 3 {
-			p = b.reserve(true, true, func() {})
+			p = b.reserve("terminal", true, func() {})
 			if p == nil {
 				t.Fatal("未释放候选槽")
 			}
@@ -91,12 +91,12 @@ func TestCandidateWaitsForBothQuotasAndLateOpen(t *testing.T) {
 	b := newDataBudget(&relayMetrics{})
 	var old []*dataPermit
 	for range 8 {
-		old = append(old, b.reserve(true, false, func() {}))
+		old = append(old, b.reserve("terminal", false, func() {}))
 	}
 	for range 7 {
-		old = append(old, b.reserve(false, false, func() {}))
+		old = append(old, b.reserve("read_file", false, func() {}))
 	}
-	p := b.reserve(true, true, func() {})
+	p := b.reserve("terminal", true, func() {})
 	old[8].release()
 	if _, _, candidate := b.counts(); !candidate {
 		t.Fatal("终端仍满额时不能转常规")
@@ -128,7 +128,7 @@ func TestDataBudgetConcurrentAdmissionAndTunnelIsolation(t *testing.T) {
 	permits := make(chan *dataPermit, 100)
 	for range 100 {
 		wg.Go(func() {
-			if p := old.reserve(true, false, func() {}); p != nil {
+			if p := old.reserve("terminal", false, func() {}); p != nil {
 				admitted.Add(1)
 				permits <- p
 			}
@@ -139,7 +139,7 @@ func TestDataBudgetConcurrentAdmissionAndTunnelIsolation(t *testing.T) {
 	if admitted.Load() != 8 {
 		t.Fatalf("并发超发: %d", admitted.Load())
 	}
-	newStream := next.reserve(true, false, func() {})
+	newStream := next.reserve("terminal", false, func() {})
 	for p := range permits {
 		p.release()
 	}
