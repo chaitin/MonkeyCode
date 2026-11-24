@@ -309,7 +309,7 @@ func (e *Execution) AuthenticateHost(ctx context.Context, tx pgx.Tx, p identity.
 	return true, nil
 }
 
-func (e *Execution) Revoke(ctx context.Context, p identity.Principal, machineID string, version int64) (ExecutionState, error) {
+func (e *Execution) Revoke(ctx context.Context, p identity.Principal, machineID string) (ExecutionState, error) {
 	if !p.Has("device:manage") {
 		return ExecutionState{}, executionFailure(http.StatusForbidden, "permission_denied")
 	}
@@ -335,9 +335,6 @@ func (e *Execution) Revoke(ctx context.Context, p identity.Principal, machineID 
 	}
 	if err != nil {
 		return ExecutionState{}, err
-	}
-	if old.RegistrationVersion != version && !(old.RemoteAccessState == "revoked" && old.RegistrationVersion == version+1) {
-		return ExecutionState{}, executionFailure(http.StatusPreconditionFailed, "device_registration_changed")
 	}
 	revoked, err := e.auth.RevokeDeviceGrants(ctx, tx, p.UserID, machineID, "device_revoked")
 	if err != nil {

@@ -22,6 +22,7 @@ type controlRequest struct {
 	User    string
 	Machine string
 	Grant   string
+	Version int64
 }
 
 type controlState struct {
@@ -86,6 +87,33 @@ func (c *Control) RevokeGrant(ctx context.Context, grant string) error {
 	return err
 }
 
+func (c *Control) InvalidateDevice(ctx context.Context, user, machine string, version int64) error {
+	_, err := c.call(ctx, controlRequest{Action: "invalidate", User: user, Machine: machine, Version: version})
+	return err
+}
+
+func (c *Control) Directory() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, "http://relay/directory", nil)
+		if err != nil {
+			fail(r.Context(), w, err)
+			return
+		}
+		req.URL.RawQuery = r.URL.RawQuery
+		req.Header.Set("Authorization", r.Header.Get("Authorization"))
+		resp, err := c.client.Do(req)
+		if err != nil {
+			fail(r.Context(), w, err)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	})
+}
+
 func ListenControl(dir string) (net.Listener, error) {
 	path := controlPath(dir)
 	parent := filepath.Dir(path)
@@ -145,6 +173,7 @@ func (l localControlListener) Accept() (net.Conn, error) {
 
 func (s *Service) ControlHandler(revoke func(string)) http.Handler {
 	mux := http.NewServeMux()
+	mux.Handle("GET /directory", s.identity.RequireAgent(s.Directory()))
 	mux.HandleFunc("POST /control", func(w http.ResponseWriter, r *http.Request) {
 		var in controlRequest
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil ||
@@ -162,6 +191,12 @@ func (s *Service) ControlHandler(revoke func(string)) http.Handler {
 			out.Status, out.Boot, out.Epoch, err = s.RuntimeStatus(r.Context(), in.User, in.Machine)
 		case "disconnect":
 			s.DisconnectRuntime(in.User, in.Machine)
+		case "invalidate":
+			if in.Version < 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			s.InvalidateDevice(in.User, in.Machine, in.Version)
 		case "revoke":
 			revoke(in.Grant)
 		default:

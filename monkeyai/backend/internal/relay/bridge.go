@@ -190,6 +190,10 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	var current *route
 	if channel == "control" && hello.Intent == "publish" {
+		if p.IsRuntime() {
+			// 首次握手开始时授权尚未绑定，路由使用登记事务确认的身份。
+			p.MachineID, p.KeyID = state.MachineID, state.KeyID
+		}
 		current = &route{runtimeStatus: "online", engineHealth: "unknown", controlQueue: make(chan any, 16), target: key, principal: p, hello: hello, state: state, ws: ws, seen: time.Now(), slotsControl: make(chan struct{}, 64), opensControl: make(chan struct{}, 64), streams: make(map[*access]struct{}), connectionVersions: make(map[string]connectionVersion)}
 		s.mu.Lock()
 		s.routes[key] = current
@@ -245,6 +249,8 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		previous := old.data
 		old.data = mux
 		old.dataBudget = newDataBudget(&s.metrics)
+		old.dataBudget.logger = s.logger.With("module", "relay", "server_id", s.config.ServerID, "user_id", p.UserID,
+			"machine_id", hello.MachineID, "boot_id", hello.BootID, "lease_epoch", state.LeaseEpoch)
 		s.mu.Unlock()
 		gate.Unlock()
 		logging.Event(r.Context(), s.logger, slog.LevelInfo, "relay.bridge.ready", "设备数据通道已就绪")

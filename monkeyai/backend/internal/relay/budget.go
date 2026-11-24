@@ -7,7 +7,11 @@ import (
 	"time"
 )
 
-const candidateTTL = 5 * time.Second
+const (
+	candidateTTL         = 5 * time.Second
+	regularStreamLimit   = 32
+	configAdmissionLimit = 12
+)
 
 type relayMetrics struct {
 	regular, terminal, candidates                                   atomic.Int64
@@ -21,10 +25,15 @@ type dataBudget struct {
 	candidate                   *dataPermit
 	opens                       chan struct{}
 	metrics                     *relayMetrics
+	active                      map[*dataPermit]struct{}
+	logger                      *slog.Logger
+	overload                    *overloadWindow
 }
 
 type dataPermit struct {
 	budget                       *dataBudget
+	operation                    string
+	started                      time.Time
 	terminal, candidate, expired bool
 	refs                         int
 	once                         sync.Once
@@ -32,18 +41,25 @@ type dataPermit struct {
 }
 
 func newDataBudget(metrics *relayMetrics) *dataBudget {
-	return &dataBudget{opens: make(chan struct{}, 16), metrics: metrics}
+	return &dataBudget{opens: make(chan struct{}, regularStreamLimit+1), metrics: metrics, active: make(map[*dataPermit]struct{}, regularStreamLimit+1)}
 }
 
-func (b *dataBudget) reserve(terminal, candidate bool, close func()) *dataPermit {
+func (b *dataBudget) reserve(operation string, candidate bool, close func()) *dataPermit {
+	terminal := operation == "terminal"
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	room := b.regularCount < 15 && (!terminal || b.terminalCount < 8)
+	limit := regularStreamLimit
+	if operation == "read_config" {
+		limit = configAdmissionLimit
+	}
+	room := b.regularCount < limit && (!terminal || b.terminalCount < 8)
 	if candidate && (!terminal || b.candidate != nil) || !candidate && !room {
 		b.metrics.limited.Add(1)
+		b.recordRejection(operation)
 		return nil
 	}
-	p := &dataPermit{budget: b, terminal: terminal, refs: 1}
+	p := &dataPermit{budget: b, terminal: terminal, refs: 1, operation: operation, started: time.Now()}
+	b.active[p] = struct{}{}
 	if room {
 		b.regularCount++
 		b.metrics.regular.Add(1)
@@ -96,6 +112,7 @@ func (p *dataPermit) drop() {
 	if p.refs != 0 {
 		return
 	}
+	delete(b.active, p)
 	if p.candidate {
 		b.candidate = nil
 		b.metrics.candidates.Add(-1)
@@ -108,7 +125,7 @@ func (p *dataPermit) drop() {
 			b.metrics.terminal.Add(-1)
 		}
 	}
-	if next := b.candidate; next != nil && !next.expired && b.regularCount < 15 && b.terminalCount < 8 {
+	if next := b.candidate; next != nil && !next.expired && b.regularCount < regularStreamLimit && b.terminalCount < 8 {
 		b.candidate = nil
 		next.candidate = false
 		next.timer.Stop()

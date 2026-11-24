@@ -26,12 +26,8 @@ func planeHandler(role config.Role, next http.Handler) http.Handler {
 var executionRoutes = []*regexp.Regexp{
 	regexp.MustCompile(`^[^:]+:/v1/(?:chat/completions|responses|messages)$`),
 	regexp.MustCompile(`^[^:]+:/mcp/(?:kb|connectors/[^/]+(?:/credentials/[^/]+)?)$`),
-	regexp.MustCompile(`^(?:PUT:/api/v1/sessions/[^/]+|POST:/api/v1/sessions/[^/]+/turns)$`),
-	regexp.MustCompile(`^[^:]+:/api/v1/api-keys(?:/[^/]+(?:/rotate)?)?$`),
 	regexp.MustCompile(`^[^:]+:/(?:preview/[^/]+/[^/]+/|endpoints/[^/]+/files/[^/]+/)`),
-	regexp.MustCompile(`^[^:]+:/api/v1/(?:endpoint-bridge$|endpoints(?:/?$|/[^/]+(?:$|/(?:connections|revoke|restore)$|/proxy/)))`),
-	regexp.MustCompile(`^[^:]+:/(?:[.]well-known/oauth-authorization-server$|oauth/(?:authorize$|token$|revoke$|device/authorization$|pairing(?:/|$)))`),
-	regexp.MustCompile(`^[^:]+:/api/auth/v1/(?:device/decision|client-requests/[^/]+(?:/complete)?)$`),
+	regexp.MustCompile(`^(?:GET:/api/v1/endpoint-bridge$|POST:/api/v1/endpoints/[^/]+/connections$|[^:]+:/api/v1/endpoints/[^/]+/proxy/)`),
 }
 
 func executionRoute(method, path string) bool {

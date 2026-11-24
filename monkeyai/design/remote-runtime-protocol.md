@@ -12,7 +12,7 @@ OAuth 新权限必须通过浏览器明确批准。启用远程中转时，新�
 
 GET 设备列表添加 `X-MAI-Runtime-API: 1` 或使用已获 `device:connect` 的授权获取平铺 `items/total/page/page_size/version`。目录要求 `device:connect`，支持 `capability=execute`、page 和 page_size。没有新增权限的旧 token 不能进入新接口。
 
-DELETE 远程登记要求 `If-Match` 中的 registration_version；同一事务在用户锁下核对当前版本，过期返回 412/device_registration_changed。同一次撤销重复提交保持幂等；恢复远程访问再次推进 registration_version，恢复前的删除不能撤销新登记。
+Agent 使用有 `device:manage` 权限的 OAuth Bearer 调用 `DELETE /api/v1/endpoints/{machine_id}`，撤销该 ID 当前的远程登记，不需要版本号或请求体。成功返回 204，重复撤销仍返回 204。远程设备目录默认不列出已撤销的设备。删除登记不会销毁云环境或删除设备文件。
 
 ## 2. 文本握手
 

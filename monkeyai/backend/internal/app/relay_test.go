@@ -177,9 +177,6 @@ func TestRuntimeRelayApplication(t *testing.T) {
 		t.Helper()
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+token)
-		if method == "DELETE" {
-			req.Header.Set("If-Match", "1")
-		}
 		if version {
 			req.Header.Set("X-MAI-Runtime-API", "1")
 		}

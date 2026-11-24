@@ -16,7 +16,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -156,10 +155,17 @@ func NewService(pool *pgxpool.Pool, identities *identity.Service, devices *endpo
 }
 
 func (s *Service) Register(router chi.Router) {
+	s.RegisterTunnel(router)
+	RegisterRevocation(router, s.identity, s.devices, func(_ context.Context, user, machine string, version int64) error {
+		s.InvalidateDevice(user, machine, version)
+		return nil
+	})
+}
+
+func (s *Service) RegisterTunnel(router chi.Router) {
 	router.HandleFunc("/preview/{machine}/{grant}/*", s.preview)
 	router.With(s.identity.RequireAgent).Get("/api/v1/endpoint-bridge", s.bridge)
 	router.With(s.identity.RequireAgent, identity.RequireScope("device:connect")).Post("/api/v1/endpoints/{machine}/connections", s.connections)
-	router.With(s.identity.RequireAgent, identity.RequireScope("device:manage")).Delete("/api/v1/endpoints/{machine}", s.revoke)
 	router.HandleFunc("/api/v1/endpoints/{machine}/proxy/*", s.proxy)
 	router.HandleFunc("/endpoints/{machine}/files/{grant}/*", s.file)
 }
@@ -228,12 +234,16 @@ func deviceAuthorizationKey(key ed25519.PrivateKey) []byte {
 }
 
 func (s *Service) Metadata() map[string]any {
-	metadata := map[string]any{"server_id": s.config.ServerID, "bridge_url": strings.Replace(s.config.PublicURL, "http", "ws", 1) + "/api/v1/endpoint-bridge",
-		"files_origin": s.config.FilesOrigin, "access_signing_keys": s.verificationKeys,
+	return runtimeMetadata(s.config, s.verificationKeys)
+}
+
+func runtimeMetadata(config Config, keys []map[string]string) map[string]any {
+	metadata := map[string]any{"server_id": config.ServerID, "bridge_url": strings.Replace(config.PublicURL, "http", "ws", 1) + "/api/v1/endpoint-bridge",
+		"files_origin": config.FilesOrigin, "access_signing_keys": keys,
 		"runtime_api": []int{1}, "tunnel_versions": []int{Version}, "features": map[string]bool{"device_binding": true, "desktop_managed": true, "runtime_relay": true, "terminal_ws": true}}
 	metadata["time_policy"] = map[string]int64{"access_lease_ttl_ms": 60000, "access_lease_renew_ms": 20000, "max_auth_staleness_ms": 180000, "max_time_reference_age_ms": 120000, "max_time_uncertainty_ms": 5000, "max_grant_clock_skew_ms": 5000, "max_file_grant_ttl_ms": 300000}
-	if s.config.PreviewOriginTemplate != "" {
-		metadata["preview_origin_template"] = s.config.PreviewOriginTemplate
+	if config.PreviewOriginTemplate != "" {
+		metadata["preview_origin_template"] = config.PreviewOriginTemplate
 		metadata["features"].(map[string]bool)["artifact_preview"] = true
 		metadata["preview_storage_policy"] = "opaque_no_storage"
 	}
@@ -338,6 +348,9 @@ func (s *Service) closeRoute(r *route, reason string) {
 
 func (s *Service) InvalidateDevice(user, machine string, version int64) {
 	key := target{user, machine}
+	gate := s.gate(key)
+	gate.Lock()
+	defer gate.Unlock()
 	s.mu.Lock()
 	r := s.routes[key]
 	if r != nil && r.state.GrantVersion > version {
@@ -419,39 +432,28 @@ func muxConfig(channel string) *yamux.Config {
 	return cfg
 }
 
-func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	r = r.WithContext(ctx)
-	p, _ := identity.PrincipalFromContext(r.Context())
-	machine := chi.URLParam(r, "machine")
-	if !validUUID(machine) {
-		failure(r.Context(), w, 400, "invalid_request")
-		return
-	}
-	versionText := strings.Trim(r.Header.Get("If-Match"), "\"")
-	version, err := strconv.ParseInt(versionText, 10, 64)
-	if err != nil || version < 0 {
-		if err != nil {
-			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "revoke", "error", err)
+func RegisterRevocation(router chi.Router, ids *identity.Service, devices *endpoint.Execution, invalidate func(context.Context, string, string, int64) error) {
+	router.With(ids.RequireAgent, identity.RequireScope("device:manage")).Delete("/api/v1/endpoints/{machine}", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		r = r.WithContext(ctx)
+		p, _ := identity.PrincipalFromContext(r.Context())
+		machine := chi.URLParam(r, "machine")
+		if !validUUID(machine) {
+			failure(r.Context(), w, 400, "invalid_request")
+			return
 		}
-		failure(r.Context(), w, http.StatusPreconditionRequired, "device_registration_changed")
-		return
-	}
-	key := target{p.UserID, machine}
-	gate := s.gate(key)
-	gate.Lock()
-	_, err = s.devices.Revoke(r.Context(), p, machine, version)
-	s.mu.Lock()
-	old := s.routes[key]
-	s.mu.Unlock()
-	gate.Unlock()
-	if err != nil {
-		fail(r.Context(), w, err)
-		return
-	}
-	s.closeRoute(old, "device_revoked")
-	w.WriteHeader(http.StatusNoContent)
+		state, err := devices.Revoke(ctx, p, machine)
+		if err != nil {
+			fail(r.Context(), w, err)
+			return
+		}
+		if err := invalidate(ctx, p.UserID, machine, state.GrantVersion); err != nil {
+			fail(ctx, w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
 
 func (s *Service) DisconnectRuntime(user, machine string) {

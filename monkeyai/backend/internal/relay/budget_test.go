@@ -13,30 +13,30 @@ func TestDataBudgetFullReattachAndPromotion(t *testing.T) {
 		b := newDataBudget(&relayMetrics{})
 		terminals := make([]*dataPermit, 8)
 		for i := range terminals {
-			terminals[i] = b.reserve(true, false, func() {})
+			terminals[i] = b.reserve("terminal", false, func() {})
 			if terminals[i] == nil {
 				t.Fatal("终端准入失败")
 			}
 		}
-		files := make([]*dataPermit, 7)
+		files := make([]*dataPermit, regularStreamLimit-8)
 		for i := range files {
-			files[i] = b.reserve(false, false, func() {})
+			files[i] = b.reserve("read_file", false, func() {})
 			if files[i] == nil {
 				t.Fatal("文件准入失败")
 			}
 		}
-		if b.reserve(true, false, func() {}) != nil || b.reserve(false, false, func() {}) != nil {
+		if b.reserve("terminal", false, func() {}) != nil || b.reserve("read_file", false, func() {}) != nil {
 			t.Fatal("超过常规名额")
 		}
 		for range 4 {
 			closed := false
-			next := b.reserve(true, true, func() { closed = true })
-			if next == nil || b.reserve(true, true, func() {}) != nil {
+			next := b.reserve("terminal", true, func() { closed = true })
+			if next == nil || b.reserve("terminal", true, func() {}) != nil {
 				t.Fatal("候选名额错误")
 			}
 			terminals[0].release()
 			terminals[0] = next
-			if regular, terminal, candidate := b.counts(); regular != 15 || terminal != 8 || candidate {
+			if regular, terminal, candidate := b.counts(); regular != regularStreamLimit || terminal != 8 || candidate {
 				t.Fatalf("未原子转常规: %d %d %v", regular, terminal, candidate)
 			}
 			time.Sleep(6 * time.Second)
@@ -61,10 +61,10 @@ func TestCandidateTimeoutAndFailedReplacement(t *testing.T) {
 		b := newDataBudget(&relayMetrics{})
 		old := make([]*dataPermit, 8)
 		for i := range old {
-			old[i] = b.reserve(true, false, func() {})
+			old[i] = b.reserve("terminal", false, func() {})
 		}
 		closed := false
-		p := b.reserve(true, true, func() { closed = true })
+		p := b.reserve("terminal", true, func() { closed = true })
 		time.Sleep(candidateTTL)
 		synctest.Wait()
 		if !closed {
@@ -72,7 +72,7 @@ func TestCandidateTimeoutAndFailedReplacement(t *testing.T) {
 		}
 		p.release()
 		for range 3 {
-			p = b.reserve(true, true, func() {})
+			p = b.reserve("terminal", true, func() {})
 			if p == nil {
 				t.Fatal("未释放候选槽")
 			}
@@ -91,12 +91,12 @@ func TestCandidateWaitsForBothQuotasAndLateOpen(t *testing.T) {
 	b := newDataBudget(&relayMetrics{})
 	var old []*dataPermit
 	for range 8 {
-		old = append(old, b.reserve(true, false, func() {}))
+		old = append(old, b.reserve("terminal", false, func() {}))
 	}
-	for range 7 {
-		old = append(old, b.reserve(false, false, func() {}))
+	for range regularStreamLimit - 8 {
+		old = append(old, b.reserve("read_file", false, func() {}))
 	}
-	p := b.reserve(true, true, func() {})
+	p := b.reserve("terminal", true, func() {})
 	old[8].release()
 	if _, _, candidate := b.counts(); !candidate {
 		t.Fatal("终端仍满额时不能转常规")
@@ -128,7 +128,7 @@ func TestDataBudgetConcurrentAdmissionAndTunnelIsolation(t *testing.T) {
 	permits := make(chan *dataPermit, 100)
 	for range 100 {
 		wg.Go(func() {
-			if p := old.reserve(true, false, func() {}); p != nil {
+			if p := old.reserve("terminal", false, func() {}); p != nil {
 				admitted.Add(1)
 				permits <- p
 			}
@@ -139,7 +139,7 @@ func TestDataBudgetConcurrentAdmissionAndTunnelIsolation(t *testing.T) {
 	if admitted.Load() != 8 {
 		t.Fatalf("并发超发: %d", admitted.Load())
 	}
-	newStream := next.reserve(true, false, func() {})
+	newStream := next.reserve("terminal", false, func() {})
 	for p := range permits {
 		p.release()
 	}
@@ -154,4 +154,53 @@ func TestDataBudgetConcurrentAdmissionAndTunnelIsolation(t *testing.T) {
 	if m.regular.Load() != 0 || m.terminal.Load() != 0 {
 		t.Fatal("活跃指标未归零")
 	}
+}
+func TestConfigBurstLeavesRoomForOtherOperations(t *testing.T) {
+	b := newDataBudget(&relayMetrics{})
+	for range 8 {
+		defer b.reserve("terminal", false, nil).release()
+	}
+	var wg sync.WaitGroup
+	accepted := make(chan *dataPermit, 100)
+	for range 100 {
+		wg.Go(func() {
+			if p := b.reserve("read_config", false, nil); p != nil {
+				accepted <- p
+			}
+		})
+	}
+	wg.Wait()
+	close(accepted)
+	if len(accepted) != 4 || b.metrics.limited.Load() != 96 {
+		t.Fatalf("配置读取准入 %d 次，拒绝 %d 次", len(accepted), b.metrics.limited.Load())
+	}
+	for _, op := range []string{"read_session", "read_interaction", "upload_file"} {
+		p := b.reserve(op, false, nil)
+		if p == nil {
+			t.Fatalf("配置突发后 %s 没有名额", op)
+		}
+		defer p.release()
+	}
+	var extra []*dataPermit
+	for range 17 {
+		p := b.reserve("read_session", false, nil)
+		if p == nil {
+			t.Fatal("新增的会话读取名额不可用")
+		}
+		extra = append(extra, p)
+	}
+	if b.reserve("read_session", false, nil) != nil {
+		t.Fatal("常规流超出总预算")
+	}
+	for _, p := range extra {
+		p.release()
+	}
+	for p := range accepted {
+		p.release()
+	}
+	p := b.reserve("read_config", false, nil)
+	if p == nil {
+		t.Fatal("占用降到阈值以下后配置读取未恢复")
+	}
+	p.release()
 }
