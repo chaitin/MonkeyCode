@@ -2,10 +2,12 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var activityTables = [...]string{"billing_transactions", "model_calls", "mcp_tool_calls", "image_calls", "video_calls"}
@@ -13,6 +15,7 @@ var activityTables = [...]string{"billing_transactions", "model_calls", "mcp_too
 // Mutable transaction/call maintenance runs independently of wallet recovery and
 // the immutable ledger worker. Database advisory locks coordinate all replicas.
 func (s *Service) runActivityPartitions(ctx context.Context) {
+	var nextStatsCheck time.Time
 	checks := make(map[string]time.Time, len(activityTables))
 	query := sqlc.New(s.pool)
 	for ctx.Err() == nil {
@@ -54,6 +57,23 @@ func (s *Service) runActivityPartitions(ctx context.Context) {
 				} else if ready {
 					slog.InfoContext(ctx, "交易/调用周分区回填校验及切换完成，保留旧表镜像", "table", name)
 					delay = 10 * time.Millisecond
+				}
+			}
+		}
+		if !s.now().Before(nextStatsCheck) {
+			c, cancel := context.WithTimeout(ctx, 45*time.Second)
+			err := query.EnsureModelStatsMonths(c, s.now())
+			cancel()
+			if err == nil {
+				nextStatsCheck = s.now().Add(24 * time.Hour)
+			} else if ctx.Err() == nil {
+				var pgErr *pgconn.PgError
+				if errors.As(err, &pgErr) && pgErr.Code == "54000" {
+					nextStatsCheck = s.now().Add(24 * time.Hour)
+					slog.WarnContext(ctx, "模型统计默认分区超限，暂停自动搬迁，请安排维护窗口", "error", err)
+				} else {
+					nextStatsCheck = s.now().Add(time.Minute)
+					slog.ErrorContext(ctx, "预建模型统计月分区失败，将重试", "error", err)
 				}
 			}
 		}

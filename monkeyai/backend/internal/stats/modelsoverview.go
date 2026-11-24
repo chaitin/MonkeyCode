@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/memberscope"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *Service) modelsOverview(w http.ResponseWriter, r *http.Request) {
+func (s *Service) modelsOverview(w http.ResponseWriter, r *http.Request, scope memberscope.Scope) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	if r.URL.RawQuery != "" {
 		resource.Fail(r.Context(), w, resource.Invalid("模型总览不支持查询参数"))
@@ -24,7 +25,7 @@ func (s *Service) modelsOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollbackStats(ctx, tx, "models_overview")
-	out, err := resource.DecodeObject(sqlc.New(tx).ReportingModelsOverview(ctx, s.now().UTC()))
+	out, err := resource.DecodeObject(sqlc.New(tx).ReportingModelsOverview(ctx, sqlc.ReportingModelsOverviewParams{At: s.now().UTC(), VisibleUsers: scope.IDs()}))
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

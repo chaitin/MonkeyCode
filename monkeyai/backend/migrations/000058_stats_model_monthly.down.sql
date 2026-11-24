@@ -1,0 +1,11 @@
+BEGIN;
+LOCK TABLE stats_model_hourly, stats_model_credit_hourly IN ACCESS EXCLUSIVE MODE;
+DROP FUNCTION stats_model_ensure_months(timestamptz), stats_model_create_month(timestamptz);
+ALTER TABLE stats_model_hourly RENAME TO stats_model_hourly_partitioned;
+ALTER TABLE stats_model_credit_hourly RENAME TO stats_model_credit_hourly_partitioned;
+CREATE TABLE stats_model_hourly (LIKE stats_model_hourly_partitioned INCLUDING ALL);
+CREATE TABLE stats_model_credit_hourly (LIKE stats_model_credit_hourly_partitioned INCLUDING ALL);
+INSERT INTO stats_model_hourly SELECT * FROM stats_model_hourly_partitioned;
+INSERT INTO stats_model_credit_hourly SELECT * FROM stats_model_credit_hourly_partitioned;
+DROP TABLE stats_model_hourly_partitioned, stats_model_credit_hourly_partitioned;
+COMMIT;

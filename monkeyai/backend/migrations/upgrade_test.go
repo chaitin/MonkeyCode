@@ -102,7 +102,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != latest || latest != 54 || dirty {
+	if version != latest || latest != 59 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string

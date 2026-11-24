@@ -692,6 +692,15 @@ func (q *Queries) EnsureLedgerWeeks(ctx context.Context, at time.Time) (bool, er
 	return column_1, err
 }
 
+const ensureModelStatsMonths = `-- name: EnsureModelStatsMonths :exec
+SELECT stats_model_ensure_months($1::timestamptz)
+`
+
+func (q *Queries) EnsureModelStatsMonths(ctx context.Context, at time.Time) error {
+	_, err := q.db.Exec(ctx, ensureModelStatsMonths, at)
+	return err
+}
+
 const eventExists = `-- name: EventExists :one
 WITH locations AS MATERIALIZED (
     SELECT k.id,k.occurred_at FROM credit_ledger_entry_keys k WHERE k.event_key=$1

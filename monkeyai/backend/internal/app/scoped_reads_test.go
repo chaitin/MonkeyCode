@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -276,6 +277,44 @@ func testScopedReads(t *testing.T, pool *pgxpool.Pool, get func(string, string, 
 		get("GET", p, "lead", 403)
 	}
 	get("PATCH", "/feedback/"+random, "lead", 403)
+	const modelOverview = "/statistics/models/overview"
+	get("GET", modelOverview, "", 401)
+	get("GET", modelOverview, "ordinary", 403)
+	get("GET", modelOverview+"?user_id="+outside, "lead", 400)
+	model := id("INSERT INTO models(ownership_type,display_name,model_id,protocol,base_url,api_key,advanced_config,owner_user_id) VALUES('system','shared','shared','openai_chat_completions','https://example.test','test','{}',$1) RETURNING id", outside)
+	for _, sample := range []struct {
+		uid    string
+		weight int
+	}{{inside, 2}, {outside, 11}} {
+		exec("INSERT INTO model_calls(user_id,model_id,status,started_at,completed_at,input_tokens,response_duration_ms) SELECT $1,$2,'succeeded',now()-age-interval '1 second',now()-age,$3::integer,$3::integer FROM unnest(ARRAY[interval '1 minute',interval '12 hours',interval '36 hours',interval '20 days']) age", sample.uid, model, sample.weight)
+		exec("INSERT INTO credit_ledger_entries(account_id,user_id,entry_type,category,item_name,credit_delta,balance_after,occurred_at) SELECT a.id,a.user_id,v.entry,'model','model-test',v.delta,0,now()-v.age FROM credit_accounts a CROSS JOIN (VALUES ('charge',-$2::numeric,interval '20 days'),('refund',1,interval '1 minute')) v(entry,delta,age) WHERE a.user_id=$1", sample.uid, sample.weight)
+	}
+	checkModels := func(who string, users, weight, samples int) {
+		t.Helper()
+		summary := call(modelOverview, who)
+		last := summary["last_24h"].(map[string]any)
+		previous := summary["previous_24h"].(map[string]any)
+		quality := summary["last_30m"].(map[string]any)
+		if last["model_calls"] != float64(2*samples) || last["input_tokens"] != float64(2*weight) || previous["model_calls"] != float64(samples) || previous["input_tokens"] != float64(weight) || quality["avg_response_time"] != float64(weight)/float64(samples) || summary["message_distribution"].(map[string]any)["total_messages"] != float64(users) {
+			t.Fatal(who, last, previous, quality)
+		}
+		var calls, tokens, credits float64
+		for _, raw := range summary["days"].([]any) {
+			day := raw.(map[string]any)
+			calls += day["model_calls"].(float64)
+			tokens += day["input_tokens"].(float64)
+			amount, err := strconv.ParseFloat(day["credits"].(string), 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			credits += amount
+		}
+		if calls != float64(4*samples) || tokens != float64(4*weight) || credits != float64(users+weight-samples) {
+			t.Fatal(who, calls, tokens, credits)
+		}
+	}
+	checkModels("lead", 2, 2, 1)
+	checkModels("admin", 6, 13, 2)
 	exec("UPDATE group_users SET removed_at=now() WHERE group_id=$1 AND user_id=$2", extra, inside)
 	assertOwners(call("/feedback", "lead"), "user_id", inside, second)
 	exec("UPDATE group_users SET removed_at=now() WHERE group_id=$1 AND user_id=$2", grand, inside)
@@ -283,6 +322,7 @@ func testScopedReads(t *testing.T, pool *pgxpool.Pool, get func(string, string, 
 	assertOwners(call("/feedback", "lead"), "user_id", outside, second)
 	assertOwners(call("/users?scope=managed&id="+inside, "lead"), "id")
 	checkMembers(outside, second)
+	checkModels("lead", 2, 11, 1)
 	assertOwners(call(envPath, "lead"), "user_id", outside, second)
 	get("GET", "/users/"+inside, "lead", 404)
 	get("GET", "/users/"+outside, "lead", 200)

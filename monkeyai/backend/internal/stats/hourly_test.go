@@ -223,14 +223,18 @@ func TestHourlyMigrationBackfill(t *testing.T) {
 	}
 	// The newer partition migration owns views of usage_known; remove those
 	// dependencies before testing removal/recreation of the older column.
+	apply("000059_stats_model_employee", "down")
+	apply("000058_stats_model_monthly", "down")
 	apply("000032_billing_activity_weekly", "down")
 	for range 2 {
 		for _, direction := range []string{"down", "up"} {
 			apply("000028_stats_model_hourly", direction)
 		}
-		assertHourlyOverview(t, s)
+		assertHourlyFacts(t, s)
 	}
 	apply("000032_billing_activity_weekly", "up")
+	apply("000058_stats_model_monthly", "up")
+	apply("000059_stats_model_employee", "up")
 	assertHourlyOverview(t, s)
 }
 

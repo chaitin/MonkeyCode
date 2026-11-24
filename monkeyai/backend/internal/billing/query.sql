@@ -1342,6 +1342,9 @@ SELECT billing_copy_activity_batch(sqlc.arg(table_name)::text,1000)::integer;
 -- name: CutoverActivity :one
 SELECT billing_cutover_activity(sqlc.arg(table_name)::text)::boolean;
 
+-- name: EnsureModelStatsMonths :exec
+SELECT stats_model_ensure_months(sqlc.arg(at)::timestamptz);
+
 -- name: EnsureLedgerWeeks :one
 SELECT billing_ensure_ledger_weeks(sqlc.arg(at)::timestamptz)::boolean;
 

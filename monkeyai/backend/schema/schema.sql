@@ -2156,3 +2156,39 @@ ALTER TABLE oauth_grants ADD CONSTRAINT oauth_grants_scopes_check CHECK(
  'session:report','session:read','session:control','files:read','files:write','resources:manage',
  'environment:read','environment:manage','account:ai-resources']::text[]
 );
+
+ALTER TABLE oauth_login_states
+    DROP CONSTRAINT oauth_login_states_purpose_check,
+    DROP CONSTRAINT oauth_login_states_request_check,
+    ADD CONSTRAINT oauth_login_states_purpose_check CHECK (purpose IN ('client','admin','device','web')),
+    ADD CONSTRAINT oauth_login_states_request_check CHECK (
+        (purpose='client' AND authorization_request_id IS NOT NULL AND device_request_id IS NULL) OR
+        (purpose IN ('admin','web') AND authorization_request_id IS NULL AND device_request_id IS NULL) OR
+        (purpose='device' AND authorization_request_id IS NULL AND device_request_id IS NOT NULL));
+
+ALTER TABLE stats_model_hourly RENAME TO stats_model_hourly_old;
+
+ALTER TABLE stats_model_credit_hourly RENAME TO stats_model_credit_hourly_old;
+
+CREATE TABLE stats_model_hourly (LIKE stats_model_hourly_old INCLUDING ALL) PARTITION BY RANGE (hour_start);
+
+CREATE TABLE stats_model_credit_hourly (LIKE stats_model_credit_hourly_old INCLUDING ALL) PARTITION BY RANGE (hour_start);
+
+CREATE TABLE stats_model_hourly_default PARTITION OF stats_model_hourly DEFAULT;
+
+CREATE TABLE stats_model_credit_hourly_default PARTITION OF stats_model_credit_hourly DEFAULT;
+
+DROP TABLE stats_model_hourly_old, stats_model_credit_hourly_old;
+
+CREATE TABLE stats_model_user_backfill (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    from_hour timestamptz NOT NULL
+);
+
+ALTER TABLE stats_model_hourly ADD COLUMN user_id uuid;
+
+ALTER TABLE stats_model_credit_hourly ADD COLUMN user_id uuid;
+
+ALTER TABLE stats_model_hourly ADD CONSTRAINT stats_model_hour_employee_key UNIQUE NULLS NOT DISTINCT (hour_start, model_id, user_id);
+
+ALTER TABLE stats_model_credit_hourly ADD CONSTRAINT stats_model_credit_hour_employee_key UNIQUE NULLS NOT DISTINCT (hour_start, user_id);

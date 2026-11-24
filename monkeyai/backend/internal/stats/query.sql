@@ -146,7 +146,7 @@ WITH bounds AS NOT MATERIALIZED (
     SELECT c.completed_at, c.status, c.input_tokens, c.output_tokens, c.cache_hit,
            c.response_duration_ms, c.first_token_duration_ms, c.started_at, c.usage_known
     FROM model_calls c
-    WHERE c.status <> 'running' AND (
+    WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR c.user_id = ANY(sqlc.arg(visible_users)::uuid[])) AND c.status <> 'running' AND (
         (c.completed_at >= least(date_trunc('hour', sqlc.arg(at)::timestamptz, 'UTC'), sqlc.arg(at)::timestamptz - interval '30 minutes')
             AND c.completed_at < sqlc.arg(at)::timestamptz)
         OR (c.completed_at >= date_trunc('hour', sqlc.arg(at)::timestamptz, 'UTC') - interval '24 hours'
@@ -186,6 +186,7 @@ WITH bounds AS NOT MATERIALIZED (
     SELECT w.name, coalesce(sum(h.calls), 0) AS calls,
         coalesce(sum(h.input_tokens), 0) AS input_tokens, coalesce(sum(h.output_tokens), 0) AS output_tokens
     FROM window_bounds w LEFT JOIN stats_model_hourly h ON h.hour_start >= w.full_from AND h.hour_start < w.full_until
+        AND (sqlc.arg(visible_users)::uuid[] IS NULL OR h.user_id = ANY(sqlc.arg(visible_users)::uuid[]))
     GROUP BY w.name
     UNION ALL
     SELECT w.name, count(c.completed_at),
@@ -201,7 +202,8 @@ WITH bounds AS NOT MATERIALIZED (
     SELECT (h.hour_start AT TIME ZONE 'Asia/Shanghai')::date AS day,
         sum(h.calls) AS calls, sum(h.input_tokens) AS input_tokens, sum(h.output_tokens) AS output_tokens
     FROM stats_model_hourly h CROSS JOIN bounds b
-    WHERE h.hour_start >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND h.hour_start < b.hour_at
+    WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR h.user_id = ANY(sqlc.arg(visible_users)::uuid[]))
+      AND h.hour_start >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND h.hour_start < b.hour_at
     GROUP BY 1
     UNION ALL
     SELECT (completed_at AT TIME ZONE 'Asia/Shanghai')::date, count(*),
@@ -213,18 +215,21 @@ WITH bounds AS NOT MATERIALIZED (
 ), daily_credit_parts AS (
     SELECT (h.hour_start AT TIME ZONE 'Asia/Shanghai')::date AS day, sum(h.credits) AS credits
     FROM stats_model_credit_hourly h CROSS JOIN bounds b
-    WHERE h.hour_start >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND h.hour_start < b.hour_at GROUP BY 1
+    WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR h.user_id = ANY(sqlc.arg(visible_users)::uuid[]))
+      AND h.hour_start >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND h.hour_start < b.hour_at GROUP BY 1
     UNION ALL
     SELECT (e.occurred_at AT TIME ZONE 'Asia/Shanghai')::date, -sum(e.credit_delta)
     FROM credit_ledger_entries e CROSS JOIN bounds b
-    WHERE e.occurred_at >= b.hour_at AND e.occurred_at < b.now_at
+    WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR e.user_id = ANY(sqlc.arg(visible_users)::uuid[]))
+      AND e.occurred_at >= b.hour_at AND e.occurred_at < b.now_at
         AND e.category = 'model' AND e.entry_type IN ('charge', 'refund') GROUP BY 1
 ), credits_by_day AS (
     SELECT day, sum(credits) AS credits FROM daily_credit_parts GROUP BY day
 ), message_models AS (
     SELECT t.model_id, count(*) AS messages
     FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN bounds b
-    WHERE s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
+    WHERE (sqlc.arg(visible_users)::uuid[] IS NULL OR s.owner_user_id = ANY(sqlc.arg(visible_users)::uuid[]))
+      AND s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
       AND NOT s.placeholder AND s.deleted_at IS NULL AND s.purged_at IS NULL AND s.started_at < b.now_at
       AND t.started_at >= b.now_at - interval '24 hours' AND t.started_at < b.now_at
     GROUP BY t.model_id

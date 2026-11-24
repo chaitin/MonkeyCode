@@ -117,7 +117,7 @@ func TestOldModelsEndpointRemoved(t *testing.T) {
 func TestModelsOverviewRejectsFilters(t *testing.T) {
 	for _, query := range []string{"?range=7d", "?model_id=x", "?from=", "?%zz"} {
 		w := httptest.NewRecorder()
-		(&Service{}).modelsOverview(w, httptest.NewRequest("GET", "/statistics/models/overview"+query, nil))
+		(&Service{}).modelsOverview(w, httptest.NewRequest("GET", "/statistics/models/overview"+query, nil), memberscope.All())
 		if w.Code != http.StatusBadRequest || w.Header().Get("Cache-Control") != "private, no-store" {
 			t.Fatalf("不应接受查询参数 %s: %d %s", query, w.Code, w.Body.String())
 		}
