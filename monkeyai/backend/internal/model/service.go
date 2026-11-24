@@ -1,6 +1,8 @@
 package model
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"context"
 	"errors"
 	"log/slog"
@@ -42,6 +44,7 @@ type ProxyResolver interface {
 }
 
 type Service struct {
+	network                 netpolicy.Reader
 	proxies                 ProxyResolver
 	repository              Repository
 	keys                    KeyAuthenticator
@@ -54,6 +57,8 @@ type Service struct {
 func NewService(repository Repository) *Service {
 	return &Service{repository: repository}
 }
+
+func (s *Service) WithNetworkSettings(read netpolicy.Reader) *Service { s.network = read; return s }
 
 func (s *Service) WithProxyResolver(proxies ProxyResolver) *Service {
 	s.proxies = proxies

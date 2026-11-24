@@ -1,6 +1,8 @@
 package app
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -233,9 +235,9 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	keys := apikey.NewService(apikey.NewPostgres(pool))
 	modelRepo := model.NewPostgres(pool)
 	if cfg.Role != config.RoleProxy {
-		charges.WithUsageReconciler(modelUsageReconciler{models: modelRepo, proxies: settings, responses: proxy.NewResponseReconciler()})
+		charges.WithUsageReconciler(modelUsageReconciler{models: modelRepo, proxies: settings, responses: proxy.NewResponseReconciler().WithTransport(netpolicy.Wrap(proxy.DirectTransport(), settings.ModelBlockedCIDRs))})
 	}
-	models := model.NewService(modelRepo).WithProxyResolver(settings).WithKeyAuthenticator(keys).WithGatewayURL(strings.TrimRight(cfg.PublicURL, "/") + "/v1")
+	models := model.NewService(modelRepo).WithNetworkSettings(settings.ModelBlockedCIDRs).WithProxyResolver(settings).WithKeyAuthenticator(keys).WithGatewayURL(strings.TrimRight(cfg.PublicURL, "/") + "/v1")
 	storage, err := resource.NewS3(ctx)
 	if err != nil {
 		return nil, err
@@ -259,7 +261,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	imageInputs := imagegen.NewInputs(imageRepo, storage)
 	imageOutputs := imagegen.NewOutputs(imageRepo, storage)
 	imageService := imagegen.NewService(modelRepo, imageRepo, imageInputs, imageOutputs, charges).WithProxyResolver(settings)
-	upstreamClient := &http.Client{Timeout: 10 * time.Minute, Transport: proxy.DirectTransport()}
+	upstreamClient := &http.Client{Timeout: 10 * time.Minute, Transport: netpolicy.Wrap(proxy.DirectTransport(), settings.ModelBlockedCIDRs)}
 	gptImages := openaiimages.New(upstreamClient)
 	gptResponses := openairesponses.New(upstreamClient)
 	seedream := volcengine.New(upstreamClient)
@@ -271,7 +273,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	imageService.WithAdapter(model.ProviderAgnes, imagegen.Adapter{Capabilities: agnesImages.Capabilities, DefaultCapabilities: agnesImages.DefaultCapabilities, Generator: agnesImages, Editor: agnesImages})
 	imageService.WithAdapter(model.ProviderXAI, imagegen.Adapter{Capabilities: grok.Capabilities, DefaultCapabilities: grok.DefaultCapabilities, Generator: grok, Editor: grok})
 	models.WithImageCapabilities(imageService.Capabilities)
-	videoService := videogen.NewService(pool, storage, charges, modelRepo).WithProxyResolver(settings)
+	videoService := videogen.NewService(pool, storage, charges, modelRepo).WithNetworkSettings(settings.ModelBlockedCIDRs).WithProxyResolver(settings)
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)
 	experts := expert.NewService(store).WithStorage(storage)

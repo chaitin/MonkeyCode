@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"context"
 	"errors"
 	"fmt"
@@ -75,7 +77,7 @@ func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, respo
 			return ResponseReconciliation{}, err
 		}
 		defer transport.CloseIdleConnections()
-		client.Transport = transport
+		client.Transport = netpolicy.Rebase(client.Transport, transport)
 	}
 	response, err := client.Do(req)
 	if err != nil {

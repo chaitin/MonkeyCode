@@ -1137,6 +1137,11 @@ export const es419 = {
     security: {
       title: "Seguridad",
       description: "Administra la configuración de seguridad del sistema.",
+      model: {
+        title: "Modelos",
+        blocklist: "Lista de bloqueo de red",
+        saved: "Configuración de red de los modelos guardada",
+      },
       mcpNetwork: {
         title: "Aislamiento de red",
         blocklist: "Lista de bloqueo de red de MCP",

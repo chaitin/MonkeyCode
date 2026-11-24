@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -117,12 +119,9 @@ func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
 		resolver: resolver,
 		logger:   logger.With("module", "proxy"),
 	}
-	transport := DirectTransport()
-	transport.DisableKeepAlives = true
-	transport.ResponseHeaderTimeout = upstreamHeaderTimeout
 	p.reverse = &httputil.ReverseProxy{
 		ErrorLog:       logging.ErrorLog(p.logger),
-		Transport:      withUpstreamTimeouts(outboundTransport{direct: transport}),
+		Transport:      withUpstreamTimeouts(GatewayTransport(nil)),
 		Rewrite:        p.rewrite,
 		ModifyResponse: p.modifyResponse,
 		ErrorHandler:   p.errorHandler,
@@ -368,12 +367,20 @@ func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) 
 	if pc, ok := r.Context().Value(proxyContextKey{}).(*proxyContext); ok {
 		modelID, transactionID = pc.target.ModelID, pc.reservation.ID
 		code := "upstream_connection_failed"
-		if upstreamTimedOut(r.Context(), err) {
+		policyCode := netpolicy.ModelErrorCode(err)
+		if policyCode != "" {
+			code = policyCode
+		} else if upstreamTimedOut(r.Context(), err) {
 			code = "upstream_timeout"
 		}
-		call := Call{Stream: pc.stream, Result: "failed", ErrorCode: code}
+		// 拒绝发生在发送请求前，零用量是已知的，不应保留待核对的冻结额度。
+		call := Call{Stream: pc.stream, Known: policyCode != "", Result: "failed", ErrorCode: code}
 		p.logCall(r.Context(), pc, call, err)
 		p.finish(r.Context(), pc, call)
+	}
+	if errors.Is(err, netpolicy.ErrDenied) {
+		http.Error(w, web.Message(r.Context(), "model_address_denied", netpolicy.ErrDenied.Error()), http.StatusForbidden)
+		return
 	}
 	p.writeUpstreamFailure(w, r, modelID, transactionID)
 }

@@ -4,57 +4,29 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
-	"os"
-	"strings"
 	"time"
 )
 
-func allowedIP(ip netip.Addr) bool {
-	ip = ip.Unmap()
-	cidrs := strings.TrimSpace(os.Getenv("MONKEYAI_MCP_ALLOWED_CIDRS"))
-	if cidrs == "" {
-		cidrs = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
-	}
-	for s := range strings.SplitSeq(cidrs, ",") {
-		p, err := netip.ParsePrefix(strings.TrimSpace(s))
-		if err == nil && p.Contains(ip) {
-			return true
-		}
-	}
-	for _, cidr := range []string{"0.0.0.0/8", "100.64.0.0/10", "198.18.0.0/15"} {
-		if netip.MustParsePrefix(cidr).Contains(ip) {
-			return false
-		}
-	}
-	return ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast()
-}
+func allowedIP(ip netip.Addr) bool { return netpolicy.AllowedIP(ip) }
 
 func checkIPs(ctx context.Context, ips []netip.Addr, settings NetworkSettings) error {
-	var blocked []netip.Prefix
+	var read netpolicy.Reader
 	if settings != nil {
-		var err error
-		blocked, err = settings.MCPBlockedCIDRs(ctx)
-		if err != nil {
-			return fmt.Errorf("读取 MCP 网络设置: %w", err)
-		}
+		read = settings.MCPBlockedCIDRs
 	}
-	for _, ip := range ips {
-		if ip.Zone() != "" || !allowedIP(ip) {
-			return failure("mcp_address_denied", nil)
-		}
-		for _, prefix := range blocked {
-			if prefix.Contains(ip.Unmap()) {
-				return failure("mcp_address_denied", nil)
-			}
-		}
+	err := read.Check(ctx, ips)
+	if errors.Is(err, netpolicy.ErrDenied) {
+		return failure("mcp_address_denied", err)
 	}
-	return nil
+	return err
 }
 
 func client(settings NetworkSettings) *http.Client {

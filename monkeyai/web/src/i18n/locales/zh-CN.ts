@@ -2391,9 +2391,14 @@ export const zhCN = {
     security: {
       title: "安全",
       description: "管理系统安全设置。",
+      model: {
+        title: "大模型",
+        blocklist: "网络黑名单",
+        saved: "模型网络设置已保存",
+      },
       mcpNetwork: {
-        title: "网络隔离",
-        blocklist: "MCP 网络黑名单",
+        title: "连接器",
+        blocklist: "网络黑名单",
         configure: "配置",
         description: "禁止访问 <ranges>{{cidrs}}</ranges>",
         label: "IP 段黑名单",
@@ -2404,7 +2409,7 @@ export const zhCN = {
         save: "保存",
         cancel: "取消",
         saved: "MCP 网络设置已保存",
-        empty: "未配置黑名单",
+        empty: "无网络限制",
       },
     },
     otherSettings: {

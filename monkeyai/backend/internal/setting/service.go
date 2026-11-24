@@ -12,7 +12,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
 
-var Keys = []string{"branding", "authentication", "email", "billing", "session_reporting", "proxies", "mcp"}
+var Keys = []string{"branding", "authentication", "email", "billing", "session_reporting", "proxies", "mcp", "model_network"}
 
 var defaultSessionReporting = json.RawMessage(`{"enabled":true,"level":"stats"}`)
 
@@ -61,7 +61,7 @@ func (s *Service) GetValue(ctx context.Context, key string) (json.RawMessage, er
 		switch key {
 		case "branding", "authentication":
 			return json.RawMessage(`{}`), nil
-		case "mcp":
+		case "mcp", "model_network":
 			return json.RawMessage(`{"blocked_cidrs":[]}`), nil
 		case "session_reporting":
 			return append(json.RawMessage(nil), defaultSessionReporting...), nil
@@ -219,7 +219,7 @@ func (s *Service) AgentConfig(ctx context.Context) (Config, error) {
 	config := Config{Settings: make(map[string]json.RawMessage)}
 	seenSessionReporting := false
 	for _, record := range records {
-		if record.Key == "branding" || record.Key == "proxies" || record.Key == "mcp" {
+		if record.Key == "branding" || record.Key == "proxies" || record.Key == "mcp" || record.Key == "model_network" {
 			continue
 		}
 		value, err := redact(record.Key, record.Value)
@@ -358,8 +358,8 @@ func (s *Service) mergeSecrets(ctx context.Context, key string, value json.RawMe
 
 func validate(key string, value map[string]json.RawMessage) error {
 	switch key {
-	case "mcp":
-		_, err := parseMCPBlockedCIDRs(value["blocked_cidrs"])
+	case "mcp", "model_network":
+		_, err := parseBlockedCIDRs(value["blocked_cidrs"])
 		return err
 	case "proxies":
 		return validateProxies(value["proxies"])

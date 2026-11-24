@@ -1,6 +1,8 @@
 package imagegen
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -56,7 +58,7 @@ func CallBody(ctx context.Context, client *http.Client, target proxy.Target, end
 			return nil, 0, err
 		}
 		defer transport.CloseIdleConnections()
-		clientCopy.Transport = transport
+		clientCopy.Transport = netpolicy.Rebase(clientCopy.Transport, transport)
 	}
 	response, err := clientCopy.Do(request)
 	if err != nil {

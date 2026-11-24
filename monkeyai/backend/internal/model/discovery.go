@@ -1,6 +1,8 @@
 package model
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -40,7 +42,9 @@ func (s *Service) discoverModels(w http.ResponseWriter, r *http.Request) {
 	models, err := s.DiscoverModels(r.Context(), input)
 	if err != nil {
 		status, message := http.StatusBadRequest, err.Error()
-		if errors.Is(err, errDiscoveryUpstream) {
+		if errors.Is(err, netpolicy.ErrDenied) {
+			status = http.StatusForbidden
+		} else if errors.Is(err, errDiscoveryUpstream) {
 			status = http.StatusBadGateway
 		} else if errors.Is(err, context.DeadlineExceeded) {
 			status, message = http.StatusGatewayTimeout, "获取模型列表超时，请重试"
@@ -102,7 +106,7 @@ func (s *Service) DiscoverModels(ctx context.Context, input DiscoverInput) ([]Di
 		}
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
-	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: netpolicy.Wrap(transport, s.network), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	upstream.Path = llmurl.JoinPath(upstream.Path, "models", input.Protocol == ProtocolAnthropic)
 	upstream.RawPath = ""
 	if input.Protocol == ProtocolAnthropic {
@@ -130,6 +134,9 @@ func (s *Service) DiscoverModels(ctx context.Context, input DiscoverInput) ([]Di
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
+			}
+			if errors.Is(err, netpolicy.ErrDenied) {
+				return nil, netpolicy.ErrDenied
 			}
 			return nil, fmt.Errorf("%w，请检查 Base URL 和网络代理", errDiscoveryUpstream)
 		}

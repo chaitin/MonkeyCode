@@ -19,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imageproxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
@@ -343,6 +344,10 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 			result, err = adapter.Generator.Generate(callCtx, target, request)
 		} else {
 			result, err = adapter.Editor.Edit(callCtx, target, request)
+		}
+		if code := netpolicy.ModelErrorCode(err); code != "" {
+			s.failUnsubmitted(callCtx, job, code)
+			return
 		}
 		s.handleResult(callCtx, job, result, err)
 	})

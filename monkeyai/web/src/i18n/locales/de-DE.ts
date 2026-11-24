@@ -1155,6 +1155,11 @@ export const deDE = {
     security: {
       title: "Sicherheit",
       description: "Sicherheitseinstellungen des Systems verwalten.",
+      model: {
+        title: "Modelle",
+        blocklist: "Netzwerksperrliste",
+        saved: "Modell-Netzwerkeinstellungen gespeichert",
+      },
       mcpNetwork: {
         title: "Netzwerkisolierung",
         blocklist: "MCP-Netzwerksperrliste",

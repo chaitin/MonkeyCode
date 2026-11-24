@@ -2192,3 +2192,6 @@ ALTER TABLE stats_model_credit_hourly ADD COLUMN user_id uuid;
 ALTER TABLE stats_model_hourly ADD CONSTRAINT stats_model_hour_employee_key UNIQUE NULLS NOT DISTINCT (hour_start, model_id, user_id);
 
 ALTER TABLE stats_model_credit_hourly ADD CONSTRAINT stats_model_credit_hour_employee_key UNIQUE NULLS NOT DISTINCT (hour_start, user_id);
+
+ALTER TABLE settings DROP CONSTRAINT settings_key_check,
+    ADD CONSTRAINT settings_key_check CHECK (key IN ('branding', 'authentication', 'email', 'billing', 'session_reporting', 'proxies', 'mcp', 'model_network'));

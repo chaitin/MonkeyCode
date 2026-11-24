@@ -25,11 +25,18 @@ import {
 } from "@/components/ui/item"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
-import { api } from "@/lib/api"
+import { api, ApiError } from "@/lib/api"
 
-type Setting = { key: string; value: { blocked_cidrs: string[] } }
+type Setting = { value: { blocked_cidrs: string[] } }
 
-export function MCPNetworkSettings() {
+export function NetworkSettingsCard({
+  settingKey,
+}: {
+  settingKey: "mcp" | "model_network"
+}) {
+  const labels =
+    settingKey === "mcp" ? "pages.security.mcpNetwork" : "pages.security.model"
+  const endpoint = `/api/admin/v1/settings/${settingKey}`
   const { t } = useTranslation()
   const { showToast } = useAppToast()
   const [rows, setRows] = useState<{ id: number; cidr: string }[]>([])
@@ -43,22 +50,23 @@ export function MCPNetworkSettings() {
 
   useEffect(() => {
     let cancelled = false
-    void api<{ settings: Setting[] }>("/api/admin/v1/settings")
-      .then(({ settings }) => {
+    void api<Setting>(endpoint)
+      .then((setting) => {
         if (cancelled) return
-        const items =
-          settings.find((setting) => setting.key === "mcp")?.value
-            .blocked_cidrs ?? []
-        setSavedCIDRs(items)
+        setSavedCIDRs(setting.value.blocked_cidrs)
         setLoaded(true)
       })
       .catch((reason: Error) => {
-        if (!cancelled) setError(reason.message)
+        if (cancelled) return
+        if (reason instanceof ApiError && reason.status === 404) {
+          setSavedCIDRs([])
+          setLoaded(true)
+        } else setError(reason.message)
       })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [endpoint])
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (saving) return
@@ -75,7 +83,7 @@ export function MCPNetworkSettings() {
     setSaving(true)
     setError("")
     try {
-      const saved = await api<Setting>("/api/admin/v1/settings/mcp", {
+      const saved = await api<Setting>(endpoint, {
         method: "PUT",
         body: JSON.stringify({
           schema_version: 1,
@@ -86,7 +94,7 @@ export function MCPNetworkSettings() {
       setSavedCIDRs(saved.value.blocked_cidrs ?? [])
       showToast({
         status: "success",
-        title: t("pages.security.mcpNetwork.saved"),
+        title: t(`${labels}.saved`),
       })
     } catch (reason) {
       setError((reason as Error).message)
@@ -98,15 +106,13 @@ export function MCPNetworkSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("pages.security.mcpNetwork.title")}</CardTitle>
+        <CardTitle>{t(`${labels}.title`)}</CardTitle>
       </CardHeader>
       <CardContent>
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <Item variant="outline">
             <ItemContent className="min-w-0">
-              <ItemTitle>
-                {t("pages.security.mcpNetwork.blocklist")}
-              </ItemTitle>
+              <ItemTitle>{t(`${labels}.blocklist`)}</ItemTitle>
               {loaded && (
                 <ItemDescription className="line-clamp-none break-words">
                   {savedCIDRs.length ? (
@@ -136,9 +142,7 @@ export function MCPNetworkSettings() {
             showCloseButton={!saving}
           >
             <DialogHeader>
-              <DialogTitle>
-                {t("pages.security.mcpNetwork.blocklist")}
-              </DialogTitle>
+              <DialogTitle>{t(`${labels}.blocklist`)}</DialogTitle>
               <DialogDescription>
                 {t("pages.security.mcpNetwork.hint")}
               </DialogDescription>
@@ -161,10 +165,9 @@ export function MCPNetworkSettings() {
                       ) : (
                         <ul className="divide-y">
                           {rows.map((row, index) => {
-                            const label = t(
-                              "pages.security.mcpNetwork.entry",
-                              { index: index + 1 }
-                            )
+                            const label = t("pages.security.mcpNetwork.entry", {
+                              index: index + 1,
+                            })
                             return (
                               <li
                                 key={row.id}

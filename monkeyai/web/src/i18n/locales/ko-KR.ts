@@ -1097,6 +1097,11 @@ export const koKR = {
     security: {
       title: "보안",
       description: "시스템 보안 설정을 관리합니다.",
+      model: {
+        title: "모델",
+        blocklist: "네트워크 차단 목록",
+        saved: "모델 네트워크 설정이 저장되었습니다",
+      },
       mcpNetwork: {
         title: "네트워크 격리",
         blocklist: "MCP 네트워크 차단 목록",

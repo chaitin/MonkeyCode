@@ -78,6 +78,7 @@ func (s executionServices) proxyHandler(ctx context.Context, cfg config.Config, 
 func (s executionServices) registerGateway(router chi.Router, logger *slog.Logger) *proxy.Proxy {
 	resolver := sessionAdapter{service: s.sessions}
 	p := proxy.NewProxy(modelResolver{service: s.models}, logger).
+		WithTransport(proxy.GatewayTransport(s.settings.ModelBlockedCIDRs)).
 		WithRejectedUserLookup(s.keys.LookupModelUser).
 		WithSessionResolver(resolver).
 		WithBilling(modelBilling{service: s.charges}).

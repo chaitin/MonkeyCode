@@ -1,6 +1,8 @@
 package videogen
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -37,6 +39,7 @@ type ProxyResolver interface {
 }
 
 type Service struct {
+	network netpolicy.Reader
 	proxies ProxyResolver
 	pool    *pgxpool.Pool
 	storage resource.Storage
@@ -49,6 +52,8 @@ type Service struct {
 func NewService(pool *pgxpool.Pool, storage resource.Storage, bills *billing.Service, models ModelReader) *Service {
 	return &Service{pool: pool, storage: storage, billing: bills, models: models, client: providerClient()}
 }
+
+func (s *Service) WithNetworkSettings(read netpolicy.Reader) *Service { s.network = read; return s }
 
 func (s *Service) WithProxyResolver(proxies ProxyResolver) *Service {
 	s.proxies = proxies
@@ -353,6 +358,10 @@ func (s *Service) dispatch(ctx context.Context, target proxy.Target, jobID, rese
 	}
 	providerID, err := submitProvider(ctx, s.clientFor(target.ProxyURL), target, input)
 	if err != nil {
+		if code := netpolicy.ModelErrorCode(err); code != "" {
+			s.fail(ctx, jobID, reservationID, code)
+			return
+		}
 		var rejected providerRejected
 		if errors.As(err, &rejected) {
 			logging.Diagnostic(ctx, slog.Default(), slog.LevelWarn, "video.provider.rejected", err, slog.String("job_id", jobID))

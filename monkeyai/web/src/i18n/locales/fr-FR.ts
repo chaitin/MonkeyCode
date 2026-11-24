@@ -1152,6 +1152,11 @@ export const frFR = {
     security: {
       title: "Sécurité",
       description: "Gérez les paramètres de sécurité du système.",
+      model: {
+        title: "Modèles",
+        blocklist: "Liste de blocage réseau",
+        saved: "Paramètres réseau des modèles enregistrés",
+      },
       mcpNetwork: {
         title: "Isolation réseau",
         blocklist: "Liste de blocage réseau MCP",

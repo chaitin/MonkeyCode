@@ -2532,6 +2532,11 @@ export const enUS = {
     security: {
       title: "Security",
       description: "Manage system security settings.",
+      model: {
+        title: "Models",
+        blocklist: "Network blocklist",
+        saved: "Model network settings saved",
+      },
       mcpNetwork: {
         title: "Network isolation",
         blocklist: "MCP network blocklist",

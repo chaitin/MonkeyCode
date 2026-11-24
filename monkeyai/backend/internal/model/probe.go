@@ -1,6 +1,8 @@
 package model
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -50,7 +52,9 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			status := http.StatusBadGateway
-			if errors.Is(err, errEmbeddingProbeTimeout) {
+			if errors.Is(err, netpolicy.ErrDenied) {
+				status = http.StatusForbidden
+			} else if errors.Is(err, errEmbeddingProbeTimeout) {
 				status = http.StatusGatewayTimeout
 			}
 			modelError(r.Context(), w, status, err.Error())
@@ -95,10 +99,12 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Header = upstream.Header
-	response, err := (&http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
+	response, err := (&http.Client{Transport: netpolicy.Wrap(transport, s.network), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
 	if err != nil {
 		status, message := http.StatusBadGateway, "连接模型失败，请检查地址、协议和网络代理"
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if errors.Is(err, netpolicy.ErrDenied) {
+			status, message = http.StatusForbidden, netpolicy.ErrDenied.Error()
+		} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			status, message = http.StatusGatewayTimeout, "模型响应超时，请重试"
 		} else if errors.Is(ctx.Err(), context.Canceled) {
 			return

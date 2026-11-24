@@ -1139,6 +1139,11 @@ export const ruRU = {
     security: {
       title: "Безопасность",
       description: "Управление настройками безопасности системы.",
+      model: {
+        title: "Модели",
+        blocklist: "Список блокировки сети",
+        saved: "Сетевые настройки моделей сохранены",
+      },
       mcpNetwork: {
         title: "Сетевая изоляция",
         blocklist: "Список блокировки сети MCP",

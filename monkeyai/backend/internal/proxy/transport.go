@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -12,6 +14,13 @@ import (
 )
 
 type outboundTransport struct{ direct http.RoundTripper }
+
+func GatewayTransport(read netpolicy.Reader) http.RoundTripper {
+	transport := DirectTransport()
+	transport.DisableKeepAlives = true
+	transport.ResponseHeaderTimeout = upstreamHeaderTimeout
+	return outboundTransport{direct: netpolicy.Wrap(transport, read)}
+}
 
 // ConnectError reports a non-200 CONNECT response from the system proxy.
 type ConnectError struct{ Status int }
@@ -83,5 +92,5 @@ func (t outboundTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	transport.DisableKeepAlives = true
 	transport.ResponseHeaderTimeout = upstreamHeaderTimeout
 	defer transport.CloseIdleConnections()
-	return transport.RoundTrip(req)
+	return netpolicy.Rebase(t.direct, transport).RoundTrip(req)
 }

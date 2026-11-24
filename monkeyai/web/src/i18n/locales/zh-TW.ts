@@ -1104,6 +1104,11 @@ export const zhTW = {
     security: {
       title: "安全",
       description: "管理系統安全設定。",
+      model: {
+        title: "模型",
+        blocklist: "網路黑名單",
+        saved: "模型網路設定已儲存",
+      },
       mcpNetwork: {
         title: "網路隔離",
         blocklist: "MCP 網路黑名單",

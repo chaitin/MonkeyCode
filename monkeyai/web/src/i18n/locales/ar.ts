@@ -1089,6 +1089,11 @@ export const ar = {
     security: {
       title: "الأمان",
       description: "إدارة إعدادات أمان النظام.",
+      model: {
+        title: "النماذج",
+        blocklist: "قائمة حظر الشبكة",
+        saved: "تم حفظ إعدادات شبكة النماذج",
+      },
       mcpNetwork: {
         title: "عزل الشبكة",
         blocklist: "قائمة حظر شبكة MCP",

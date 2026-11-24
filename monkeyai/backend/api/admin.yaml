@@ -1069,6 +1069,42 @@ paths:
                 $ref: "#/components/schemas/MCPNetworkSetting"
         "400":
           description: 配置格式或 CIDR 无效，原有配置不变
+  /api/admin/v1/settings/model_network:
+    get:
+      summary: 读取模型网络访问设置
+      description: 仅管理员可用。未配置时返回 404，运行时使用空黑名单；默认允许公网和私网。
+      responses:
+        "200":
+          description: 模型网络访问设置
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelNetworkSetting"
+        "404":
+          description: 尚未配置黑名单
+    put:
+      summary: 保存模型 IP 段黑名单
+      description: 完整替换 blocked_cidrs，空数组表示清空黑名单。仅接受 IPv4/IPv6 CIDR，单个地址使用 /32 或 /128。黑名单优先于默认放行及 MONKEYAI_MCP_ALLOWED_CIDRS；保存后对新的模型请求、发现及测试生效，包括直连和代理请求，无需重启。配置读取失败时拒绝访问。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [schema_version, value]
+              properties:
+                schema_version: {type: integer, minimum: 1}
+                value:
+                  $ref: "#/components/schemas/MCPNetworkValue"
+      responses:
+        "200":
+          description: 保存成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelNetworkSetting"
+        "400":
+          description: 配置格式或 CIDR 无效，原有配置不变
   /api/admin/v1/settings/proxies:
     get:
       summary: 读取系统代理资源
@@ -8973,6 +9009,16 @@ components:
       required: [key, value, schema_version, updated_by_user_id, updated_at]
       properties:
         key: {type: string, const: mcp}
+        value:
+          $ref: "#/components/schemas/MCPNetworkValue"
+        schema_version: {type: integer}
+        updated_by_user_id: {type: string, format: uuid}
+        updated_at: {type: string, format: date-time}
+    ModelNetworkSetting:
+      type: object
+      required: [key, value, schema_version, updated_by_user_id, updated_at]
+      properties:
+        key: {type: string, const: model_network}
         value:
           $ref: "#/components/schemas/MCPNetworkValue"
         schema_version: {type: integer}

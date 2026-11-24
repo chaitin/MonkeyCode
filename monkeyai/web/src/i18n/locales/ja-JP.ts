@@ -1114,6 +1114,11 @@ export const jaJP = {
     security: {
       title: "セキュリティ",
       description: "システムのセキュリティ設定を管理します。",
+      model: {
+        title: "モデル",
+        blocklist: "ネットワークブロックリスト",
+        saved: "モデルのネットワーク設定を保存しました",
+      },
       mcpNetwork: {
         title: "ネットワーク分離",
         blocklist: "MCP ネットワークブロックリスト",

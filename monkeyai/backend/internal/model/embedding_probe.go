@@ -1,6 +1,8 @@
 package model
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/netpolicy"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -162,7 +164,7 @@ func (s *Service) requestEmbedding(ctx context.Context, item Model, input string
 	req.Header.Set("Authorization", "Bearer "+item.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 	response, err := (&http.Client{
-		Transport: transport,
+		Transport: netpolicy.Wrap(transport, s.network),
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -173,6 +175,9 @@ func (s *Service) requestEmbedding(ctx context.Context, item Model, input string
 		}
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return embeddingProbeResponse{}, ctx.Err()
+		}
+		if errors.Is(err, netpolicy.ErrDenied) {
+			return embeddingProbeResponse{}, netpolicy.ErrDenied
 		}
 		return embeddingProbeResponse{}, errors.New("连接上游失败，请检查地址、密钥和网络代理")
 	}
