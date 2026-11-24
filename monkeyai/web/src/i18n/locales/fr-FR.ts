@@ -2,10 +2,10 @@ import { enUS } from "./en-US.ts"
 
 export const frFR = {
   licenseCapabilities: {
-    cloudComputer: "Ordinateurs cloud",
-    customBranding: "Personnalisation de la marque",
-    granted: "Disponible",
-    notGranted: "Indisponible",
+    cloudComputer: "Mode ordinateur cloud",
+    customBranding: "Client personnalisé",
+    granted: "Pris en charge",
+    notGranted: "Non pris en charge",
     cloudLocked: "La création d’ordinateurs cloud est actuellement indisponible.",
     brandingLocked: "La personnalisation de la marque est actuellement indisponible.",
   },

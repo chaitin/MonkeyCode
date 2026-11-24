@@ -2,10 +2,10 @@ import { enUS } from "./en-US.ts"
 
 export const ruRU = {
   licenseCapabilities: {
-    cloudComputer: "Облачные компьютеры",
-    customBranding: "Настройка бренда",
-    granted: "Доступно",
-    notGranted: "Недоступно",
+    cloudComputer: "Режим облачного компьютера",
+    customBranding: "Индивидуальная версия клиента",
+    granted: "Поддерживается",
+    notGranted: "Не поддерживается",
     cloudLocked: "Создание облачных компьютеров сейчас недоступно.",
     brandingLocked: "Настройка бренда сейчас недоступна.",
   },

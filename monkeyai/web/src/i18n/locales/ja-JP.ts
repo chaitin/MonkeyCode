@@ -2,10 +2,10 @@ import { enUS } from "./en-US.ts"
 
 export const jaJP = {
   licenseCapabilities: {
-    cloudComputer: "クラウド PC",
-    customBranding: "ブランドのカスタマイズ",
-    granted: "利用可能",
-    notGranted: "利用不可",
+    cloudComputer: "クラウド PC モード",
+    customBranding: "カスタムクライアント",
+    granted: "対応",
+    notGranted: "非対応",
     cloudLocked: "現在、クラウド PC は作成できません。",
     brandingLocked: "現在、ブランドをカスタマイズできません。",
   },

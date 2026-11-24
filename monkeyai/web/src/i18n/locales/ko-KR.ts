@@ -2,10 +2,10 @@ import { enUS } from "./en-US.ts"
 
 export const koKR = {
   licenseCapabilities: {
-    cloudComputer: "클라우드 컴퓨터",
-    customBranding: "사용자 지정 브랜드",
-    granted: "사용 가능",
-    notGranted: "사용 불가",
+    cloudComputer: "클라우드 컴퓨터 모드",
+    customBranding: "맞춤형 클라이언트",
+    granted: "지원",
+    notGranted: "미지원",
     cloudLocked: "현재 새 클라우드 컴퓨터를 만들 수 없습니다.",
     brandingLocked: "현재 브랜드를 변경할 수 없습니다.",
   },

@@ -2,10 +2,10 @@ import { enUS } from "./en-US.ts"
 
 export const ar = {
   licenseCapabilities: {
-    cloudComputer: "أجهزة الكمبيوتر السحابية",
-    customBranding: "تخصيص العلامة التجارية",
-    granted: "متاح",
-    notGranted: "غير متاح",
+    cloudComputer: "وضع الكمبيوتر السحابي",
+    customBranding: "تطبيق عميل مخصص",
+    granted: "مدعوم",
+    notGranted: "غير مدعوم",
     cloudLocked: "إنشاء أجهزة كمبيوتر سحابية غير متاح حاليًا.",
     brandingLocked: "تخصيص العلامة التجارية غير متاح حاليًا.",
   },

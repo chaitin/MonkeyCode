@@ -1,9 +1,9 @@
 export const zhCN = {
   licenseCapabilities: {
-    cloudComputer: "云电脑",
-    customBranding: "自定义品牌",
-    granted: "可用",
-    notGranted: "不可用",
+    cloudComputer: "云电脑模式",
+    customBranding: "定制客户端",
+    granted: "支持",
+    notGranted: "不支持",
     cloudLocked: "当前无法新建云电脑。",
     brandingLocked: "当前无法编辑自定义品牌。",
   },
@@ -1027,7 +1027,7 @@ export const zhCN = {
       title: "付费授权",
       description: "用于查看和管理付费授权",
       seats: "授权席位",
-      seatsAllowed: "允许最多 {{count}} 个用户使用",
+      seatsAllowed: "最多允许 {{count}} 个成员使用",
       unavailable: "授权不可用",
       client: "授权客户",
       validityPeriod: "授权时间",

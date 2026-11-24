@@ -2,10 +2,10 @@ import { enUS } from "./en-US.ts"
 
 export const zhTW = {
   licenseCapabilities: {
-    cloudComputer: "雲端電腦",
-    customBranding: "自訂品牌",
-    granted: "可用",
-    notGranted: "無法使用",
+    cloudComputer: "雲端電腦模式",
+    customBranding: "客製化用戶端",
+    granted: "支援",
+    notGranted: "不支援",
     cloudLocked: "目前無法建立雲端電腦。",
     brandingLocked: "目前無法編輯自訂品牌。",
   },

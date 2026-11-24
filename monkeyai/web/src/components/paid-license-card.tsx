@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react"
 import { Loading03Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -22,20 +28,31 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemTitle,
-} from "@/components/ui/item"
 import { api } from "@/lib/api"
 import { publishLicenseStatus, type LicenseInfo } from "@/lib/license"
 import { cn } from "@/lib/utils"
 
 type MachineCodeResponse = {
   machine_code: string
+}
+
+function LicenseRow({
+  label,
+  children,
+  valueClassName,
+}: {
+  label: string
+  children: ReactNode
+  valueClassName?: string
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,3fr)] items-center gap-4 px-4 py-3 text-sm">
+      <dt className="min-w-0 break-words text-foreground">{label}</dt>
+      <dd className={cn("min-w-0 break-words text-end", valueClassName)}>
+        {children}
+      </dd>
+    </div>
+  )
 }
 
 function formatDate(value: number | undefined, locale: string) {
@@ -106,21 +123,6 @@ export function PaidLicenseCard({ className }: { className?: string }) {
       showToast({ status: "error", title: (error as Error).message })
     } finally {
       setImporting(false)
-    }
-  }
-
-  async function copyMachineCode() {
-    try {
-      await navigator.clipboard.writeText(machineCode)
-      showToast({
-        status: "success",
-        title: t("pages.license.machineCodeCopied"),
-      })
-    } catch {
-      showToast({
-        status: "error",
-        title: t("pages.license.copyFailed"),
-      })
     }
   }
 
@@ -201,110 +203,65 @@ export function PaidLicenseCard({ className }: { className?: string }) {
             {t("pages.license.loading")}
           </p>
         )}
-        <ItemGroup>
-          {info !== null && (
-            <>
-              <Item variant="outline">
-                <ItemContent>
-                  <ItemTitle>
-                    {t("licenseCapabilities.cloudComputer")}
-                  </ItemTitle>
-                  <ItemDescription>
-                    {t(
-                      info.state === "valid" &&
-                        info.allow_cloud_computer === true
-                        ? "licenseCapabilities.granted"
-                        : "licenseCapabilities.notGranted"
-                    )}
-                  </ItemDescription>
-                </ItemContent>
-              </Item>
-              <Item variant="outline">
-                <ItemContent>
-                  <ItemTitle>
-                    {t("licenseCapabilities.customBranding")}
-                  </ItemTitle>
-                  <ItemDescription>
-                    {t(
-                      info.state === "valid" &&
-                        info.allow_custom_branding === true
-                        ? "licenseCapabilities.granted"
-                        : "licenseCapabilities.notGranted"
-                    )}
-                  </ItemDescription>
-                </ItemContent>
-              </Item>
-            </>
-          )}
+        <dl className="divide-y rounded-lg border">
           {info !== null && info.state !== "missing" && (
             <>
-              <Item variant="outline">
-                <ItemContent>
-                  <ItemTitle>{t("pages.license.seats")}</ItemTitle>
-                  <ItemDescription
-                    className={cn(unavailable && dangerClassName)}
-                  >
-                    {unavailable
-                      ? t("pages.license.unavailable")
-                      : info.max_members == null
-                        ? "—"
-                        : t("pages.license.seatsAllowed", {
-                            count: info.max_members,
-                          })}
-                  </ItemDescription>
-                </ItemContent>
-              </Item>
-              <Item variant="outline">
-                <ItemContent className="min-w-0">
-                  <ItemTitle>{t("pages.license.client")}</ItemTitle>
-                  <ItemDescription
-                    className={cn(
-                      "line-clamp-none break-all",
-                      unavailable && dangerClassName
-                    )}
-                  >
-                    {unavailable
-                      ? t("pages.license.unavailable")
-                      : info.client_name || info.client_id || "—"}
-                  </ItemDescription>
-                </ItemContent>
-              </Item>
-              <Item variant="outline">
-                <ItemContent>
-                  <ItemTitle>{t("pages.license.validityPeriod")}</ItemTitle>
-                  <ItemDescription
-                    className={cn(
-                      "line-clamp-none",
-                      (unavailable || expired) && dangerClassName
-                    )}
-                  >
-                    {unavailable
-                      ? t("pages.license.unavailable")
-                      : `${formatDate(info.not_valid_before, i18n.language)} - ${formatDate(info.not_valid_after, i18n.language)}`}
-                  </ItemDescription>
-                </ItemContent>
-              </Item>
+              <LicenseRow
+                label={t("pages.license.client")}
+                valueClassName={unavailable ? dangerClassName : undefined}
+              >
+                {unavailable
+                  ? t("pages.license.unavailable")
+                  : info.client_name || info.client_id || "—"}
+              </LicenseRow>
+              <LicenseRow
+                label={t("pages.license.validityPeriod")}
+                valueClassName={
+                  unavailable || expired ? dangerClassName : undefined
+                }
+              >
+                {unavailable
+                  ? t("pages.license.unavailable")
+                  : `${formatDate(info.not_valid_before, i18n.language)} - ${formatDate(info.not_valid_after, i18n.language)}`}
+              </LicenseRow>
+              <LicenseRow
+                label={t("pages.license.seats")}
+                valueClassName={unavailable ? dangerClassName : undefined}
+              >
+                {unavailable
+                  ? t("pages.license.unavailable")
+                  : info.max_members == null
+                    ? "—"
+                    : t("pages.license.seatsAllowed", {
+                        count: info.max_members,
+                      })}
+              </LicenseRow>
             </>
           )}
-          <Item variant="outline">
-            <ItemContent className="min-w-0">
-              <ItemTitle>{t("pages.license.machineTitle")}</ItemTitle>
-              <ItemDescription className="line-clamp-none break-all font-mono">
-                <bdi dir="ltr">{machineCode || "—"}</bdi>
-              </ItemDescription>
-            </ItemContent>
-            <ItemActions>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void copyMachineCode()}
-                disabled={!machineCode}
-              >
-                {t("pages.license.copy")}
-              </Button>
-            </ItemActions>
-          </Item>
-        </ItemGroup>
+          {info !== null && (
+            <>
+              <LicenseRow label={t("licenseCapabilities.cloudComputer")}>
+                {t(
+                  info.state === "valid" && info.allow_cloud_computer === true
+                    ? "licenseCapabilities.granted"
+                    : "licenseCapabilities.notGranted"
+                )}
+              </LicenseRow>
+              <LicenseRow label={t("licenseCapabilities.customBranding")}>
+                {t(
+                  info.state === "valid" && info.allow_custom_branding === true
+                    ? "licenseCapabilities.granted"
+                    : "licenseCapabilities.notGranted"
+                )}
+              </LicenseRow>
+            </>
+          )}
+          <LicenseRow label={t("pages.license.machineTitle")}>
+            <bdi dir="ltr" className="break-all font-mono">
+              {machineCode || "—"}
+            </bdi>
+          </LicenseRow>
+        </dl>
       </CardContent>
     </Card>
   )

@@ -1,9 +1,9 @@
 export const enUS = {
   licenseCapabilities: {
-    cloudComputer: "Cloud computers",
-    customBranding: "Custom branding",
-    granted: "Available",
-    notGranted: "Unavailable",
+    cloudComputer: "Cloud computer mode",
+    customBranding: "Customized client",
+    granted: "Supported",
+    notGranted: "Not supported",
     cloudLocked: "Creating cloud computers is currently unavailable.",
     brandingLocked: "Custom branding is currently unavailable.",
   },

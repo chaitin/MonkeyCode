@@ -2,10 +2,10 @@ import { enUS } from "./en-US.ts"
 
 export const deDE = {
   licenseCapabilities: {
-    cloudComputer: "Cloud-Computer",
-    customBranding: "Eigenes Branding",
-    granted: "Verfügbar",
-    notGranted: "Nicht verfügbar",
+    cloudComputer: "Cloud-Computer-Modus",
+    customBranding: "Angepasster Client",
+    granted: "Unterstützt",
+    notGranted: "Nicht unterstützt",
     cloudLocked: "Derzeit können keine Cloud-Computer erstellt werden.",
     brandingLocked: "Eigenes Branding ist derzeit nicht verfügbar.",
   },

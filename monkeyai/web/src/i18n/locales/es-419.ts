@@ -2,10 +2,10 @@ import { enUS } from "./en-US.ts"
 
 export const es419 = {
   licenseCapabilities: {
-    cloudComputer: "Computadoras en la nube",
-    customBranding: "Marca personalizada",
-    granted: "Disponible",
-    notGranted: "No disponible",
+    cloudComputer: "Modo de computadora en la nube",
+    customBranding: "Cliente personalizado",
+    granted: "Compatible",
+    notGranted: "No compatible",
     cloudLocked: "Por ahora no se pueden crear computadoras en la nube.",
     brandingLocked: "La personalización de la marca no está disponible.",
   },
