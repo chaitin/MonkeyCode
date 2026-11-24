@@ -27,6 +27,41 @@ func TestSplitContentIgnoresBlankInput(t *testing.T) {
 	}
 }
 
+func TestLearningBlankDocumentSucceeds(t *testing.T) {
+	for _, content := range []string{"", " \n\t "} {
+		t.Run("content="+content, func(t *testing.T) {
+			pool, actor := kbTestPool(t)
+			ctx := t.Context()
+			// Keep a vector binding but no model service: zero chunks need no embeddings.
+			s, kbID, docID := seedLearningKB(t, pool, actor, OperationRelearn, "failed")
+			if _, err := pool.Exec(ctx, `UPDATE knowledge_base_documents SET content=$2,chunk_count=1,error_message='previous failure' WHERE id=$1`, docID, content); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_chunks(kb_id,document_id,chunk_index,content) VALUES($1,$2,0,'stale content')`, kbID, docID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, `UPDATE knowledge_base_learning_jobs SET document_id=$2 WHERE kb_id=$1`, kbID, docID); err != nil {
+				t.Fatal(err)
+			}
+			if worked, err := s.runLearningJob(ctx); err != nil || !worked {
+				t.Fatalf("worked=%v err=%v", worked, err)
+			}
+			document, err := s.GetDocument(ctx, docID)
+			if err != nil || document.String("status") != "learned" || document.String("error_message") != "" || document["learned_at"] == nil || objectInt64(document["chunk_count"]) != 0 {
+				t.Fatalf("document=%v err=%v", document, err)
+			}
+			chunks, err := s.ListChunks(ctx, docID)
+			if err != nil || len(chunks) != 0 {
+				t.Fatalf("chunks=%v err=%v", chunks, err)
+			}
+			var status string
+			if err := pool.QueryRow(ctx, `SELECT status FROM knowledge_base_learning_jobs WHERE kb_id=$1`, kbID).Scan(&status); err != nil || status != "succeeded" {
+				t.Fatalf("job status=%q err=%v", status, err)
+			}
+		})
+	}
+}
+
 func TestFormatVectorRejectsInvalidValues(t *testing.T) {
 	if _, err := formatVector(nil); err == nil {
 		t.Fatal("空向量应失败")

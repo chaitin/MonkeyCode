@@ -22,6 +22,8 @@ var documentStatuses = []string{"pending", "learning", "learned", "failed"}
 var documentSourceTypes = []string{"text", "file", "url"}
 
 type DocumentInput struct {
+	edits []textEdit // Internal MCP edits, applied only after locking and authorization.
+
 	ExpectedRevision int64   `json:"expected_revision,omitempty"`
 	KbID             string  `json:"kb_id"`
 	ParentID         *string `json:"parent_id"`
@@ -429,6 +431,9 @@ func (s *Service) updateDocument(ctx context.Context, id string, input DocumentI
 		return nil, resource.NotFound
 	}
 	if current.String("node_type") == "folder" {
+		if input.edits != nil {
+			return nil, resource.Invalid("文件夹不支持正文编辑")
+		}
 		title := strings.TrimSpace(input.Title)
 		if title == "" {
 			title = current.String("title")
@@ -467,7 +472,15 @@ func (s *Service) updateDocument(ctx context.Context, id string, input DocumentI
 		return nil, resource.Invalid("文件文档不支持改为文本文档，请重新上传文件")
 	}
 	content := input.Content
-	if strings.TrimSpace(content) == "" {
+	if input.edits != nil {
+		if current.String("source_type") != "text" {
+			return nil, resource.Invalid("仅文本文档支持正文编辑，文件或链接文档请重新上传或导入")
+		}
+		content, err = applyTextEdits(current.String("content"), input.edits)
+		if err != nil {
+			return nil, err
+		}
+	} else if strings.TrimSpace(content) == "" {
 		content = current.String("content")
 	}
 	size := input.SizeBytes

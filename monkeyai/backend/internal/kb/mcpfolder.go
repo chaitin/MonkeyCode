@@ -1,7 +1,5 @@
 package kb
 
-import "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-
 func mcpFolderInput(arguments map[string]any) (DocumentInput, error) {
 	var input struct {
 		KbID     string  `json:"kb_id"`
@@ -24,17 +22,4 @@ func mcpFolderInput(arguments map[string]any) (DocumentInput, error) {
 		return DocumentInput{}, err
 	}
 	return DocumentInput{KbID: kbID, Title: title, ParentID: parentID, NodeType: "folder"}, nil
-}
-
-func mcpCreateParentSchema() resource.Object {
-	return resource.Object{
-		"type":        []string{"string", "null"},
-		"description": "同一知识库内的父文件夹 ID；省略、null 或空字符串表示根目录，可使用 kb_create_folder 返回的 id",
-	}
-}
-
-func mcpCreateDocumentProperties() resource.Object {
-	properties := mcpDocumentProperties(true)
-	properties["parent_id"] = mcpCreateParentSchema()
-	return properties
 }
