@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=58, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=54, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -27,10 +27,6 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 新增迁移 `000004_credit_account_overdraft` 允许余额为负及冻结额超过余额，仅保留冻结额非负约束。付费调用在可用积分（余额减冻结额）大于零时获准执行，完整预留费用，按实际用量结算；零或负可用积分不再接收新的付费调用，免费调用不受影响。百智云钱包自身的预扣限制不变。回滚前需结清负余额并释放超额冻结，否则回滚会失败，不会截断余额或改写历史流水。
 
 本次单版重置是重新部署的特定安排。后续正式发布后的 schema 变更正常追加六位递增迁移版本，已发布迁移不再改写。字符串统一使用 `text`，候选值使用 `CHECK`。
-
-## 删除云电脑时撤销设备登记
-
-版本 58 在接受云电脑删除请求的同一事务内撤销其远程设备登记。升级时仅回填已有删除完成时间，且用户、设备 ID、公钥均与运行时绑定一致的登记。升级前已经提交但尚未完成的删除，在宿主确认后撤销登记。回滚迁移不会重新授权设备。
 
 ## 可选宿主机名称
 
