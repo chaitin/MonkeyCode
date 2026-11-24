@@ -159,14 +159,11 @@ func (s *Service) learnDocument(ctx context.Context, id string, job sqlc.ClaimKb
 	}()
 
 	chunks := splitContent(document.String("content"))
-	if len(chunks) == 0 {
-		return errors.New("文档内容为空，无法学习")
-	}
 	vectorEnabled := modelID != "" && dimension > 0
 
 	learned := make([]learnedChunk, 0, len(chunks))
 	var vectorErr error
-	if vectorEnabled && s.models == nil {
+	if len(chunks) > 0 && vectorEnabled && s.models == nil {
 		vectorErr = resource.InvalidCode("vector_unavailable", "向量模型服务不可用")
 	}
 	for index, chunk := range chunks {

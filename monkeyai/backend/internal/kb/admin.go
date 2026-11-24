@@ -90,7 +90,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 			return
 		}
 		var input DocumentInput
-		if err := resource.Decode(w, r, &input); err != nil {
+		if err := decodeDocumentRequest(w, r, &input); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
@@ -119,7 +119,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 			return
 		}
 		var input DocumentInput
-		if err := resource.Decode(w, r, &input); err != nil {
+		if err := decodeDocumentRequest(w, r, &input); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}

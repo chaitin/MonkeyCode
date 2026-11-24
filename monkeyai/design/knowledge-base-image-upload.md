@@ -32,6 +32,8 @@ curl 'https://example.com/api/v1/kb/KB_ID/images/upload' \
 
 ## MCP 接口范围
 
+图片上传需求优先调用 `POST /api/v1/kb/{id}/images/upload`，使用 `multipart/form-data` 的 `file` 字段，由客户端直接传输图片字节。不要让大模型通过 tool calling 生成、复制或传递图片 Base64 来调用 `kb_upload_image`。REST 需要 Agent 登录凭证，MCP Key 不能替代；缺少上传能力或登录凭证时，应提示用户使用客户端上传入口，不要回退为模型生成 Base64。`kb_upload_image` 仅供能够在模型上下文之外读取文件并程序化注入 Base64 的客户端使用。
+
 知识库 MCP 入口为 `POST /mcp/kb`，新增 `kb_upload_image` 工具，使用带 `mcp:invoke` 作用域的平台 API Key。工具以 Key 对应用户检查启用知识库的正文读写权限，复用 REST 上传的图片校验、同库去重、对象存储及审计流程。
 
 | 参数 | 约束 |
@@ -58,7 +60,7 @@ curl 'https://example.com/api/v1/kb/KB_ID/images/upload' \
 
 上传调用允许的 JSON 请求体上限为 44,804,780 字节（32 MiB 图片的 Base64 长度加 64 KiB 开销）；其他 MCP 请求仍最多 1 MiB。先通过 `kb_upload_image` 获得 Markdown，再将其合并到正文，通过 `kb_create_document` 或 `kb_update_document` 保存。上传本身不创建文档或触发学习，文档保存仍受现有请求体大小和版本检查约束。
 
-知识库 MCP 现共提供 18 个工具，完整清单见 [内置 MCP 工具清单](knowledge-base-technical-design.md#83-内置-mcp)。返回的图片地址仍受阅读权限保护；MCP API Key 用于上传工具调用，浏览器预览或 REST 读取图片需使用浏览器会话或 OAuth access token。
+知识库 MCP 现共提供 19 个工具，完整清单见 [内置 MCP 工具清单](knowledge-base-technical-design.md#83-内置-mcp)。返回的图片地址仍受阅读权限保护；MCP API Key 用于上传工具调用，浏览器预览或 REST 读取图片需使用浏览器会话或 OAuth access token。
 
 ## 管理端与图片存储
 
