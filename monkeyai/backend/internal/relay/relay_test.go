@@ -369,8 +369,8 @@ func TestDataOverloadLeavesControlChannelAvailable(t *testing.T) {
 	f.s.mu.Lock()
 	budget := route.dataBudget
 	f.s.mu.Unlock()
-	permits := make([]*dataPermit, 0, 15)
-	for range 15 {
+	permits := make([]*dataPermit, 0, regularStreamLimit)
+	for range regularStreamLimit {
 		permit := budget.reserve("read_file", false, func() {})
 		if permit == nil {
 			t.Fatal("未能占满常规数据流")

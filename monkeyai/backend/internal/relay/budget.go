@@ -7,7 +7,11 @@ import (
 	"time"
 )
 
-const candidateTTL = 5 * time.Second
+const (
+	candidateTTL         = 5 * time.Second
+	regularStreamLimit   = 32
+	configAdmissionLimit = 12
+)
 
 type relayMetrics struct {
 	regular, terminal, candidates                                   atomic.Int64
@@ -37,14 +41,18 @@ type dataPermit struct {
 }
 
 func newDataBudget(metrics *relayMetrics) *dataBudget {
-	return &dataBudget{opens: make(chan struct{}, 16), metrics: metrics, active: make(map[*dataPermit]struct{}, 16)}
+	return &dataBudget{opens: make(chan struct{}, regularStreamLimit+1), metrics: metrics, active: make(map[*dataPermit]struct{}, regularStreamLimit+1)}
 }
 
 func (b *dataBudget) reserve(operation string, candidate bool, close func()) *dataPermit {
 	terminal := operation == "terminal"
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	room := b.regularCount < 15 && (!terminal || b.terminalCount < 8)
+	limit := regularStreamLimit
+	if operation == "read_config" {
+		limit = configAdmissionLimit
+	}
+	room := b.regularCount < limit && (!terminal || b.terminalCount < 8)
 	if candidate && (!terminal || b.candidate != nil) || !candidate && !room {
 		b.metrics.limited.Add(1)
 		b.recordRejection(operation)
@@ -117,7 +125,7 @@ func (p *dataPermit) drop() {
 			b.metrics.terminal.Add(-1)
 		}
 	}
-	if next := b.candidate; next != nil && !next.expired && b.regularCount < 15 && b.terminalCount < 8 {
+	if next := b.candidate; next != nil && !next.expired && b.regularCount < regularStreamLimit && b.terminalCount < 8 {
 		b.candidate = nil
 		next.candidate = false
 		next.timer.Stop()
