@@ -12,7 +12,7 @@ import (
 func TestMetricsSurviveLoggingSafetyFilter(t *testing.T) {
 	s := &Service{}
 	budget := newDataBudget(&s.metrics)
-	permit := budget.reserve(true, false, func() {})
+	permit := budget.reserve("terminal", false, func() {})
 	defer permit.release()
 	var output bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
