@@ -60,7 +60,7 @@ func TestTerminalFullDataTunnelRepeatedReplacement(t *testing.T) {
 		}
 	}()
 	var files []io.ReadCloser
-	for range 7 {
+	for range regularStreamLimit - 8 {
 		r, _ := http.NewRequestWithContext(ctx, "GET", f.server.URL+"/api/v1/endpoints/"+runtime.hello.MachineID+"/proxy/cap/held/mcp", nil)
 		r.Header.Set("Authorization", "Bearer "+connection.Ticket)
 		response, err := http.DefaultClient.Do(r)
@@ -74,8 +74,8 @@ func TestTerminalFullDataTunnelRepeatedReplacement(t *testing.T) {
 			body.Close()
 		}
 	}()
-	waitMetrics(t, f.s, 15, 8, 0)
-	if runtime.data.NumStreams() != 15 {
+	waitMetrics(t, f.s, regularStreamLimit, 8, 0)
+	if runtime.data.NumStreams() != 32 {
 		t.Fatalf("实际数据流=%d", runtime.data.NumStreams())
 	}
 	_, denied, err := dialTerminal(ctx, f, runtime, connection.Ticket, "")
@@ -88,8 +88,8 @@ func TestTerminalFullDataTunnelRepeatedReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer candidate.CloseNow()
-	waitMetrics(t, f.s, 15, 8, 1)
-	if runtime.data.NumStreams() != 16 {
+	waitMetrics(t, f.s, regularStreamLimit, 8, 1)
+	if runtime.data.NumStreams() != 33 {
 		t.Fatalf("候选未占保留流=%d", runtime.data.NumStreams())
 	}
 	_, denied, err = dialTerminal(ctx, f, runtime, connection.Ticket, "?reattach=1")
@@ -100,17 +100,17 @@ func TestTerminalFullDataTunnelRepeatedReplacement(t *testing.T) {
 	if _, _, err := candidate.Read(ctx); err == nil {
 		t.Fatal("未附着候选超时未关闭")
 	}
-	waitMetrics(t, f.s, 15, 8, 0)
+	waitMetrics(t, f.s, regularStreamLimit, 8, 0)
 	for range 4 {
 		next, _, err := dialTerminal(ctx, f, runtime, connection.Ticket, "?reattach=1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		waitMetrics(t, f.s, 15, 8, 1)
+		waitMetrics(t, f.s, regularStreamLimit, 8, 1)
 		// 测试夹具仅模拟 runtime 释放旧流，不作为 viewId/PTY 业务验收。
 		terminals[0].CloseNow()
 		terminals[0] = next
-		waitMetrics(t, f.s, 15, 8, 0)
+		waitMetrics(t, f.s, regularStreamLimit, 8, 0)
 		if err := next.Write(ctx, websocket.MessageText, []byte(`{"type":"heartbeat","nonce":"test"}`)); err != nil {
 			t.Fatal(err)
 		}
