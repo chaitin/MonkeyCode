@@ -19,7 +19,6 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
@@ -72,16 +71,7 @@ func (s executionServices) proxyHandler(ctx context.Context, cfg config.Config, 
 			s.executions.WithNames(binding.DeviceNames)
 		}
 	}
-	agent := chi.NewRouter()
-	agent.Use(s.identities.RequireAgent)
-	agent.Use(rootgroup.Middleware(s.settings))
-	endpoints.RegisterAgent(agent)
-	s.sessions.RegisterReporting(agent)
-	s.keys.RegisterAgent(agent.With(identity.RequireGatewayKeys))
-	registerOAuth(router, s.identities)
-	auth := chi.NewRouter()
-	s.identities.RegisterExecutionAuth(auth)
-	router.Mount("/", httpapi.New(logger, readiness{pool: s.pool, storage: s.storage, endpoints: endpoints}, chi.NewRouter(), agent, auth))
+	router.Mount("/", httpapi.New(logger, readiness{pool: s.pool, storage: s.storage, endpoints: endpoints}, chi.NewRouter(), chi.NewRouter(), chi.NewRouter()))
 	return &applicationHandler{Handler: router, modules: modules, sessions: s.sessions, proxy: modelProxy, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: s.keys, connectors: s.connectors}, nil
 }
 
@@ -116,21 +106,29 @@ func (s executionServices) attachRelay(cfg config.Config, logger *slog.Logger, r
 	}
 	metadata := r.Metadata()
 	s.identities.WithDeviceAuthorization(metadata["server_id"].(string), r.DeviceAuthorizationKey(), s.executions)
-	s.identities.WithRuntimeMetadata(metadata).WithGrantRevoker(revokeGrant(r, s.keys))
+	s.identities.WithRuntimeMetadata(metadata).WithGrantRevoker(revokeGrant(r.InvalidateGrant, s.keys))
+	s.runtimeFeatures()
+	s.sessions.WithRuntimeStatus(r)
+	endpoints.WithRuntimeDirectory(r.Directory())
+	store.WithExecutionRevoker(r.InvalidateDevice)
+	if cfg.Role == config.RoleProxy {
+		r.RegisterTunnel(router)
+	} else {
+		r.Register(router)
+	}
+	return r, nil
+}
+
+func (s executionServices) runtimeFeatures() {
 	s.identities.WithRuntimeFeatures(func(ctx context.Context) (map[string]bool, error) {
 		enabled, err := s.sessions.IndexEnabled(ctx)
 		return map[string]bool{"session_index": enabled, "device_grant": true}, err
 	})
-	s.sessions.WithRuntimeStatus(r)
-	endpoints.WithRuntimeDirectory(r.Directory())
-	store.WithExecutionRevoker(r.InvalidateDevice)
-	r.Register(router)
-	return r, nil
 }
 
-func revokeGrant(r *relay.Service, keys *apikey.Service) func(string) {
+func revokeGrant(notify func(string), keys *apikey.Service) func(string) {
 	return func(id string) {
-		r.InvalidateGrant(id)
+		notify(id)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := keys.RevokeRuntimeKeys(ctx, id); err != nil {
@@ -141,17 +139,19 @@ func revokeGrant(r *relay.Service, keys *apikey.Service) func(string) {
 
 func (s executionServices) remoteRuntime(cfg config.Config, logger *slog.Logger) (*relay.Control, extension.Runtime) {
 	client := relay.NewControl(cfg.RuntimeStateDir)
+	s.identities.WithRuntimeMetadataSource(func() (map[string]any, error) { return relay.ReadMetadata(relayConfig(cfg)) })
+	s.runtimeFeatures()
 	s.sessions.WithRuntimeStatus(client)
 	s.identities.WithDeviceAuthorizationSource(func() (string, []byte, error) {
 		return relay.ReadDeviceAuthorization(relayConfig(cfg))
 	}, s.executions)
-	s.identities.WithGrantRevoker(func(id string) {
+	s.identities.WithGrantRevoker(revokeGrant(func(id string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := client.RevokeGrant(ctx, id); err != nil {
 			logger.WarnContext(ctx, "通知 Relay 撤销授权失败", "grant_id", id, "error", err)
 		}
-	})
+	}, s.keys))
 	return client, extension.Runtime{ServerID: s.identities.DeviceServerID, Authorizer: s.identities, Readiness: client, Disconnect: func(user, machine string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

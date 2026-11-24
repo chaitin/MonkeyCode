@@ -220,7 +220,6 @@ func TestControlOffline(t *testing.T) {
 	if tool["result"] == nil || toolCalls.Load() != 1 {
 		t.Fatalf("工具未完成: %v", tool)
 	}
-	key = call("/api/v1/api-keys", "setup", resource.Object{"name": "执行期间换用新凭据", "scopes": []string{"model:invoke"}}).String("api_key")
 	body["stream"] = false
 	call("/v1/chat/completions", key, body)
 	if modelCalls.Load() != 2 {
@@ -232,5 +231,44 @@ func TestControlOffline(t *testing.T) {
 	var count int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM model_calls WHERE session_id=$1", session).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("同一会话模型记录 %d: %v", count, err)
+	}
+}
+
+func TestControlRuntimeDiscovery(t *testing.T) {
+	pool := designAppDatabase(t)
+	cfg := config.Config{PublicURL: "http://localhost:8080", RuntimeRelay: true, RuntimeStateDir: t.TempDir(), Role: config.RoleControl}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	control, err := newMemberTestHandler(t.Context(), logger, pool, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Role = config.RoleProxy
+	proxy, err := newMemberTestHandler(t.Context(), logger, pool, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/.well-known/oauth-authorization-server"
+	req := httptest.NewRequest("GET", path, nil)
+	w := httptest.NewRecorder()
+	planeHandler(config.RoleControl, control).ServeHTTP(w, req)
+	var metadata struct {
+		Runtime map[string]any `json:"monkeyai_runtime"`
+		Device  string         `json:"device_authorization_endpoint"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &metadata) != nil || metadata.Device != cfg.PublicURL+"/oauth/device/authorization" {
+		t.Fatalf("设备授权发现失败：%s", w.Body)
+	}
+	relayMetadata := proxy.(*applicationHandler).relay.Metadata()
+	for _, field := range []string{"server_id", "bridge_url", "files_origin", "access_signing_keys"} {
+		got, _ := json.Marshal(metadata.Runtime[field])
+		want, _ := json.Marshal(relayMetadata[field])
+		if !bytes.Equal(got, want) {
+			t.Fatalf("控制面和代理的 %s 不一致", field)
+		}
+	}
+	w = httptest.NewRecorder()
+	planeHandler(config.RoleProxy, proxy).ServeHTTP(w, req)
+	if w.Code != 404 {
+		t.Fatalf("代理仍暴露设备授权发现接口：%d", w.Code)
 	}
 }

@@ -205,6 +205,8 @@ MONKEYAI_RUNTIME_SIGNING_KEY_FILE=/run/secrets/runtime-access.pem
 
 新入口为 `/api/v1/endpoint-bridge`、`/api/v1/endpoints/{machine_id}/connections`、DELETE 设备登记、`proxy/*` 和独立文件 origin；设备目录通过 `X-MAI-Runtime-API: 1` 返回新形状。新代理使用目标票据，设备管理使用 OAuth，文件另校验限定签名授权，不能互相替代。
 
+分进程部署时，server 接收会话上报、API 密钥管理、OAuth、设备配对和设备管理请求；proxy 保留模型及 MCP 调用、设备隧道、连接票据、预览与文件传输。server 通过受限的本机控制套接字查询在线目录并通知 proxy 断连。升级时需同时更新入口、server 和 proxy，否则分流清单不一致会导致接口返回 404。
+
 执行设备主动建立控制和数据两条 WebSocket/yamux，协议沿用公开地址的 WS/WSS 配置。控制面只转发，关闭观察流不取消目标已经受理的任务。托管关闭远程保留 Desktop 登录、公钥、网关密钥和认证宿主补传；旧 restore 不恢复新远程访问。
 
 独立 runtime 使用 `monkeyai-runtime` client 的 RFC8628 设备授权：申请 `/oauth/device/authorization`，用户在 `/device` 明确批准，再轮询 `/oauth/token` 的 device grant。申请设备和公钥冻结，证明后才能发布或上报；运行方式切为 standalone 时保留原 machine/session，替换旧专用执行授权，保留 Desktop 自身登录。独立调用密钥限定本设备和授权族，撤销或替换授权后立即失效。
