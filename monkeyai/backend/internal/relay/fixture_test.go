@@ -195,7 +195,12 @@ func (f *fixture) runtimeHandler(t *testing.T, handler func(http.ResponseWriter,
 		t.Fatal(err)
 	}
 	hello := Hello{Type: "hello", TunnelVersion: Version, ChannelKind: "control", MachineID: uuid.New().String(), BootID: uuid.New().String(), ExecutionPublicKey: base64.RawURLEncoding.EncodeToString(public), DisplayName: "测试 runtime", Platform: "macos", Arch: "arm64", DeploymentMode: "desktop_managed", Intent: "publish", Protocols: map[string][]int{"acp": {1}, "runtime_api": {1}}}
-	ws, ready := f.handshake(t, hello, private, "control", f.token)
+	return f.publish(t, hello, private, f.token, handler)
+}
+
+func (f *fixture) publish(t *testing.T, hello Hello, private ed25519.PrivateKey, token string, handler func(http.ResponseWriter, *http.Request) bool) *runtimeFixture {
+	t.Helper()
+	ws, ready := f.handshake(t, hello, private, "control", token)
 	mux, err := yamux.Client(websocket.NetConn(t.Context(), ws, websocket.MessageBinary), muxConfig("control"))
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +255,7 @@ func (f *fixture) runtimeHandler(t *testing.T, handler func(http.ResponseWriter,
 		}
 	}()
 	dhello := Hello{Type: "hello", TunnelVersion: Version, ChannelKind: "data", MachineID: hello.MachineID, ExecutionPublicKey: hello.ExecutionPublicKey, BootID: hello.BootID, DisplayName: hello.DisplayName, Platform: hello.Platform, Arch: hello.Arch, DeploymentMode: hello.DeploymentMode, Intent: "attach", LeaseEpoch: ready.LeaseEpoch, Protocols: hello.Protocols}
-	dws, _ := f.handshake(t, dhello, private, "data", f.token)
+	dws, _ := f.handshake(t, dhello, private, "data", token)
 	data, err := yamux.Client(websocket.NetConn(t.Context(), dws, websocket.MessageBinary), muxConfig("data"))
 	if err != nil {
 		t.Fatal(err)
