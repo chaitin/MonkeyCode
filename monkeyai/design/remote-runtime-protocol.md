@@ -14,6 +14,8 @@ GET 设备列表添加 `X-MAI-Runtime-API: 1` 或使用已获 `device:connect` �
 
 DELETE 远程登记要求 `If-Match` 中的 registration_version；同一事务在用户锁下核对当前版本，过期返回 412/device_registration_changed。同一次撤销重复提交保持幂等；恢复远程访问再次推进 registration_version，恢复前的删除不能撤销新登记。
 
+设置页或 Agent 使用 `GET /api/v1/endpoints?include_revoked=false` 获取当前设备。按所选项的 `machine_id` 调用 `DELETE /api/v1/endpoints/{machine_id}`，携带该项的 `registration_version`（不是目录的 `version`）作为 `If-Match`，并使用有 `device:manage` 权限的 OAuth Bearer。204 后刷新同一列表即可；名称可以重复，不要按名称删除。未传过滤参数时仍返回已撤销的历史记录。删除登记不会销毁云环境或删除设备文件。
+
 ## 2. 文本握手
 
 `GET /api/v1/endpoint-bridge?channel_kind=control&tunnel_version=1` 用 OAuth Bearer 升级 WebSocket。原生可无 Origin；非空 Origin 必须精确匹配受信任公开 origin。JSON 为 UTF-8、snake_case，最多 64 KiB，拒绝重复键、错误大小写和未知字段。

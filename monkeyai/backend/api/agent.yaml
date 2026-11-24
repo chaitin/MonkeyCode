@@ -1406,6 +1406,7 @@ paths:
       parameters:
         - {name: X-MAI-Runtime-API, in: header, schema: {type: string, const: '1'}}
         - {name: capability, in: query, schema: {type: string, enum: [execute]}}
+        - {name: include_revoked, in: query, schema: {type: boolean, default: true}, description: 仅远程目录；设置页传 false，在计算分页和总数前排除已撤销设备。}
         - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}}
         - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
       responses:
@@ -1612,7 +1613,7 @@ paths:
       summary: 移除远程执行登记
       description: 要求 device:manage；先持久撤销再关闭流。托管保留登录、公钥、网关密钥和已受理任务；同一记录重复删除幂等，其他用户统一 404。
       parameters:
-        - {name: If-Match, in: header, required: true, schema: {type: string}, description: 当前登记 registration_version；同事务校验，恢复后推进版本}
+        - {name: If-Match, in: header, required: true, schema: {type: string}, description: 传入远程目录目标项的 registration_version，不是目录顶层的 version。恢复后版本推进，412 时重新读取并确认目标。}
       responses:
         '204': {description: 远程授权已撤销}
         '412': {description: device_registration_changed}
@@ -5803,13 +5804,14 @@ components:
           type: array
           items:
             type: object
-            required: [machine_id, display_name, execution_supported, remote_access_state, status, protocols]
+            required: [machine_id, display_name, registration_version, execution_supported, remote_access_state, status, protocols]
             properties:
               machine_id: {type: string, format: uuid}
               display_name: {type: string}
               platform: {type: string}
               arch: {type: string}
               execution_supported: {type: boolean}
+              registration_version: {type: integer, format: int64, minimum: 0, description: 该设备当前的远程登记版本，删除时作为 If-Match 传回。}
               remote_access_state: {type: string, enum: [disabled, enabled, revoked]}
               deployment_mode: {type: string, enum: ['', desktop_managed, standalone]}
               status: {type: string, enum: [online, offline, auth_required, draining, updating, incompatible, revoked]}
