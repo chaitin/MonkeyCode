@@ -156,7 +156,7 @@ type Service struct {
 	accessTTL        time.Duration
 	grantRevoker     func(string)
 	runtimeFeatures  func(context.Context) (map[string]bool, error)
-	runtimeMetadata  map[string]any
+	runtimeMetadata  func() (map[string]any, error)
 	refreshTTL       time.Duration
 }
 
@@ -188,7 +188,11 @@ func (s *Service) WithRuntimeFeatures(features func(context.Context) (map[string
 }
 
 func (s *Service) WithRuntimeMetadata(metadata map[string]any) *Service {
-	s.runtimeMetadata = metadata
+	return s.WithRuntimeMetadataSource(func() (map[string]any, error) { return metadata, nil })
+}
+
+func (s *Service) WithRuntimeMetadataSource(source func() (map[string]any, error)) *Service {
+	s.runtimeMetadata = source
 	return s
 }
 

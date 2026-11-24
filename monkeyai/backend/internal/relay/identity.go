@@ -25,10 +25,27 @@ func resolveIdentity(config *Config) (ed25519.PrivateKey, error) {
 	return resolveIdentityWith(config, loadIdentity)
 }
 
+func existingIdentity(dir string) (serverIdentity, error) {
+	return readIdentity(filepath.Join(stateDir(dir), "identity.json"))
+}
+
+func ReadMetadata(config Config) (map[string]any, error) {
+	key, err := resolveIdentityWith(&config, existingIdentity)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := loadVerificationKeys(config.VerificationKeysFile, key.Public().(ed25519.PublicKey))
+	if err != nil {
+		return nil, err
+	}
+	if config.FilesOrigin == "" {
+		config.FilesOrigin = config.PublicURL
+	}
+	return runtimeMetadata(config, keys), nil
+}
+
 func ReadDeviceAuthorization(config Config) (string, []byte, error) {
-	key, err := resolveIdentityWith(&config, func(dir string) (serverIdentity, error) {
-		return readIdentity(filepath.Join(stateDir(dir), "identity.json"))
-	})
+	key, err := resolveIdentityWith(&config, existingIdentity)
 	if err != nil {
 		return "", nil, err
 	}

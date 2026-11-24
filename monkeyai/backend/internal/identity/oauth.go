@@ -72,16 +72,6 @@ func (s *Service) AuthRouter() chi.Router {
 	return router
 }
 
-func (s *Service) RegisterExecutionAuth(router chi.Router) {
-	router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Cache-Control", "no-store")
-			next.ServeHTTP(w, r)
-		})
-	})
-	s.registerExecutionAuth(router)
-}
-
 func (s *Service) registerExecutionAuth(router chi.Router) {
 	router.With(s.RequireBrowser).Post("/device/decision", s.deviceDecision)
 	router.Get("/client-requests/{requestID}", s.clientRequest)
@@ -112,8 +102,13 @@ func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
 		metadata["grant_types_supported"] = []string{"authorization_code", "refresh_token", DeviceGrantType, PairingGrantType}
 	}
 	if s.runtimeMetadata != nil {
-		runtime := make(map[string]any, len(s.runtimeMetadata))
-		for key, value := range s.runtimeMetadata {
+		source, err := s.runtimeMetadata()
+		if err != nil {
+			writeError(r.Context(), w, 503, "capabilities_unavailable", "运行时元数据暂不可用")
+			return
+		}
+		runtime := make(map[string]any, len(source))
+		for key, value := range source {
 			runtime[key] = value
 		}
 		if s.runtimeFeatures != nil {

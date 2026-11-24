@@ -350,15 +350,11 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, LookupInstance: lookupInstance, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
 	resourceImports.WithDesignCatalog(designs).WithKnowledgeCatalog(knowledgeBases)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
-	if cfg.Role != config.RoleControl {
-		endpoints.RegisterAgent(agent)
-	}
+	endpoints.RegisterAgent(agent)
 	endpoints.RegisterMemberReads(scopedGet)
 	identities.RegisterAgent(agent)
 	group.NewService(pool).RegisterAgent(interactive)
-	if cfg.Role != config.RoleControl {
-		keys.RegisterAgent(agent.With(identity.RequireGatewayKeys))
-	}
+	keys.RegisterAgent(agent.With(identity.RequireGatewayKeys))
 	models.RegisterAgent(account)
 	rules.RegisterAgent(account)
 	skills.RegisterAgent(account)
@@ -371,9 +367,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	charges.RegisterAgent(interactive)
 	feedbacks.RegisterAgent(interactive)
 	sessions.RegisterIndex(agent)
-	if cfg.Role != config.RoleControl {
-		sessions.RegisterReporting(agent)
-	}
+	sessions.RegisterReporting(agent)
 
 	router := chi.NewRouter()
 
@@ -409,6 +403,13 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	if cfg.RuntimeRelay {
 		if cfg.Role == config.RoleControl {
 			relayClient, runtimeServices = execution.remoteRuntime(cfg, logger)
+			endpoints.WithRuntimeDirectory(relayClient.Directory())
+			endpointStore.WithExecutionRevoker(func(user, machine string, version int64) {
+				if err := relayClient.InvalidateDevice(context.Background(), user, machine, version); err != nil {
+					logger.Warn("通知中继关闭已撤销设备失败", "machine_id", machine, "error", err)
+				}
+			})
+			relay.RegisterRevocation(router, identities, executions, relayClient.InvalidateDevice)
 		} else {
 			runtimeRelay, err = execution.attachRelay(cfg, logger, router, endpoints, endpointStore)
 			if err != nil {
@@ -418,9 +419,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	}
 	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
-	if cfg.Role != config.RoleControl {
-		registerOAuth(router, identities)
-	}
+	registerOAuth(router, identities)
 	services := extension.Services{
 		Pool: pool, Storage: storage, Credits: charges, PublicURL: cfg.PublicURL,
 		ImageStateDir: cfg.ImageStateDir, ImageImportDir: cfg.ImageImportDir,
@@ -537,15 +536,13 @@ func (a *App) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("监听 Relay 内部套接字: %w", err)
 		}
-		controlServer = &http.Server{Handler: a.relay.ControlHandler(revokeGrant(a.relay, a.runtimeKeys)), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 15 * time.Second}
+		controlServer = &http.Server{Handler: a.relay.ControlHandler(a.relay.InvalidateGrant), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 15 * time.Second}
 		a.servers = append(a.servers, controlServer)
 	}
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	var workers sync.WaitGroup
 	start := func(run func(context.Context)) { workers.Go(func() { run(workerCtx) }) }
 	if a.role != config.RoleControl {
-		start(a.sessions.Run)
-		start(a.endpoints.Observe)
 		start(a.connectors.RunCredentials)
 		if a.relay != nil {
 			start(a.relay.Run)
@@ -553,6 +550,8 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}
 	if a.role != config.RoleProxy {
+		start(a.sessions.Run)
+		start(a.endpoints.Observe)
 		start(a.billing.Run)
 		start(a.images.Run)
 		start(a.videos.Run)
