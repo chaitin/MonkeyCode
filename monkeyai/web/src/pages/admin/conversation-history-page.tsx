@@ -5,7 +5,6 @@ import {
   Search02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { useAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
@@ -194,7 +193,6 @@ const labels = {
 }
 
 export function ConversationHistoryPage() {
-  const canOpenDetails = useAuth().user?.role === "admin"
   const { i18n, t } = useTranslation()
   const tableQuery = useTableQuery(CONVERSATION_QUERY_KEYS)
   const { filters, filterQuery, page, pageSize, setPage, setPageSize } =
@@ -324,7 +322,7 @@ export function ConversationHistoryPage() {
             type="button"
             className="account-user-link flex w-full min-w-0 items-center gap-2 rounded-sm text-start focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer"
             title={entry.user_email}
-            disabled={!canOpenDetails || !entry.user_id}
+            disabled={!entry.user_id}
             onClick={() => setAccountUserID(entry.user_id)}
           >
             <UserAvatar src={entry.user_avatar_url} />
@@ -629,7 +627,7 @@ export function ConversationHistoryPage() {
           />
         </CardContent>
       </Card>
-      {canOpenDetails && accountUserID && (
+      {accountUserID && (
         <AccountDialog
           key={accountUserID}
           userId={accountUserID}

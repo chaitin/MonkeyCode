@@ -497,7 +497,6 @@ export function FeedbackPage() {
                           type="button"
                           className="account-user-link flex max-w-52 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                           title={item.user_email || item.user_id}
-                          disabled={!canOpenDetails}
                           onClick={() => setAccountUserID(item.user_id)}
                         >
                           <UserAvatar src={item.user_avatar_url} />
@@ -598,7 +597,7 @@ export function FeedbackPage() {
           </DialogContent>
         )}
       </Dialog>
-      {canOpenDetails && accountUserID && (
+      {accountUserID && (
         <AccountDialog
           key={accountUserID}
           userId={accountUserID}

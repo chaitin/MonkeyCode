@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { FilterHorizontalIcon, Search02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { useAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
@@ -98,7 +97,6 @@ function activeTaskFields(filters: Record<string, string>): SearchField[] {
 }
 
 export function TaskHistoryPage() {
-  const canOpenDetails = useAuth().user?.role === "admin"
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const tableQuery = useTableQuery(TASK_QUERY_KEYS, DEFAULT_PAGE_SIZE)
@@ -402,7 +400,6 @@ export function TaskHistoryPage() {
                           type="button"
                           className="account-user-link flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                           title={task.user_email}
-                          disabled={!canOpenDetails}
                           onClick={() => openAccount(task)}
                         >
                           <UserAvatar src={task.user_avatar_url} />
@@ -479,7 +476,7 @@ export function TaskHistoryPage() {
           />
         </CardContent>
       </Card>
-      {canOpenDetails && accountUserID && (
+      {accountUserID && (
         <AccountDialog
           key={accountUserID}
           userId={accountUserID}

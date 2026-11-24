@@ -593,7 +593,6 @@ export function BillingDetailsPage() {
                             type="button"
                             className="account-user-link flex cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                             title={e.user_email}
-                            disabled={!canOpenDetails}
                             onClick={() => setAccountUserID(e.user_id)}
                           >
                             <UserAvatar src={e.user_avatar_url} />
@@ -812,7 +811,7 @@ export function BillingDetailsPage() {
           onChanged={reload}
         />
       )}
-      {canOpenDetails && accountUserID && (
+      {accountUserID && (
         <AccountDialog
           key={accountUserID}
           userId={accountUserID}
