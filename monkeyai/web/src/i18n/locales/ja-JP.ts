@@ -1111,10 +1111,11 @@ export const jaJP = {
         next: "次のページ",
       },
     },
-    otherSettings: {
-      about: "このアプリについて",
+    security: {
+      title: "セキュリティ",
+      description: "システムのセキュリティ設定を管理します。",
       mcpNetwork: {
-        title: "ネットワークアクセス制御",
+        title: "ネットワーク分離",
         blocklist: "MCP ネットワークブロックリスト",
         configure: "設定",
         description: "<ranges>{{cidrs}}</ranges> へのアクセスを禁止",
@@ -1128,6 +1129,9 @@ export const jaJP = {
         saved: "MCP ネットワーク設定を保存しました",
         empty: "ブロック対象の IP 範囲はありません",
       },
+    },
+    otherSettings: {
+      about: "このアプリについて",
       proxies: {
         title: "システムプロキシ",
         description:

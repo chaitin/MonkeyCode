@@ -1136,10 +1136,11 @@ export const ruRU = {
         next: "Следующая страница",
       },
     },
-    otherSettings: {
-      about: "О программе",
+    security: {
+      title: "Безопасность",
+      description: "Управление настройками безопасности системы.",
       mcpNetwork: {
-        title: "Управление сетевым доступом",
+        title: "Сетевая изоляция",
         blocklist: "Список блокировки сети MCP",
         configure: "Настроить",
         description: "Доступ запрещён к <ranges>{{cidrs}}</ranges>",
@@ -1153,6 +1154,9 @@ export const ruRU = {
         saved: "Сетевые настройки MCP сохранены",
         empty: "Нет заблокированных диапазонов IP",
       },
+    },
+    otherSettings: {
+      about: "О программе",
       proxies: {
         title: "Системные прокси",
         description:

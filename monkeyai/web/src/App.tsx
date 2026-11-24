@@ -38,6 +38,7 @@ import { OperationLogsPage } from "@/pages/admin/operation-logs-page"
 import { OtherSettingsPage } from "@/pages/admin/other-settings-page"
 import { OverviewPage } from "@/pages/admin/overview-page"
 import { RealtimeStatusPage } from "@/pages/admin/realtime-status-page"
+import { SecurityPage } from "@/pages/admin/security-page"
 import { RulesPage } from "@/pages/admin/rules-page"
 import { ResourceImportsPage } from "@/pages/admin/resource-imports-page"
 import { SkillsPage } from "@/pages/admin/skills-page"
@@ -159,6 +160,8 @@ export function App() {
                     <FeedbackPage />
                   ) : page.path === CONSOLE_ROUTES.operationLogs ? (
                     <OperationLogsPage />
+                  ) : page.path === CONSOLE_ROUTES.security ? (
+                    <SecurityPage />
                   ) : page.path === CONSOLE_ROUTES.otherSettings ? (
                     <OtherSettingsPage />
                   ) : (

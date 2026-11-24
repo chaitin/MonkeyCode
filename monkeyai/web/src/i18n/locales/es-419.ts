@@ -1134,10 +1134,11 @@ export const es419 = {
         next: "Página siguiente",
       },
     },
-    otherSettings: {
-      about: "Acerca de",
+    security: {
+      title: "Seguridad",
+      description: "Administra la configuración de seguridad del sistema.",
       mcpNetwork: {
-        title: "Control de acceso a la red",
+        title: "Aislamiento de red",
         blocklist: "Lista de bloqueo de red de MCP",
         configure: "Configurar",
         description: "Acceso bloqueado a <ranges>{{cidrs}}</ranges>",
@@ -1151,6 +1152,9 @@ export const es419 = {
         saved: "Configuración de red MCP guardada",
         empty: "No hay rangos IP bloqueados",
       },
+    },
+    otherSettings: {
+      about: "Acerca de",
       proxies: {
         title: "Proxies del sistema",
         description:

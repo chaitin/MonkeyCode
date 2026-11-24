@@ -158,6 +158,11 @@ export function AppSidebar({
           url: CONSOLE_ROUTES.operationLogs,
         },
         {
+          title: t("pages.security.title"),
+          url: CONSOLE_ROUTES.security,
+          disabled: user?.role !== "admin",
+        },
+        {
           title: t("pages.otherSettings.title"),
           url: CONSOLE_ROUTES.otherSettings,
           disabled: user?.role === "group_admin",

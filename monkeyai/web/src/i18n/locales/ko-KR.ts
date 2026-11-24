@@ -1094,10 +1094,11 @@ export const koKR = {
         next: "다음 페이지",
       },
     },
-    otherSettings: {
-      about: "정보",
+    security: {
+      title: "보안",
+      description: "시스템 보안 설정을 관리합니다.",
       mcpNetwork: {
-        title: "네트워크 접근 제어",
+        title: "네트워크 격리",
         blocklist: "MCP 네트워크 차단 목록",
         configure: "설정",
         description: "접근 차단: <ranges>{{cidrs}}</ranges>",
@@ -1111,6 +1112,9 @@ export const koKR = {
         saved: "MCP 네트워크 설정이 저장되었습니다",
         empty: "차단된 IP 대역 없음",
       },
+    },
+    otherSettings: {
+      about: "정보",
       proxies: {
         title: "시스템 프록시",
         description:

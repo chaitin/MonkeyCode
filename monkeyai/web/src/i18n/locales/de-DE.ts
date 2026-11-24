@@ -1152,10 +1152,11 @@ export const deDE = {
         next: "Nächste Seite",
       },
     },
-    otherSettings: {
-      about: "Über",
+    security: {
+      title: "Sicherheit",
+      description: "Sicherheitseinstellungen des Systems verwalten.",
       mcpNetwork: {
-        title: "Netzwerkzugriffskontrolle",
+        title: "Netzwerkisolierung",
         blocklist: "MCP-Netzwerksperrliste",
         configure: "Konfigurieren",
         description: "Zugriff gesperrt für <ranges>{{cidrs}}</ranges>",
@@ -1169,6 +1170,9 @@ export const deDE = {
         saved: "MCP-Netzwerkeinstellungen gespeichert",
         empty: "Keine gesperrten IP-Bereiche",
       },
+    },
+    otherSettings: {
+      about: "Über",
       proxies: {
         title: "System-Proxys",
         description:

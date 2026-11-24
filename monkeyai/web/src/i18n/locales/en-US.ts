@@ -2529,10 +2529,11 @@ export const enUS = {
         next: "Next page",
       },
     },
-    otherSettings: {
-      about: "About",
+    security: {
+      title: "Security",
+      description: "Manage system security settings.",
       mcpNetwork: {
-        title: "Network access control",
+        title: "Network isolation",
         blocklist: "MCP network blocklist",
         configure: "Configure",
         description: "Access blocked to <ranges>{{cidrs}}</ranges>",
@@ -2546,6 +2547,9 @@ export const enUS = {
         saved: "MCP network settings saved",
         empty: "No blocked IP ranges",
       },
+    },
+    otherSettings: {
+      about: "About",
       proxies: {
         title: "System proxies",
         description:

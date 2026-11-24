@@ -1149,10 +1149,11 @@ export const frFR = {
         next: "Page suivante",
       },
     },
-    otherSettings: {
-      about: "À propos",
+    security: {
+      title: "Sécurité",
+      description: "Gérez les paramètres de sécurité du système.",
       mcpNetwork: {
-        title: "Contrôle d’accès au réseau",
+        title: "Isolation réseau",
         blocklist: "Liste de blocage réseau MCP",
         configure: "Configurer",
         description: "Accès interdit à <ranges>{{cidrs}}</ranges>",
@@ -1166,6 +1167,9 @@ export const frFR = {
         saved: "Paramètres réseau MCP enregistrés",
         empty: "Aucune plage IP bloquée",
       },
+    },
+    otherSettings: {
+      about: "À propos",
       proxies: {
         title: "Proxys système",
         description:

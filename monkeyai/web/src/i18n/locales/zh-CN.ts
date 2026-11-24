@@ -1775,7 +1775,7 @@ export const zhCN = {
       },
       tags: "标签",
       tagsPlaceholder: "选择标签",
-      noAvailableTags: "暂无可选标签，请先到其他设置中添加。",
+      noAvailableTags: "暂无可选标签，请先到“系统设置 → 其他”中添加。",
       searchTagsPlaceholder: "搜索标签",
       noMatchingTags: "没有匹配的标签",
       noTags: "没有标签",
@@ -2388,10 +2388,11 @@ export const zhCN = {
         next: "下一页",
       },
     },
-    otherSettings: {
-      about: "关于",
+    security: {
+      title: "安全",
+      description: "管理系统安全设置。",
       mcpNetwork: {
-        title: "网络访问控制",
+        title: "网络隔离",
         blocklist: "MCP 网络黑名单",
         configure: "配置",
         description: "禁止访问 <ranges>{{cidrs}}</ranges>",
@@ -2405,6 +2406,9 @@ export const zhCN = {
         saved: "MCP 网络设置已保存",
         empty: "未配置黑名单",
       },
+    },
+    otherSettings: {
+      about: "关于",
       proxies: {
         title: "系统代理",
         description:
@@ -2423,7 +2427,7 @@ export const zhCN = {
         direct: "不使用代理",
         confirmDelete: "确认删除该代理？",
       },
-      title: "其他设置",
+      title: "其他",
       description: "配置品牌信息、OAuth 及其他平台级能力。",
       brandInfo: {
         logo: "Logo",

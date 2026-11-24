@@ -1101,10 +1101,11 @@ export const zhTW = {
         next: "下一頁",
       },
     },
-    otherSettings: {
-      about: "關於",
+    security: {
+      title: "安全",
+      description: "管理系統安全設定。",
       mcpNetwork: {
-        title: "網路存取控制",
+        title: "網路隔離",
         blocklist: "MCP 網路黑名單",
         configure: "設定",
         description: "禁止存取 <ranges>{{cidrs}}</ranges>",
@@ -1118,6 +1119,9 @@ export const zhTW = {
         saved: "MCP 網路設定已儲存",
         empty: "尚未設定黑名單",
       },
+    },
+    otherSettings: {
+      about: "關於",
       proxies: {
         title: "系統代理",
         description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。",

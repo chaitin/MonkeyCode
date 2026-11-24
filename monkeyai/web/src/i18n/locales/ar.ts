@@ -1086,10 +1086,11 @@ export const ar = {
         next: "الصفحة التالية",
       },
     },
-    otherSettings: {
-      about: "حول",
+    security: {
+      title: "الأمان",
+      description: "إدارة إعدادات أمان النظام.",
       mcpNetwork: {
-        title: "التحكم في الوصول إلى الشبكة",
+        title: "عزل الشبكة",
         blocklist: "قائمة حظر شبكة MCP",
         configure: "إعداد",
         description: "يُحظر الوصول إلى <ranges>{{cidrs}}</ranges>",
@@ -1103,6 +1104,9 @@ export const ar = {
         saved: "تم حفظ إعدادات شبكة MCP",
         empty: "لا توجد نطاقات IP محظورة",
       },
+    },
+    otherSettings: {
+      about: "حول",
       proxies: {
         title: "وكلاء النظام",
         description:

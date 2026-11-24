@@ -28,6 +28,7 @@ export const CONSOLE_ROUTES = {
   membersAndGroups: `${CONSOLE_PATH}/settings/members`,
   feedback: `${CONSOLE_PATH}/settings/feedback`,
   operationLogs: `${CONSOLE_PATH}/settings/operation-logs`,
+  security: `${CONSOLE_PATH}/settings/security`,
   otherSettings: `${CONSOLE_PATH}/settings/other`,
   engineHosts: `${CONSOLE_PATH}/settings/engine-hosts`,
 } as const
@@ -167,6 +168,13 @@ export const CONSOLE_PAGES = [
     sectionPath: CONSOLE_ROUTES.membersAndGroups,
     titleKey: "pages.operationLogs.title",
     descriptionKey: "pages.operationLogs.description",
+  },
+  {
+    path: CONSOLE_ROUTES.security,
+    sectionKey: "sections.systemSettings",
+    sectionPath: CONSOLE_ROUTES.membersAndGroups,
+    titleKey: "pages.security.title",
+    descriptionKey: "pages.security.description",
   },
   {
     path: CONSOLE_ROUTES.otherSettings,

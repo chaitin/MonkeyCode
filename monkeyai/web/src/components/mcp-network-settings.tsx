@@ -86,7 +86,7 @@ export function MCPNetworkSettings() {
       setSavedCIDRs(saved.value.blocked_cidrs ?? [])
       showToast({
         status: "success",
-        title: t("pages.otherSettings.mcpNetwork.saved"),
+        title: t("pages.security.mcpNetwork.saved"),
       })
     } catch (reason) {
       setError((reason as Error).message)
@@ -96,27 +96,27 @@ export function MCPNetworkSettings() {
   }
 
   return (
-    <Card className="order-5">
+    <Card>
       <CardHeader>
-        <CardTitle>{t("pages.otherSettings.mcpNetwork.title")}</CardTitle>
+        <CardTitle>{t("pages.security.mcpNetwork.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <Item variant="outline">
             <ItemContent className="min-w-0">
               <ItemTitle>
-                {t("pages.otherSettings.mcpNetwork.blocklist")}
+                {t("pages.security.mcpNetwork.blocklist")}
               </ItemTitle>
               {loaded && (
                 <ItemDescription className="line-clamp-none break-words">
                   {savedCIDRs.length ? (
                     <Trans
-                      i18nKey="pages.otherSettings.mcpNetwork.description"
+                      i18nKey="pages.security.mcpNetwork.description"
                       values={{ cidrs: savedCIDRs.join(", ") }}
                       components={{ ranges: <bdi dir="ltr" /> }}
                     />
                   ) : (
-                    t("pages.otherSettings.mcpNetwork.empty")
+                    t("pages.security.mcpNetwork.empty")
                   )}
                 </ItemDescription>
               )}
@@ -126,7 +126,7 @@ export function MCPNetworkSettings() {
                 disabled={!loaded}
                 render={<Button variant="secondary" />}
               >
-                {t("pages.otherSettings.mcpNetwork.configure")}
+                {t("pages.security.mcpNetwork.configure")}
               </DialogTrigger>
             </ItemActions>
           </Item>
@@ -137,10 +137,10 @@ export function MCPNetworkSettings() {
           >
             <DialogHeader>
               <DialogTitle>
-                {t("pages.otherSettings.mcpNetwork.blocklist")}
+                {t("pages.security.mcpNetwork.blocklist")}
               </DialogTitle>
               <DialogDescription>
-                {t("pages.otherSettings.mcpNetwork.hint")}
+                {t("pages.security.mcpNetwork.hint")}
               </DialogDescription>
             </DialogHeader>
             <form className="flex min-h-0 flex-col gap-4" onSubmit={submit}>
@@ -152,17 +152,17 @@ export function MCPNetworkSettings() {
                   <div className="space-y-3 pe-6">
                     <div className="overflow-hidden rounded-lg border">
                       <div className="border-b bg-muted/40 px-4 py-3 text-sm font-medium">
-                        {t("pages.otherSettings.mcpNetwork.label")}
+                        {t("pages.security.mcpNetwork.label")}
                       </div>
                       {rows.length === 0 ? (
                         <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                          {t("pages.otherSettings.mcpNetwork.empty")}
+                          {t("pages.security.mcpNetwork.empty")}
                         </p>
                       ) : (
                         <ul className="divide-y">
                           {rows.map((row, index) => {
                             const label = t(
-                              "pages.otherSettings.mcpNetwork.entry",
+                              "pages.security.mcpNetwork.entry",
                               { index: index + 1 }
                             )
                             return (
@@ -194,7 +194,7 @@ export function MCPNetworkSettings() {
                                   size="icon-sm"
                                   className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   aria-label={
-                                    t("pages.otherSettings.mcpNetwork.remove") +
+                                    t("pages.security.mcpNetwork.remove") +
                                     " · " +
                                     label
                                   }
@@ -237,13 +237,13 @@ export function MCPNetworkSettings() {
                     }}
                   >
                     <HugeiconsIcon icon={Add01Icon} aria-hidden="true" />
-                    {t("pages.otherSettings.mcpNetwork.add")}
+                    {t("pages.security.mcpNetwork.add")}
                   </Button>
                   <div className="flex items-center justify-end gap-2">
                     <DialogClose
                       render={<Button type="button" variant="outline" />}
                     >
-                      {t("pages.otherSettings.mcpNetwork.cancel")}
+                      {t("pages.security.mcpNetwork.cancel")}
                     </DialogClose>
                     <Button
                       type="submit"
@@ -252,7 +252,7 @@ export function MCPNetworkSettings() {
                         !dirty || saving || cidrs.some((cidr) => !cidr.trim())
                       }
                     >
-                      {t("pages.otherSettings.mcpNetwork.save")}
+                      {t("pages.security.mcpNetwork.save")}
                     </Button>
                   </div>
                 </DialogFooter>
