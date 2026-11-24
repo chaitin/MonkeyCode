@@ -8,7 +8,7 @@
 - 补齐会话、配置、交互、资源写入、MCP 和 PUT/HEAD 上传的路径/权限矩阵，资源写入同时检查两项权限。CORS 保留上传会话及 MCP 状态头，正文/资源写入响应头等待分别为 150/225 秒。
 - 租约请求使用完整 authorization 严格解码，逐项核对数据库身份、版本和 scopes；响应绑定 nonce、递增序号、boot 和 epoch。require_fresh 不允许故障宽限，已知失效返回签名撤销。断言和租约时间显式输出 UTC Z。
 - 移除旧二进制控制分支和旧 Signed 对象编码。内部 HTTP 通过 net/http 处理，反向流并发上限 16，请求头/完整请求/事件写入期限分别为 5/10/5 秒。每 15 秒主动 Ping，收到 Pong 才更新存活观测；写入和回应均有期限。事件流结束回收对应 epoch。
-- DELETE 在同一数据库事务内按 registration_version 检查 If-Match，过期请求 412，同一次删除幂等；恢复再次推进登记代次。HTTP 和 NDJSON 撤销均使用统一签名字符串，身份/boot/epoch/connection/access_version 为顶层字段。握手错误仅包含 type/code。
+- DELETE 按 machine_id 撤销当前登记，重复删除幂等；恢复再次推进握手登记代次。HTTP 和 NDJSON 撤销均使用统一签名字符串，身份/boot/epoch/connection/access_version 为顶层字段。握手错误仅包含 type/code。
 - 独立 fg1 不用缺省为零的 ticket_version 拒绝新文件授权；保留完整 access_version/scopes/grant/epoch 校验。路径仅解码一次，允许字面百分号，拒绝编码分隔符和遍历。token/载荷上限分别为 12/8 KiB，文件签发偏差与发现统一为 5 秒，数据库故障与已知拒绝区分。
 - 多页快照按完整筛选结果和冻结路由视图计算内容摘要，再分页；101 条跨页读取、页间变更识别、空目录和筛选外记录隔离已验证。协议版本上限固定 65535，首次省略 scopes 时只授予已批准业务权限。
 - 使用 sqlc 工具重新生成登记恢复查询；修复权限版本 down SQL 在目标表已删除时的重复回滚。
@@ -24,7 +24,7 @@
 | relay / endpoint / migrations，配置真实 PostgreSQL | 模块测试通过；没有依靠缺少 DSN 跳过中转、设备及迁移用例 |
 | relay / endpoint / migrations，`-race` | 通过；95 秒空闲测试已另行执行，不重复长时间等待 |
 | identity，配置真实 PostgreSQL，`-race` | 通过；设备码测试夹具按数据库时间对齐宿主时钟，生产设备码逻辑不变 |
-| `TestRuntimeRelayApplication`，真实 PostgreSQL + RustFS | 真实 App 路由、绑定、目录、鉴权、条件删除及撤销后补传通过 |
+| `TestRuntimeRelayApplication`，真实 PostgreSQL + RustFS | 真实 App 路由、绑定、目录、鉴权、设备删除及撤销后补传 |
 | `TestDirectoryFullSnapshotAcrossPages` | 101 条分两页保持相同完整版本；页间最后在线资料变化产生新版本；空目录和筛选外资料记录不会造成混合视图 |
 | `TestHTTPDataReattachStatus` | 数据通道断开后独立附着，控制 epoch 不变，status 重新返回 data_online=true |
 | `TestDefaultTicketBusinessScopes` / `TestProtocolVersionBoundary` | 缺省票据只含业务权限，协议版本上限及嵌套身份严格字段通过 |
@@ -36,7 +36,7 @@
 | `TestReverseHTTPBudgetAndReadDeadline` | 控制反向流超额拒绝，慢请求读取期限回收后其他控制请求可继续 |
 | `TestSlowEventConsumerClosesOnlyEpoch` | 不读取事件的消费者触发写入期限并结束该 epoch |
 | `TestTwoControllersRevocationKeepsOtherObserver` | 单个控制端退出，另一 ACP 观察者与整个执行端保持有效；检查 NDJSON 签名撤销结构 |
-| `TestConditionalDeleteAndRestoreGeneration` | 迟到删除 412、重复删除幂等、恢复推进代次、恢复前版本不能撤销新登记 |
+| `TestDeleteByMachineIDAndRestore` | 仅按设备 ID 删除、重复删除幂等、恢复后可再次按 ID 删除 |
 | `TestIndependentFG1PathsNarrowingAndDatabaseFailure` | 普通/中文空格/百分号文件 Range/HEAD、路径替换拒绝、收窄后的新授权、12 KiB token/8 KiB 载荷边界和数据库故障 503 |
 
 本轮还保留固定证明签名向量、公钥轮换和统一访问签名信封的本仓回归。未取得客户端共享向量，因此不声称两仓同组向量验收通过。

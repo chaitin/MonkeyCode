@@ -76,11 +76,11 @@ func TestExecutionBindingPublicationAndRestore(t *testing.T) {
 	if reconnected.GrantVersion != published.GrantVersion || reconnected.LeaseEpoch != published.LeaseEpoch+1 {
 		t.Fatal("重连不应失效全部 ticket")
 	}
-	revoked, err := execution.Revoke(t.Context(), manager, in.MachineID, published.RegistrationVersion)
+	revoked, err := execution.Revoke(t.Context(), manager, in.MachineID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := execution.Revoke(t.Context(), manager, in.MachineID, published.RegistrationVersion)
+	again, err := execution.Revoke(t.Context(), manager, in.MachineID)
 	if err != nil || again.GrantVersion != revoked.GrantVersion || again.RegistrationVersion != revoked.RegistrationVersion {
 		t.Fatalf("撤销不幂等：%v", err)
 	}
@@ -137,7 +137,7 @@ func TestExecutionConflictsAndTransactionRollback(t *testing.T) {
 	}
 	otherUser := testUser(t, pool, "execution-other")
 	otherManager := executionPrincipal(t, pool, otherUser, []string{"device:manage"})
-	_, err = execution.Revoke(t.Context(), otherManager, in.MachineID, bound.RegistrationVersion)
+	_, err = execution.Revoke(t.Context(), otherManager, in.MachineID)
 	requireExecutionError(t, err, "device_not_found")
 }
 
@@ -233,7 +233,7 @@ func TestStandaloneTakeoverPreservesHostAndRevokesOnlyExecutionGrant(t *testing.
 		t.Fatal("重授权没有撤销原专用执行授权")
 	}
 	manager := executionPrincipal(t, pool, user, []string{"device:manage"})
-	revoked, err := execution.Revoke(t.Context(), manager, in.MachineID, current.RegistrationVersion)
+	revoked, err := execution.Revoke(t.Context(), manager, in.MachineID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestExecutionHostAuthenticationAfterRemoteRevocation(t *testing.T) {
 	}
 	p.MachineID, p.KeyID = in.MachineID, bound.KeyID
 	manager := executionPrincipal(t, pool, userID, []string{"device:manage"})
-	if _, err := execution.Revoke(t.Context(), manager, in.MachineID, bound.RegistrationVersion); err != nil {
+	if _, err := execution.Revoke(t.Context(), manager, in.MachineID); err != nil {
 		t.Fatal(err)
 	}
 	authenticate := func(p identity.Principal) (bool, error) {

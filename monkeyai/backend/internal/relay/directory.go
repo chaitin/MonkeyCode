@@ -1,5 +1,5 @@
 // [INPUT]: 设备登记与当前执行路由的存活窗口。
-// [OUTPUT]: 返回运行状态、登记版本和可排除已撤销设备的分页快照。
+// [OUTPUT]: 返回排除已撤销设备的分页快照及运行状态。
 // [POS]: 设备目录的投影，按与代理一致的期限决定设备是否在线。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -74,17 +74,6 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	capability := r.URL.Query().Get("capability")
-	includeRevoked := true
-	if r.URL.Query().Has("include_revoked") {
-		switch r.URL.Query().Get("include_revoked") {
-		case "false":
-			includeRevoked = false
-		case "true":
-		default:
-			failure(r.Context(), w, 400, "invalid_request")
-			return
-		}
-	}
 	if page < 1 || page > 1000000 || size < 1 || size > 100 || capability != "" && capability != "execute" {
 		failure(r.Context(), w, 400, "invalid_request")
 		return
@@ -99,15 +88,13 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 	// 对完整筛选结果求版本，再分页，避免只对某页或另一次路由读取求版本。
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		if !includeRevoked && row.RemoteAccessState == "revoked" {
+		if row.RemoteAccessState == "revoked" {
 			continue
 		}
 		status := "offline"
 		current, online := routes[row.MachineID]
 		online = online && row.RemoteAccessState == "enabled" && row.GrantVersion == current.grantVersion && row.LeaseEpoch == current.epoch
-		if row.RemoteAccessState == "revoked" {
-			status = "revoked"
-		} else if online {
+		if online {
 			valid, err := s.identity.VerifyGrant(ctx, current.principal)
 			if err != nil && !errors.Is(err, identity.ErrRuntimeUnavailable) {
 				slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "directory", "error", err)
@@ -128,8 +115,7 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 			protocols = map[string][]int{}
 		}
 		item := map[string]any{"machine_id": row.MachineID, "display_name": row.DisplayName, "platform": row.Platform, "arch": row.Arch,
-			"registration_version": row.RegistrationVersion,
-			"execution_supported":  len(row.PublicKey) == 32, "remote_access_state": row.RemoteAccessState, "deployment_mode": row.DeploymentMode, "status": status,
+			"execution_supported": len(row.PublicKey) == 32, "remote_access_state": row.RemoteAccessState, "deployment_mode": row.DeploymentMode, "status": status,
 			"last_seen_at": row.LastSeenAt, "runtime_version": row.RuntimeVersion, "engine_version": row.EngineVersion, "protocols": protocols, "capability_summary": map[string]bool{}, "engine_health": "unknown"}
 		if online {
 			item["engine_health"] = current.health

@@ -16,7 +16,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -444,16 +443,7 @@ func RegisterRevocation(router chi.Router, ids *identity.Service, devices *endpo
 			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
-		versionText := strings.Trim(r.Header.Get("If-Match"), "\"")
-		version, err := strconv.ParseInt(versionText, 10, 64)
-		if err != nil || version < 0 {
-			if err != nil {
-				slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "revoke", "error", err)
-			}
-			failure(r.Context(), w, http.StatusPreconditionRequired, "device_registration_changed")
-			return
-		}
-		state, err := devices.Revoke(ctx, p, machine, version)
+		state, err := devices.Revoke(ctx, p, machine)
 		if err != nil {
 			fail(r.Context(), w, err)
 			return
