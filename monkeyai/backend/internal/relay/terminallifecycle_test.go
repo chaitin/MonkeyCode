@@ -63,7 +63,6 @@ func TestTerminalRevocationAndTunnelLossReleaseStreams(t *testing.T) {
 			case "device":
 				r, _ := http.NewRequestWithContext(ctx, "DELETE", f.server.URL+"/api/v1/endpoints/"+runtime.hello.MachineID, nil)
 				r.Header.Set("Authorization", "Bearer "+f.token)
-				r.Header.Set("If-Match", "1")
 				response, err := http.DefaultClient.Do(r)
 				if err != nil {
 					t.Fatal(err)

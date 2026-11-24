@@ -37,8 +37,8 @@ func TestDirectoryFullSnapshotAcrossPages(t *testing.T) {
 	if response.Total != 0 || len(response.Items) != 0 {
 		t.Fatal("空目录无效")
 	}
-	if _, err := f.pool.Exec(t.Context(), `INSERT INTO endpoints(user_id,machine_id,device_name,platform,os_version,arch,client_version,status,revoked_at,execution_public_key,key_id,remote_access_state)
- SELECT $1,gen_random_uuid(),'历史执行设备','macos','test','arm64','1','revoked',now(),decode(repeat('ab',32),'hex'),'key','revoked' FROM generate_series(1,101)`, f.user); err != nil {
+	if _, err := f.pool.Exec(t.Context(), `INSERT INTO endpoints(user_id,machine_id,device_name,platform,os_version,arch,client_version,execution_public_key,key_id)
+ SELECT $1,gen_random_uuid(),'离线设备','macos','test','arm64','1',decode(repeat('ab',32),'hex'),'key' FROM generate_series(1,101)`, f.user); err != nil {
 		t.Fatal(err)
 	}
 	version := read(1)
@@ -65,5 +65,18 @@ func TestDirectoryFullSnapshotAcrossPages(t *testing.T) {
 	}
 	if read(1) != changed || response.Total != 101 {
 		t.Fatal("执行筛选被纯资料记录扰动")
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodDelete, f.server.URL+"/api/v1/endpoints/"+machine, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent || read(2) == changed || response.Total != 100 || len(response.Items) != 0 {
+		t.Fatalf("按设备 ID 移除离线设备失败，HTTP %d", resp.StatusCode)
 	}
 }

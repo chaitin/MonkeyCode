@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strconv"
 	"testing"
 )
 
@@ -34,7 +33,6 @@ func TestRemoteDeviceManagement(t *testing.T) {
 	call := func(method, path, token string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("If-Match", strconv.FormatInt(runtime.ready.RegistrationVersion, 10))
 		w := httptest.NewRecorder()
 		management.ServeHTTP(w, req)
 		return w

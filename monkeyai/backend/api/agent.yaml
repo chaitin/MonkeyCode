@@ -1610,13 +1610,9 @@ paths:
       - {$ref: '#/components/parameters/EndpointMachine'}
     delete:
       summary: 移除远程执行登记
-      description: 要求 device:manage；先持久撤销再关闭流。托管保留登录、公钥、网关密钥和已受理任务；同一记录重复删除幂等，其他用户统一 404。
-      parameters:
-        - {name: If-Match, in: header, required: true, schema: {type: string}, description: 当前登记 registration_version；同事务校验，恢复后推进版本}
+      description: 要求 device:manage；仅按 machine_id 撤销当前用户的远程登记，无需请求体。远程设备目录不再返回该设备。托管保留登录、公钥、网关密钥和已受理任务；重复删除幂等，其他用户统一 404。
       responses:
         '204': {description: 远程授权已撤销}
-        '412': {description: device_registration_changed}
-        '428': {description: 缺少有效 If-Match}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/ResourceError403'}
         '404': {description: device_not_found}
@@ -5810,9 +5806,9 @@ components:
               platform: {type: string}
               arch: {type: string}
               execution_supported: {type: boolean}
-              remote_access_state: {type: string, enum: [disabled, enabled, revoked]}
+              remote_access_state: {type: string, enum: [disabled, enabled]}
               deployment_mode: {type: string, enum: ['', desktop_managed, standalone]}
-              status: {type: string, enum: [online, offline, auth_required, draining, updating, incompatible, revoked]}
+              status: {type: string, enum: [online, offline, auth_required, draining, updating, incompatible]}
               last_seen_at: {type: [string, 'null'], format: date-time}
               runtime_version: {type: [string, 'null']}
               engine_version: {type: [string, 'null']}

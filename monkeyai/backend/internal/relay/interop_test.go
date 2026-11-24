@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -215,28 +214,25 @@ func TestTwoControllersRevocationKeepsOtherObserver(t *testing.T) {
 		t.Fatal("执行端被错误撤销")
 	}
 }
-func TestConditionalDeleteAndRestoreGeneration(t *testing.T) {
+func TestDeleteByMachineIDAndRestore(t *testing.T) {
 	f := newFixture(t)
 	runtime := f.runtime(t)
-	remove := func(version int64, want int) {
+	remove := func() {
 		t.Helper()
 		req, _ := http.NewRequestWithContext(t.Context(), "DELETE", f.server.URL+"/api/v1/endpoints/"+runtime.hello.MachineID, nil)
 		req.Header.Set("Authorization", "Bearer "+f.token)
-		req.Header.Set("If-Match", strconv.FormatInt(version, 10))
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode != want {
-			t.Fatalf("DELETE %d: %d %s", version, resp.StatusCode, body)
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("DELETE: %d %s", resp.StatusCode, body)
 		}
 	}
-	version := runtime.ready.RegistrationVersion
-	remove(version-1, 412)
-	remove(version, 204)
-	remove(version, 204)
+	remove()
+	remove()
 	runtime.mux.Close()
 	runtime.data.Close()
 	state, err := f.s.devices.State(t.Context(), f.user, runtime.hello.MachineID)
@@ -251,9 +247,7 @@ func TestConditionalDeleteAndRestoreGeneration(t *testing.T) {
 	if restored.RegistrationVersion <= state.RegistrationVersion {
 		t.Fatal("恢复没有推进登记代次")
 	}
-	remove(version, 412)
-	remove(state.RegistrationVersion, 412)
-	remove(restored.RegistrationVersion, 204)
+	remove()
 }
 func runtimePrincipalWithScopes(f *fixture, r *runtimeFixture) identity.Principal {
 	p := runtimePrincipal(f, r)

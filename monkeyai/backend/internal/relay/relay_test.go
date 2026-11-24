@@ -85,7 +85,6 @@ func TestRelayConnectionProxyRotationAndRevocation(t *testing.T) {
 	}
 	req, _ := http.NewRequestWithContext(ctx, "DELETE", f.server.URL+"/api/v1/endpoints/"+runtime.hello.MachineID, nil)
 	req.Header.Set("Authorization", "Bearer "+f.token)
-	req.Header.Set("If-Match", "1")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
