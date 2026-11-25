@@ -3,23 +3,30 @@ const registeredCallbacks: Record<string, string> = {
   "monkeyai-mobile": "monkeyai-mobile://oauth/callback",
 }
 
-const localWebCallback = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):[1-9]\d{0,4}\/client\/oauth\/callback$/
+const localOrigin = /^(https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):[1-9]\d{0,4})(?:\/|$)/
+
+export function isLocalRedirect(uri: string, origins: readonly string[] = []) {
+  const match = localOrigin.exec(uri)
+  return !!match && !/[?#\\\s]/.test(uri) && origins.includes(match[1])
+}
 
 export function isSafeClientLaunchURL(
   clientID: string,
   redirectURI: string,
   launchURL: string,
   pageURL?: string,
-  localRedirectURIs: readonly string[] = []
+  localRedirectOrigins: readonly string[] = []
 ): boolean {
-  if (clientID === "monkeyai-web") {
+  if (clientID !== "monkeyai-web" && !Object.hasOwn(registeredCallbacks, clientID))
+    return false
+  if (isLocalRedirect(redirectURI, localRedirectOrigins)) {
+    if (!launchURL.startsWith(redirectURI + "?")) return false
+  } else if (clientID === "monkeyai-web") {
     try {
       const expected = new URL("client/oauth/callback", pageURL)
-      const registeredLocal =
-        localRedirectURIs.includes(redirectURI) && localWebCallback.test(redirectURI)
       if (
         !["http:", "https:"].includes(expected.protocol) ||
-        (new URL(redirectURI).href !== expected.href && !registeredLocal) ||
+        new URL(redirectURI).href !== expected.href ||
         !launchURL.startsWith(redirectURI + "?")
       )
         return false

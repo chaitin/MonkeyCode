@@ -62,19 +62,24 @@ test("Web 授权只跳转到当前实例的客户端回调", () => {
   assert.equal(safe(callback, callback + "?state=client-state"), false)
 })
 
-test("本地 Web 回调需要精确登记，且跳转必须与确认地址一致", () => {
+test("授权码客户端共用本机来源，跳转仍绑定原路径", () => {
   const page = "https://ai.example.com/client-login"
-  const local = "http://localhost:5173/client/oauth/callback"
+  const origin = "http://localhost:5173"
+  const local = origin + "/custom/done"
   const query = "?code=one-time-code&state=client-state"
-  const safe = (uri, target, allowed) =>
-    isSafeClientLaunchURL("monkeyai-web", uri, target + query, page, allowed)
-  assert.equal(safe(local, local, []), false)
-  assert.equal(safe(local, local, [local]), true)
-  const other = local.replace("5173", "5174")
-  assert.equal(safe(other, other, [local]), false)
-  assert.equal(safe(local, other, [local]), false)
-  const remote = "https://other.example.com:5173/client/oauth/callback"
-  assert.equal(safe(remote, remote, [remote]), false)
+  for (const client of ["monkeyai-web", "monkeyai-desktop", "monkeyai-mobile"]) {
+    const safe = (uri, target, allowed) =>
+      isSafeClientLaunchURL(client, uri, target + query, page, allowed)
+    assert.equal(safe(local, local, []), false)
+    assert.equal(safe(local, local, [origin]), true)
+    assert.equal(safe(local, origin + "/other", [origin]), false)
+    for (const other of [local.replace("5173", "5174"), local.replace("http:", "https:"), local + "#"]) {
+      assert.equal(safe(other, other, [origin]), false)
+    }
+  }
+  for (const client of ["unknown", "monkeyai-runtime"]) {
+    assert.equal(isSafeClientLaunchURL(client, local, local + query, page, [origin]), false)
+  }
 })
 
 test("unregistered destinations and clients cannot authorize a manual launch link", () => {

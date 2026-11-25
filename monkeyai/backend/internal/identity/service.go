@@ -29,10 +29,10 @@ const webClientID = "monkeyai-web"
 var verifierPattern = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
 
 type Client struct {
-	ID                string   `json:"client_id"`
-	Name              string   `json:"name"`
-	RedirectURI       string   `json:"redirect_uri"`
-	LocalRedirectURIs []string `json:"local_redirect_uris,omitempty"`
+	ID                   string   `json:"client_id"`
+	Name                 string   `json:"name"`
+	RedirectURI          string   `json:"redirect_uri"`
+	LocalRedirectOrigins []string `json:"local_redirect_origins,omitempty"`
 }
 
 var Clients = map[string]Client{
@@ -151,7 +151,7 @@ type Service struct {
 	publicLicense    PublicLicenseReader
 	client           *http.Client
 	publicURL        string
-	webRedirectURIs  []string
+	redirectOrigins  []string
 	secureCookie     bool
 	now              func() time.Time
 	sessionTTL       time.Duration

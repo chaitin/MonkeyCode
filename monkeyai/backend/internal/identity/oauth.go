@@ -135,7 +135,7 @@ func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) clients(w http.ResponseWriter, r *http.Request) {
-	clients := []Client{Clients["monkeyai-desktop"], Clients["monkeyai-mobile"], s.registeredClient(webClientID)}
+	clients := []Client{s.registeredClient("monkeyai-desktop"), s.registeredClient("monkeyai-mobile"), s.registeredClient(webClientID)}
 	if s.deviceEnabled() {
 		clients = append(clients, Clients[RuntimeClientID])
 	}

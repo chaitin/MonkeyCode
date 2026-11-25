@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-func (s *Service) WithWebRedirectURIs(uris []string) *Service {
-	s.webRedirectURIs = slices.Clone(uris)
+func (s *Service) WithRedirectOrigins(origins []string) *Service {
+	s.redirectOrigins = slices.Clone(origins)
 	return s
 }
 
@@ -18,7 +18,9 @@ func (s *Service) registeredClient(id string) Client {
 	client := Clients[id]
 	if id == webClientID && s.publicURL != "" {
 		client.RedirectURI = s.publicURL + "/client/oauth/callback"
-		client.LocalRedirectURIs = s.webRedirectURIs
+	}
+	if client.RedirectURI != "" {
+		client.LocalRedirectOrigins = s.redirectOrigins
 	}
 	return client
 }
@@ -29,17 +31,24 @@ func (s *Service) validClientRedirect(clientID, raw string) bool {
 	if raw == "" || client.RedirectURI == "" {
 		return false
 	}
-	if raw == client.RedirectURI || slices.Contains(client.LocalRedirectURIs, raw) {
+	if raw == client.RedirectURI {
 		return true
 	}
-	if clientID != "monkeyai-desktop" || strings.Contains(raw, "#") {
+	if strings.ContainsAny(raw, "?#\\") {
 		return false
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.EscapedPath() != "/oauth/callback" {
+	if err != nil || u.User != nil || u.Host == "" {
 		if err != nil {
 			slog.Warn("操作失败", "module", "identity", "operation", "validClientRedirect", "error", err)
 		}
+		return false
+	}
+	origin := u.Scheme + "://" + u.Host
+	if slices.Contains(client.LocalRedirectOrigins, origin) && raw == origin+u.EscapedPath() {
+		return true
+	}
+	if clientID != "monkeyai-desktop" || u.Scheme != "http" || u.EscapedPath() != "/oauth/callback" {
 		return false
 	}
 	host, port, err := net.SplitHostPort(u.Host)
