@@ -618,8 +618,6 @@ user 搜索条件过长	The user search query is too long.
 请上传技能 ZIP	Please upload a skill ZIP package.
 请先在计费设置中配置有效的百智云应用和证书	Configure a valid Baizhiyun application and certificates in billing settings first.
 请先完成所选凭证的认证	Authenticate the selected credential first.
-连接配置已变更，请重新授权当前凭证后再试。	The connector configuration has changed. Reauthorize this credential and try again.
-连接配置已变更，请编辑当前凭证并重新提交认证请求头后再试。	The connector configuration has changed. Edit this credential and resubmit its authentication headers before trying again.
 请先完成资源包上传和完整性检查	Complete the resource package upload and integrity checks first.
 请先登录	Please sign in first.
 请先移动或删除子分组	Move or delete the child groups first.

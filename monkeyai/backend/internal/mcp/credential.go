@@ -34,13 +34,6 @@ func requireCredential(c, cred resource.Object) error {
 	if credentialStatus(c, cred) == "authorized" {
 		return nil
 	}
-	if staleCredential(c, cred) {
-		message := "连接配置已变更，请重新授权当前凭证后再试。"
-		if c.String("authorization_method") == "http_header" {
-			message = "连接配置已变更，请编辑当前凭证并重新提交认证请求头后再试。"
-		}
-		return &resource.Error{Status: 403, Code: "authorization_required", Message: message}
-	}
 	return authorizationRequired
 }
 
@@ -50,9 +43,6 @@ func credentialStatus(c, cred resource.Object) string {
 	}
 	if cred["revoked_at"] != nil {
 		return "revoked"
-	}
-	if staleCredential(c, cred) {
-		return "authorization_required"
 	}
 	if c.String("authorization_method") == "http_header" {
 		b, err := json.Marshal(cred["http_headers"])
