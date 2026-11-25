@@ -213,8 +213,12 @@ func TestCredentialIsolation(t *testing.T) {
 	if c.Int("config_revision") != oldRevision+1 {
 		t.Fatal("地址变更未递增配置版本")
 	}
-	if f.call("GET", path+"/credentials/"+b.String("id"), nil, "owner", "", 200).String("authorization_status") != "authorization_required" {
-		t.Fatal("旧凭证仍可用于新配置")
+	credPath := path + "/credentials/" + b.String("id")
+	if f.call("GET", credPath, nil, "owner", "", 200).String("authorization_status") != "authorized" {
+		t.Fatal("地址变更不应要求 HTTP Header 凭证重新授权")
+	}
+	if len(f.call("GET", credPath+"/tools", nil, "owner", "", 200)["items"].([]any)) != 1 {
+		t.Fatal("地址变更后已有凭证无法读取新地址工具目录")
 	}
 }
 func TestHeaderValidation(t *testing.T) {

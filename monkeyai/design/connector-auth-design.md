@@ -217,10 +217,10 @@ UNIQUE NULLS NOT DISTINCT (connector_id, credential_id, name)
 | --- | --- |
 | 名称、描述、图标、资源授权 | 更新相应管理版本，不改变认证上下文 |
 | 连接启停 | 更新管理版本；停用后拒绝新调用，不自动删除凭证 |
-| URL、认证模式、认证方式、OAuth 授权端点、Token 端点、Client ID 或 Scopes | 递增 `config_revision`；旧凭证停止使用、旧工具目录失效、旧 OAuth 事务不能成功写入 |
+| URL、认证模式、认证方式、OAuth 授权端点、Token 端点、Client ID 或 Scopes | 递增 `config_revision`；OAuth 旧凭证停止使用、旧工具目录失效、旧 OAuth 事务不能成功写入；HTTP Header 凭证继续使用，由上游判断有效性 |
 | 同一 OAuth 应用轮换 Client Secret | 更新 Secret 和管理版本；现有 Token 可继续使用，交换和刷新读取新的 Secret |
 
-OAuth 配置规范化后比较，避免仅 JSON 键顺序变化导致凭证失效。关键配置变化的失效与更新在同一事务中完成；不能把旧凭证自动标记为适配新地址。
+OAuth 配置规范化后比较，避免仅 JSON 键顺序变化导致凭证失效。关键配置变化的失效与更新在同一事务中完成。HTTP Header 凭证不因配置版本变化失效，地址变更后按新配置发送，是否仍然可用由上游响应决定；OAuth Token 与授权时的连接配置绑定，版本不匹配时必须重新授权。
 
 独立模式和集中模式之间切换时，撤销旧模式凭证，禁止把个人凭证改成共享凭证或反向转移归属。其他配置变更后，可以明确更新或重新授权原凭证以适配新版本；已撤销凭证不能通过旧回调恢复。
 
@@ -241,8 +241,8 @@ OAuth 配置规范化后比较，避免仅 JSON 键顺序变化导致凭证失�
 
 认证状态和测试状态分开：
 
-- `authorization_status=authorized`：Header 已配置，或 OAuth Token 仍有效、或存在可尝试刷新的 Refresh Token。该状态不承诺上游当前可达。
-- `authorization_status=authorization_required`：配置版本不匹配、认证内容缺失，或 OAuth Token 已过期且没有刷新能力。
+- `authorization_status=authorized`：Header 已配置（连接配置变更后仍然成立），或 OAuth Token 仍有效、或存在可尝试刷新的 Refresh Token。该状态不承诺上游当前可达。
+- `authorization_status=authorization_required`：OAuth 配置版本不匹配、认证内容缺失，或 OAuth Token 已过期且没有刷新能力。
 - `authorization_status=revoked`：凭证已撤销；常规可选列表不包含它。
 - `authorization_status=not_required`：仅用于免认证连接。
 - `connection_status` 表示最近测试结果，使用 `unknown` / `connected` / `error`，不充当实时认证判断或唯一调用门槛。
@@ -563,7 +563,7 @@ MCP 请求中的业务错误保持 HTTP 状态，并在 JSON-RPC `error.data.cod
 
 1. 汇总专家关联连接和显式选择的连接，逐项检查当前用户的访问权限。
 2. 免认证或集中认证直接解析连接级上下文。
-3. 独立认证显式绑定时验证凭证归属、撤销和配置版本；绑定无效时返回错误，不替换为另一份凭证。
+3. 独立认证显式绑定时验证凭证归属和撤销状态，OAuth 凭证还要求配置版本匹配；绑定无效时返回错误，不替换为另一份凭证。
 4. 未绑定时，只有一份已配置且当前版本可用的凭证可以自动选定。零份提示认证，多份提示选择；不根据最近使用时间或名称推断。
 5. 必需连接未就绪时，`available=false`，返回包含 `connector_id` 的问题，例如 `authorization_required`、`credential_selection_required` 或 `missing_connector`。可选连接未就绪则返回非阻断提示并跳过；用户显式选择的额外连接按必需项处理。
 6. 选定后返回具体 `credential_id`、该上下文工具及网关地址，按专家工具过滤规则生成清单。会话记录该绑定，不在每次请求时重新自动选择。
