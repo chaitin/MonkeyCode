@@ -31,7 +31,7 @@ func (s *Service) WithStorage(storage resource.Storage) *Service {
 
 func NewService(store *resource.Store) *Service {
 	s := &Service{Store: store}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "enabled"}, UserFields: []string{"name", "description", "prompt", "rule_ids", "skill_ids", "connectors", "tag_ids", avatarChangeKey}, UserDecorate: func(o resource.Object) {
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "enabled"}, UserFields: []string{"name", "description", "prompt", "rule_ids", "skill_ids", "knowledge_base_ids", "connectors", "tag_ids", avatarChangeKey}, UserDecorate: func(o resource.Object) {
 		if path := o.String("avatar_path"); path != "" {
 			o["avatar_path"] = strings.Replace(path, "/api/admin/v1/", "/api/v1/", 1)
 		}
@@ -77,10 +77,17 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 		return resource.InvalidCode("expert_prompt_required", "专家 Prompt 不能为空")
 	}
 	queries := sqlc.New(tx)
+	if raw, ok := in["knowledge_base_ids"]; ok {
+		ids, err := knowledgeIDs(raw)
+		if err != nil {
+			return err
+		}
+		in["knowledge_base_ids"] = ids
+	}
 	for _, link := range []struct {
 		key, kind string
 		lock      func(context.Context, string) ([]byte, error)
-	}{{"rule_ids", "rule", queries.LockRule}, {"skill_ids", "skill", queries.LockSkill}, {"connectors", "connector", queries.LockConnector}} {
+	}{{"rule_ids", "rule", queries.LockRule}, {"skill_ids", "skill", queries.LockSkill}, {"connectors", "connector", queries.LockConnector}, {"knowledge_base_ids", "kb", queries.LockKnowledgeBase}} {
 		ids := resource.Strings(in[link.key])
 		if link.kind == "connector" {
 			ids = nil
@@ -101,7 +108,7 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 				}
 				return err
 			}
-			ok := o.String("ownership_type") == "system"
+			ok := o.String("ownership_type") == "system" && (link.kind != "kb" || o.Bool("enabled"))
 			if personal {
 				ok, err = resource.Accessible(ctx, tx, link.kind, o, in.String("actor_id"))
 				if err != nil {
@@ -118,6 +125,10 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 
 func (s *Service) RegisterAgent(r chi.Router) {
 	s.CRUD.RegisterAgent(r)
+	r.Get("/experts/knowledge-support", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		resource.JSON(req.Context(), w, http.StatusOK, resource.Object{"version": 1, "available": true})
+	})
 	r.Get("/experts/avatar-support", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
 		resource.JSON(req.Context(), w, http.StatusOK, resource.Object{"version": 1, "available": s.storage != nil})
@@ -147,6 +158,14 @@ func (s *Service) links(ctx context.Context, tx pgx.Tx, in resource.Object) erro
 	queries := sqlc.New(tx)
 	if avatar, ok := in[avatarChangeKey].(*avatarChange); ok {
 		if err := queries.SetAvatar(ctx, sqlc.SetAvatarParams{ID: in.String("id"), AvatarS3Key: avatar.key}); err != nil {
+			return err
+		}
+	}
+	if ids, ok := in["knowledge_base_ids"].([]string); ok {
+		if err := queries.DeleteKnowledgeLinks(ctx, in.String("id")); err != nil {
+			return err
+		}
+		if err := queries.CreateKnowledgeLinks(ctx, sqlc.CreateKnowledgeLinksParams{ExpertID: in.String("id"), KbIds: ids}); err != nil {
 			return err
 		}
 	}
@@ -203,6 +222,11 @@ func (s *Service) decorate(ctx context.Context, q resource.Queryer, o resource.O
 		return err
 	}
 	o["rule_ids"], o["skill_ids"] = rules, skills
+	books, err := queries.ListKnowledgeIDs(ctx, o.String("id"))
+	if err != nil {
+		return err
+	}
+	o["knowledge_base_ids"] = books
 	if key := o.String("avatar_s3_key"); key != "" {
 		o["avatar_path"] = "/api/admin/v1/experts/" + o.String("id") + "/avatar?v=" + resource.Hash(key)
 	}

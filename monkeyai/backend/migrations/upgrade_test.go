@@ -82,6 +82,7 @@ func TestUpgradeFrom14(t *testing.T) {
 		"26/u endpoint_platform_text", "31/u session_client_runtime_add",
 		"35/u billing_activity_lock_retry", "36/u user_profile_add", "37/u oauth_pairing", "38/u embedding_model", "39/u create_kb_tables", "40/u cloud_environments", "41/u kb_permissions",
 		"42/u mcp_live_tools", "43/u mcp_network_settings", "44/u connector_skip_tls_verify", "45/u environment_soft_delete",
+		"61/u expert_knowledge",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -102,7 +103,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != latest || latest != 60 || dirty {
+	if version != latest || latest != 61 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string

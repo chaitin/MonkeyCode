@@ -662,7 +662,7 @@ WITH RECURSIVE user_groups(id) AS (
     JOIN groups p ON p.id = g.parent_id WHERE p.deleted_at IS NULL
 )
 SELECT COALESCE(max(CASE WHEN r.access_level = 'read_write' THEN 2 ELSE 1 END), 0)::integer AS level
-FROM resource_access_grants r
+FROM effective_resource_grants r
 WHERE r.resource_type = 'kb' AND r.resource_id = $1::uuid
   AND (r.user_id = $2::uuid OR r.all_users OR r.group_id IN (SELECT id FROM user_groups))
   AND EXISTS (SELECT 1 FROM users u WHERE u.id = $2::uuid AND u.status = 'active' AND u.deleted_at IS NULL)

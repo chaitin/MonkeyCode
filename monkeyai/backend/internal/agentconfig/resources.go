@@ -77,6 +77,9 @@ func (r *Resources) loadCatalog(ctx context.Context, q resource.Queryer, user, k
 			{"expert_rules", "rules", "rule_id", func(ctx context.Context) ([][]byte, error) {
 				return queries.CatalogRuleLinks(ctx, sqlc.CatalogRuleLinksParams{AllResources: all, ExpertIds: experts})
 			}},
+			{"expert_knowledge_bases", "kb", "id", func(ctx context.Context) ([][]byte, error) {
+				return queries.CatalogKnowledgeLinks(ctx, sqlc.CatalogKnowledgeLinksParams{AllResources: all, ExpertIds: experts, SystemAccess: systemAccess})
+			}},
 			{"expert_skills", "skills", "skill_id", func(ctx context.Context) ([][]byte, error) {
 				return queries.CatalogSkillLinks(ctx, sqlc.CatalogSkillLinksParams{AllResources: all, ExpertIds: experts})
 			}},
@@ -383,8 +386,13 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 	resource.Stable(rules)
 	resource.Stable(skills)
 	resource.Stable(connectors)
+	books, missing := c.expertKnowledge(expert, user)
+	if missing {
+		issues = append(issues, missingKnowledgeIssue())
+	}
 	slices.SortFunc(issues, func(a, b resource.Object) int { return strings.Compare(resource.Hash(a), resource.Hash(b)) })
 	out := resource.Object{"expert_id": expert, "name": e["name"], "description": e["description"], "name_i18n": e["name_i18n"], "description_i18n": e["description_i18n"], "prompt": e["prompt"], "rules": rules, "skills": skills, "connectors": connectors, "issues": issues, "available": true}
+	out["knowledge_base_ids"] = books
 	if key := e.String("avatar_s3_key"); key != "" {
 		out["avatar_path"] = "/api/v1/experts/" + expert + "/avatar?v=" + resource.Hash(key)
 	}

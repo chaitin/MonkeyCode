@@ -13,6 +13,21 @@ type connectorSummary struct {
 	ready   bool
 }
 
+func (c catalog) expertKnowledge(id, user string) ([]string, bool) {
+	books := []string{}
+	links := c.links[id+":expert_knowledge_bases"]
+	for _, kb := range links {
+		if c.allowed("kb", kb, user) {
+			books = append(books, kb.String("id"))
+		}
+	}
+	return books, len(books) != len(links)
+}
+
+func missingKnowledgeIssue() resource.Object {
+	return resource.Object{"code": "knowledge_access_missing", "blocking": false}
+}
+
 func (r *Resources) expertSummary(ctx context.Context, q resource.Queryer, c catalog, id, user string) (resource.Object, error) {
 	e := c.experts[id]
 	if !c.allowed("expert", e, user) {
@@ -20,6 +35,13 @@ func (r *Resources) expertSummary(ctx context.Context, q resource.Queryer, c cat
 	}
 	versions := map[string]any{"expert": []any{id, e["revision"]}}
 	issues := []resource.Object{}
+	books, missing := c.expertKnowledge(id, user)
+	if len(books) > 0 {
+		versions["knowledge_base_ids"] = books
+	}
+	if missing {
+		issues = append(issues, missingKnowledgeIssue())
+	}
 	available := true
 	issue := func(code string, blocking bool, connector string) {
 		v := resource.Object{"code": code, "blocking": blocking}

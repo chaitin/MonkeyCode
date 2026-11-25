@@ -31,7 +31,7 @@ SELECT
     jsonb_build_object('kind', resource_type, 'id', resource_id, 'required',
 	bool_or(usage_requirement = 'required'))
 FROM
-    resource_access_grants rag
+    effective_resource_grants rag
 WHERE
     (rag.all_users AND EXISTS (
         SELECT 1 FROM users u WHERE u.id = sqlc.narg(user_id) AND u.status = 'active' AND u.deleted_at IS NULL
@@ -172,6 +172,13 @@ FROM expert_rules t
 WHERE sqlc.arg(all_resources)::boolean
     OR expert_id::text = ANY(sqlc.arg(expert_ids)::text[])
 ORDER BY expert_id;
+
+-- name: CatalogKnowledgeLinks :many
+SELECT jsonb_build_object('expert_id', x.expert_id, 'id', k.id, 'owner_user_id', k.owner_user_id,
+    'ownership_type', k.ownership_type, 'enabled', k.enabled AND (k.ownership_type <> 'system' OR sqlc.arg(system_access)::boolean))
+FROM expert_knowledge_bases x JOIN knowledge_bases k ON k.id = x.kb_id
+WHERE sqlc.arg(all_resources)::boolean OR x.expert_id::text = ANY(sqlc.arg(expert_ids)::text[])
+ORDER BY x.expert_id, k.id;
 
 -- name: CatalogSkillLinks :many
 SELECT to_jsonb(t)

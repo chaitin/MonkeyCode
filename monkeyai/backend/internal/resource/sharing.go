@@ -84,8 +84,13 @@ func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
-		if err := s.Share(r.Context(), user.ID, input, r.Method == http.MethodDelete, kinds); err != nil {
+		var skipped []Object
+		if err := s.share(r.Context(), user.ID, input, r.Method == http.MethodDelete, kinds, &skipped); err != nil {
 			Fail(r.Context(), w, err)
+			return
+		}
+		if len(skipped) > 0 {
+			JSON(r.Context(), w, http.StatusOK, Object{"unshared_knowledge_bases": skipped})
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -95,6 +100,10 @@ func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
 }
 
 func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revoke bool, kinds map[string]Shareable) error {
+	return s.share(ctx, actor, input, revoke, kinds, nil)
+}
+
+func (s *Store) share(ctx context.Context, actor string, input ShareInput, revoke bool, kinds map[string]Shareable, skipped *[]Object) error {
 	if len(input.Resources) == 0 || len(input.Resources) > 100 || len(input.UserIDs)+len(input.GroupIDs) == 0 || len(input.UserIDs)+len(input.GroupIDs) > 100 {
 		return InvalidCode("sharing_invalid", "resources 必须包含 1—100 项，user_ids 和 group_ids 合计必须包含 1—100 项")
 	}
@@ -167,9 +176,13 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 		}
 	}
 	// 固定加锁顺序，批量授权和删除共享资源行锁。
+	var experts []string
 	for _, item := range input.Resources {
 		if err := kinds[item.Type].LockOwned(ctx, tx, item.ID, actor); err != nil {
 			return err
+		}
+		if item.Type == "expert" {
+			experts = append(experts, item.ID)
 		}
 	}
 	if !revoke && len(input.UserIDs) > 0 {
@@ -229,6 +242,23 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 		}
 		if err = Audit(ctx, tx, actor, item.Type, item.ID, action); err != nil {
 			return err
+		}
+	}
+	if !revoke && skipped != nil && len(experts) > 0 {
+		books, err := DecodeObjects(sqlc.New(tx).UnshareableExpertKnowledge(ctx, experts))
+		if err != nil {
+			return err
+		}
+		for _, book := range books {
+			ok, err := Accessible(ctx, tx, "kb", book, actor)
+			if err != nil {
+				return err
+			}
+			name := "不可访问的知识库"
+			if ok {
+				name = book.String("name")
+			}
+			*skipped = append(*skipped, Object{"id": book.String("id"), "name": name, "reason": "cannot_manage_visibility"})
 		}
 	}
 	return tx.Commit(ctx)
