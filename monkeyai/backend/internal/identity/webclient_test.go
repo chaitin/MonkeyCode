@@ -36,6 +36,7 @@ func TestWebClientUsesInstanceCallback(t *testing.T) {
 		t.Fatal("其他实例接受了本实例的回调")
 	}
 	for _, invalid := range []string{
+		"http://localhost:5173/client/oauth/callback",
 		"https://ai.example.com/client/oauth/callback", "http://ai.example.com:18443/client/oauth/callback",
 		"/client/oauth/callback", "monkeyai-desktop://oauth/callback", "http://localhost:54321/oauth/callback",
 		callback + "/", callback + "?", callback + "#fragment",

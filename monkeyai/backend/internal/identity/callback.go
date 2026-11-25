@@ -4,14 +4,21 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
+
+func (s *Service) WithWebRedirectURIs(uris []string) *Service {
+	s.webRedirectURIs = slices.Clone(uris)
+	return s
+}
 
 func (s *Service) registeredClient(id string) Client {
 	client := Clients[id]
 	if id == webClientID && s.publicURL != "" {
 		client.RedirectURI = s.publicURL + "/client/oauth/callback"
+		client.LocalRedirectURIs = s.webRedirectURIs
 	}
 	return client
 }
@@ -22,7 +29,7 @@ func (s *Service) validClientRedirect(clientID, raw string) bool {
 	if raw == "" || client.RedirectURI == "" {
 		return false
 	}
-	if raw == client.RedirectURI {
+	if raw == client.RedirectURI || slices.Contains(client.LocalRedirectURIs, raw) {
 		return true
 	}
 	if clientID != "monkeyai-desktop" || strings.Contains(raw, "#") {

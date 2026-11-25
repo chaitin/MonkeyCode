@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,7 @@ type Config struct {
 	Database
 	Design
 	RuntimeDesktopOrigins        []string
+	WebOAuthRedirectURIs         []string
 	RuntimeRelay                 bool
 	RuntimeStateDir              string
 	RuntimeServerID              string
@@ -124,6 +126,10 @@ func Load(args []string) (Config, error) {
 	if err := parseFlags(args, &cfg, &logLevel); err != nil {
 		return Config{}, fmt.Errorf("解析启动参数: %w", err)
 	}
+	cfg.WebOAuthRedirectURIs, err = parseWebRedirectURIs(os.Getenv("MONKEYAI_WEB_OAUTH_REDIRECT_URIS"))
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg.Addr = strings.TrimSpace(cfg.Addr)
 	if cfg.Addr == "" {
@@ -169,6 +175,28 @@ func Load(args []string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+var localWebCallback = regexp.MustCompile(`^https?://(localhost|127\.0\.0\.1|\[::1\]):([1-9][0-9]{0,4})/client/oauth/callback$`)
+
+func parseWebRedirectURIs(value string) ([]string, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	var uris []string
+	for _, raw := range strings.Split(value, ",") {
+		uri := strings.TrimSpace(raw)
+		match := localWebCallback.FindStringSubmatch(uri)
+		if match != nil {
+			port, _ := strconv.Atoi(match[2])
+			if port <= 65535 {
+				uris = append(uris, uri)
+				continue
+			}
+		}
+		return nil, errors.New("MONKEYAI_WEB_OAUTH_REDIRECT_URIS 必须是以逗号分隔的本机 HTTP(S) 回调，显式指定端口 1–65535 和路径 /client/oauth/callback")
+	}
+	return uris, nil
 }
 
 func envOr(key, fallback string) string {

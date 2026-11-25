@@ -62,6 +62,21 @@ test("Web 授权只跳转到当前实例的客户端回调", () => {
   assert.equal(safe(callback, callback + "?state=client-state"), false)
 })
 
+test("本地 Web 回调需要精确登记，且跳转必须与确认地址一致", () => {
+  const page = "https://ai.example.com/client-login"
+  const local = "http://localhost:5173/client/oauth/callback"
+  const query = "?code=one-time-code&state=client-state"
+  const safe = (uri, target, allowed) =>
+    isSafeClientLaunchURL("monkeyai-web", uri, target + query, page, allowed)
+  assert.equal(safe(local, local, []), false)
+  assert.equal(safe(local, local, [local]), true)
+  const other = local.replace("5173", "5174")
+  assert.equal(safe(other, other, [local]), false)
+  assert.equal(safe(local, other, [local]), false)
+  const remote = "https://other.example.com:5173/client/oauth/callback"
+  assert.equal(safe(remote, remote, [remote]), false)
+})
+
 test("unregistered destinations and clients cannot authorize a manual launch link", () => {
   for (const redirect of [
     "https://oauth-audit.invalid/callback",

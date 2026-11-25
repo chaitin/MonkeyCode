@@ -287,7 +287,7 @@ func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, authenticated := s.BrowserUser(r)
-	client := Clients[request.ClientID]
+	client := s.registeredClient(request.ClientID)
 	client.RedirectURI = request.RedirectURI
 	scopes := request.Scopes
 	if scopes == nil {

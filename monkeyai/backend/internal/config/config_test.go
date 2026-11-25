@@ -2,9 +2,28 @@ package config
 
 import (
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 )
+
+func TestWebOAuthRedirectURIs(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://test")
+	const key = "MONKEYAI_WEB_OAUTH_REDIRECT_URIS"
+	const local = "http://localhost:5173/client/oauth/callback"
+	const ipv6 = "https://[::1]:8080/client/oauth/callback"
+	t.Setenv(key, local+", "+ipv6)
+	cfg, err := Load(nil)
+	if err != nil || !slices.Equal(cfg.WebOAuthRedirectURIs, []string{local, ipv6}) {
+		t.Fatalf("读取本机回调失败: %v %v", cfg.WebOAuthRedirectURIs, err)
+	}
+	for _, invalid := range []string{"https://example.com:5173", "http://localhost", "http://localhost:65536", "http://user@localhost:5173", "http://*.localhost:5173"} {
+		t.Setenv(key, local+","+invalid+"/client/oauth/callback")
+		if _, err := Load(nil); err == nil {
+			t.Errorf("接受了无效配置 %s", invalid)
+		}
+	}
+}
 
 func TestRuntimeRelayDefaultsAndDisable(t *testing.T) {
 	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://test")

@@ -170,10 +170,13 @@ func TestRegisteredCallbackConsentAndPKCERoundTrip(t *testing.T) {
 	s := NewService(pool, authenticationStub{json.RawMessage(`{}`)}, "https://ai.example.com")
 	user := grantUser(t, s)
 	cookie := &http.Cookie{Name: sessionCookie, Value: "callback-roundtrip"}
+	const local = "http://localhost:5173/client/oauth/callback"
+	s.WithWebRedirectURIs([]string{local})
 	if err := s.createBrowserSession(t.Context(), user.ID, tokenHash(cookie.Value), "password", time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ client, redirect string }{
+		{"monkeyai-web", local},
 		{"monkeyai-web", "https://ai.example.com/client/oauth/callback"},
 		{"monkeyai-desktop", "monkeyai-desktop://oauth/callback"},
 		{"monkeyai-mobile", "monkeyai-mobile://oauth/callback"},
@@ -198,6 +201,9 @@ func TestRegisteredCallbackConsentAndPKCERoundTrip(t *testing.T) {
 			}
 			if err := json.Unmarshal(metadataResponse.Body.Bytes(), &metadata); err != nil || !metadata.Required || metadata.CSRF == "" || metadata.Client.RedirectURI != tc.redirect {
 				t.Fatalf("incorrect destination/consent: %s %v", metadataResponse.Body.String(), err)
+			}
+			if tc.redirect == local && (len(metadata.Client.LocalRedirectURIs) != 1 || metadata.Client.LocalRedirectURIs[0] != local) {
+				t.Fatal("确认页未收到已登记的本机回调")
 			}
 			complete := httptest.NewRequest(http.MethodPost, "/client-requests/"+request.ID+"/complete", strings.NewReader(`{"approved_scopes":[]}`))
 			complete.AddCookie(cookie)
