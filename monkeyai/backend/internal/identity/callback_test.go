@@ -174,6 +174,7 @@ func TestRegisteredCallbackConsentAndPKCERoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ client, redirect string }{
+		{"monkeyai-web", "https://ai.example.com/client/oauth/callback"},
 		{"monkeyai-desktop", "monkeyai-desktop://oauth/callback"},
 		{"monkeyai-mobile", "monkeyai-mobile://oauth/callback"},
 		{"monkeyai-desktop", "http://127.0.0.1:54321/oauth/callback"},

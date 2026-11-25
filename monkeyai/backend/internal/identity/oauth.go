@@ -135,7 +135,7 @@ func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) clients(w http.ResponseWriter, r *http.Request) {
-	clients := []Client{Clients["monkeyai-desktop"], Clients["monkeyai-mobile"]}
+	clients := []Client{Clients["monkeyai-desktop"], Clients["monkeyai-mobile"], s.registeredClient(webClientID)}
 	if s.deviceEnabled() {
 		clients = append(clients, Clients[RuntimeClientID])
 	}
@@ -273,7 +273,7 @@ func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request, err := s.authorizationRequest(r.Context(), chi.URLParam(r, "requestID"))
-	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) || !validClientRedirect(request.ClientID, request.RedirectURI) {
+	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) || !s.validClientRedirect(request.ClientID, request.RedirectURI) {
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询客户端授权请求失败", "module", "identity", "operation", "clientRequest", "request_id", chi.URLParam(r, "requestID"), "error", err)
 		}
@@ -360,7 +360,7 @@ func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request, err := s.authorizationRequest(r.Context(), requestID)
-	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) || !validClientRedirect(request.ClientID, request.RedirectURI) {
+	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) || !s.validClientRedirect(request.ClientID, request.RedirectURI) {
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询上游登录授权请求失败", "module", "identity", "operation", "startUpstream", "request_id", requestID, "error", err)
 		}

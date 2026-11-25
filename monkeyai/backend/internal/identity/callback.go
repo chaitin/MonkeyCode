@@ -8,11 +8,18 @@ import (
 	"strings"
 )
 
-// Native applications use their registered URI. Desktop loopback listeners may
-// choose a port, but cannot change the host, protocol or callback path.
-func validClientRedirect(clientID, raw string) bool {
-	client, ok := Clients[clientID]
-	if !ok || raw == "" || client.RedirectURI == "" {
+func (s *Service) registeredClient(id string) Client {
+	client := Clients[id]
+	if id == webClientID && s.publicURL != "" {
+		client.RedirectURI = s.publicURL + "/client/oauth/callback"
+	}
+	return client
+}
+
+// 仅桌面客户端的本机监听回调允许使用动态端口。
+func (s *Service) validClientRedirect(clientID, raw string) bool {
+	client := s.registeredClient(clientID)
+	if raw == "" || client.RedirectURI == "" {
 		return false
 	}
 	if raw == client.RedirectURI {

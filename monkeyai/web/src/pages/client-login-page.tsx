@@ -139,7 +139,8 @@ export function ClientLoginPage() {
         !isSafeClientLaunchURL(
           request.client.client_id,
           request.client.redirect_uri,
-          launch_url
+          launch_url,
+          window.location.href
         )
       ) {
         throw new Error("授权回调地址校验失败，请从客户端重新发起登录。")

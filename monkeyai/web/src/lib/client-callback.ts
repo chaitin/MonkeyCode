@@ -3,16 +3,25 @@ const registeredCallbacks: Record<string, string> = {
   "monkeyai-mobile": "monkeyai-mobile://oauth/callback",
 }
 
-// Mirror the server's native/loopback destinations, and bind the issued URL to
-// the destination shown on the confirmation page. Never navigate arbitrary URLs.
 export function isSafeClientLaunchURL(
   clientID: string,
   redirectURI: string,
-  launchURL: string
+  launchURL: string,
+  pageURL?: string
 ): boolean {
-  const registered = registeredCallbacks[clientID]
-  if (!registered) return false
-  if (redirectURI !== registered) {
+  if (clientID === "monkeyai-web") {
+    try {
+      const expected = new URL("client/oauth/callback", pageURL)
+      if (
+        !["http:", "https:"].includes(expected.protocol) ||
+        new URL(redirectURI).href !== expected.href ||
+        !launchURL.startsWith(redirectURI + "?")
+      )
+        return false
+    } catch {
+      return false
+    }
+  } else if (redirectURI !== registeredCallbacks[clientID]) {
     if (clientID !== "monkeyai-desktop") return false
     const loopback =
       /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):([1-9]\d{0,4})\/oauth\/callback$/.exec(

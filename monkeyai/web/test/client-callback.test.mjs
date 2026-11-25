@@ -42,6 +42,26 @@ test("授权链接仅允许当前客户端已登记的回调地址", () => {
   }
 })
 
+test("Web 授权只跳转到当前实例的客户端回调", () => {
+  const page = "https://ai.example.com:18443/client-login?request_id=test"
+  const callback = "https://ai.example.com:18443/client/oauth/callback"
+  const query = "?code=one-time-code&state=client-state"
+  const safe = (redirect, launch) =>
+    isSafeClientLaunchURL("monkeyai-web", redirect, launch, page)
+  assert.equal(safe(callback, callback + query), true)
+  for (const other of [
+    "https://ai.example.com/client/oauth/callback",
+    "https://control.example.com:18443/client/oauth/callback",
+    "https://ai.example.com:18443/oauth/callback",
+    "monkeyai-desktop://oauth/callback",
+    "http://localhost:54321/oauth/callback",
+  ]) {
+    assert.equal(safe(other, other + query), false)
+    assert.equal(safe(callback, other + query), false)
+  }
+  assert.equal(safe(callback, callback + "?state=client-state"), false)
+})
+
 test("unregistered destinations and clients cannot authorize a manual launch link", () => {
   for (const redirect of [
     "https://oauth-audit.invalid/callback",
