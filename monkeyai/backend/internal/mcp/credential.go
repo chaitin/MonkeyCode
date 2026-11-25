@@ -30,18 +30,9 @@ func staleCredential(c, cred resource.Object) bool {
 	return cred != nil && cred["revoked_at"] == nil && c.Int("config_revision") != cred.Int("config_revision")
 }
 
-// HTTP Header 凭证跟随连接配置，新配置下是否仍然有效由上游判断；
-// OAuth Token 与授权时的配置绑定，配置版本不一致时必须重新授权。
-func reauthorizationRequired(c, cred resource.Object) bool {
-	return staleCredential(c, cred) && c.String("authorization_method") != "http_header"
-}
-
 func requireCredential(c, cred resource.Object) error {
 	if credentialStatus(c, cred) == "authorized" {
 		return nil
-	}
-	if reauthorizationRequired(c, cred) {
-		return &resource.Error{Status: 403, Code: "authorization_required", Message: "连接配置已变更，请重新授权当前凭证后再试。"}
 	}
 	return authorizationRequired
 }
@@ -52,9 +43,6 @@ func credentialStatus(c, cred resource.Object) string {
 	}
 	if cred["revoked_at"] != nil {
 		return "revoked"
-	}
-	if reauthorizationRequired(c, cred) {
-		return "authorization_required"
 	}
 	if c.String("authorization_method") == "http_header" {
 		b, err := json.Marshal(cred["http_headers"])
