@@ -33,13 +33,18 @@ import { Marker, MarkerContent } from "@/components/ui/marker"
 import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
 import type { AuthUser } from "@/lib/auth-context"
-import { isSafeClientLaunchURL } from "@/lib/client-callback"
+import { isLocalRedirect, isSafeClientLaunchURL } from "@/lib/client-callback"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 type Provider = { id: string; provider: string; name: string }
 type ClientRequest = {
   request_id: string
-  client: { client_id: string; name: string; redirect_uri: string }
+  client: {
+    client_id: string
+    name: string
+    redirect_uri: string
+    local_redirect_origins?: string[]
+  }
   authenticated: boolean
   user: AuthUser | null
   providers: Provider[]
@@ -139,7 +144,9 @@ export function ClientLoginPage() {
         !isSafeClientLaunchURL(
           request.client.client_id,
           request.client.redirect_uri,
-          launch_url
+          launch_url,
+          window.location.href,
+          request.client.local_redirect_origins
         )
       ) {
         throw new Error("授权回调地址校验失败，请从客户端重新发起登录。")
@@ -349,6 +356,9 @@ export function ClientLoginPage() {
                   </dd>
                 </div>
               </dl>
+              {isLocalRedirect(request.client.redirect_uri, request.client.local_redirect_origins) && (
+                <p className="break-all text-sm">授权后将返回本机地址：{request.client.redirect_uri}</p>
+              )}
               <div className="space-y-2">
                 <Button
                   type="submit"

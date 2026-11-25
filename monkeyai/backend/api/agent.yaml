@@ -779,16 +779,16 @@ paths:
   /oauth/authorize:
     get:
       summary: 创建安装登录授权请求
-      description: 回调仅允许客户端已登记的应用 URI；Desktop 另允许 http://localhost:端口/oauth/callback、http://127.0.0.1:端口/oauth/callback 或 http://[::1]:端口/oauth/callback，端口必须为 1–65535，禁止用户信息、查询参数和片段。所有登录均要求浏览器明确确认和 CSRF 校验；启用远程中转时，Desktop 省略 scope 或传空字符串时使用默认远程执行权限；纯空白 scope 返回 invalid_scope。旧 token 不自动扩权，兑换和刷新不能扩大权限。
+      description: 回调仅允许客户端已登记的应用 URI；Web 默认使用本实例对外地址加 /client/oauth/callback；所有授权码客户端均可使用 MONKEYAI_OAUTH_REDIRECT_ORIGINS 显式登记的本机来源，路径由客户端指定，兑换时仍须提交原完整回调；Desktop 另允许 http://localhost:端口/oauth/callback、http://127.0.0.1:端口/oauth/callback 或 http://[::1]:端口/oauth/callback，端口必须为 1–65535，禁止用户信息、查询参数和片段。所有登录均要求浏览器明确确认和 CSRF 校验；启用远程中转时，Desktop 省略 scope 或传空字符串时使用默认远程执行权限；纯空白 scope 返回 invalid_scope。旧 token 不自动扩权，兑换和刷新不能扩大权限。
       security: []
       parameters:
         - {name: response_type, in: query, required: true, schema: {type: string, const: code}}
-        - {name: client_id, in: query, required: true, schema: {type: string, enum: [monkeyai-desktop, monkeyai-mobile]}}
+        - {name: client_id, in: query, required: true, schema: {type: string, enum: [monkeyai-desktop, monkeyai-mobile, monkeyai-web]}}
         - {name: redirect_uri, in: query, required: true, schema: {type: string}}
         - {name: state, in: query, required: true, schema: {type: string}}
         - {name: code_challenge, in: query, required: true, schema: {type: string}}
         - {name: code_challenge_method, in: query, required: true, schema: {type: string, const: S256}}
-        - {name: scope, in: query, schema: {type: string, maxLength: 1024}, description: 空格分隔；Mobile 不允许 device:bind、device:publish、session:report。}
+        - {name: scope, in: query, schema: {type: string, maxLength: 1024}, description: 空格分隔；Mobile 和 Web 不允许 device:bind、device:publish、session:report。}
         - {name: audience, in: query, schema: {type: string, const: monkeyai-api, default: monkeyai-api}}
       responses:
         '302': {description: 跳转浏览器登录和授权确认页面}
@@ -808,7 +808,7 @@ paths:
               required: [grant_type, client_id]
               properties:
                 grant_type: {type: string, enum: [authorization_code, refresh_token, 'urn:ietf:params:oauth:grant-type:device_code', 'urn:monkeyai:params:oauth:grant-type:pairing_code']}
-                client_id: {type: string, enum: [monkeyai-desktop, monkeyai-mobile, monkeyai-runtime]}
+                client_id: {type: string, enum: [monkeyai-desktop, monkeyai-mobile, monkeyai-web, monkeyai-runtime]}
                 device_code: {type: string}
                 code: {type: string}
                 redirect_uri: {type: string}

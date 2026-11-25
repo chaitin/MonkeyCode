@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,7 @@ type Config struct {
 	Database
 	Design
 	RuntimeDesktopOrigins        []string
+	OAuthRedirectOrigins         []string
 	RuntimeRelay                 bool
 	RuntimeStateDir              string
 	RuntimeServerID              string
@@ -124,6 +126,10 @@ func Load(args []string) (Config, error) {
 	if err := parseFlags(args, &cfg, &logLevel); err != nil {
 		return Config{}, fmt.Errorf("解析启动参数: %w", err)
 	}
+	cfg.OAuthRedirectOrigins, err = parseRedirectOrigins(os.Getenv("MONKEYAI_OAUTH_REDIRECT_ORIGINS"))
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg.Addr = strings.TrimSpace(cfg.Addr)
 	if cfg.Addr == "" {
@@ -169,6 +175,28 @@ func Load(args []string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+var localRedirectOrigin = regexp.MustCompile(`^https?://(localhost|127\.0\.0\.1|\[::1\]):([1-9][0-9]{0,4})$`)
+
+func parseRedirectOrigins(value string) ([]string, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	var origins []string
+	for _, raw := range strings.Split(value, ",") {
+		origin := strings.TrimSuffix(strings.TrimSpace(raw), "/")
+		match := localRedirectOrigin.FindStringSubmatch(origin)
+		if match != nil {
+			port, _ := strconv.Atoi(match[2])
+			if port <= 65535 {
+				origins = append(origins, origin)
+				continue
+			}
+		}
+		return nil, errors.New("MONKEYAI_OAUTH_REDIRECT_ORIGINS 必须是以逗号分隔的本机 HTTP(S) 来源，须指定端口 1–65535，不含路径、查询或片段")
+	}
+	return origins, nil
 }
 
 func envOr(key, fallback string) string {

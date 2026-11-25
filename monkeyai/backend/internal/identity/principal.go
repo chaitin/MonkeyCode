@@ -85,7 +85,7 @@ func parseScopes(clientID, value string) ([]string, error) {
 		if scope == AccountResources && clientID != RuntimeClientID {
 			return nil, oauthError("invalid_scope", "此委托权限仅用于设备授权")
 		}
-		if clientID == "monkeyai-mobile" && slices.Contains([]string{"device:bind", "device:publish", "session:report"}, scope) {
+		if (clientID == "monkeyai-mobile" || clientID == webClientID) && slices.Contains([]string{"device:bind", "device:publish", "session:report"}, scope) {
 			return nil, oauthError("invalid_scope", "此客户端不能发布执行设备")
 		}
 	}

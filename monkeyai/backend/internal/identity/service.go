@@ -24,16 +24,19 @@ import (
 )
 
 const sessionCookie = "monkeyai_session"
+const webClientID = "monkeyai-web"
 
 var verifierPattern = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
 
 type Client struct {
-	ID          string `json:"client_id"`
-	Name        string `json:"name"`
-	RedirectURI string `json:"redirect_uri"`
+	ID                   string   `json:"client_id"`
+	Name                 string   `json:"name"`
+	RedirectURI          string   `json:"redirect_uri"`
+	LocalRedirectOrigins []string `json:"local_redirect_origins,omitempty"`
 }
 
 var Clients = map[string]Client{
+	webClientID:        {ID: webClientID, Name: "MonkeyAI Web"},
 	"monkeyai-runtime": {ID: RuntimeClientID, Name: "MonkeyAI Runtime"},
 	"monkeyai-desktop": {
 		ID:          "monkeyai-desktop",
@@ -148,6 +151,7 @@ type Service struct {
 	publicLicense    PublicLicenseReader
 	client           *http.Client
 	publicURL        string
+	redirectOrigins  []string
 	secureCookie     bool
 	now              func() time.Time
 	sessionTTL       time.Duration
@@ -216,7 +220,7 @@ func (s *Service) newAuthorizationRequest(values url.Values) (AuthorizationReque
 		return AuthorizationRequest{}, oauthError("invalid_request", "client_id 无效")
 	}
 	redirectURI := values.Get("redirect_uri")
-	if _, err := validateRedirectURI(client.ID, redirectURI); err != nil {
+	if _, err := s.validateRedirectURI(client.ID, redirectURI); err != nil {
 		return AuthorizationRequest{}, err
 	}
 	state := values.Get("state")
@@ -267,7 +271,7 @@ func (s *Service) completeAuthorization(ctx context.Context, requestID, userID s
 	if request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
 		return "", errors.New("授权请求已完成或已过期")
 	}
-	callback, err := validateRedirectURI(request.ClientID, request.RedirectURI)
+	callback, err := s.validateRedirectURI(request.ClientID, request.RedirectURI)
 	if err != nil {
 		return "", err
 	}
@@ -296,7 +300,7 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code,
 	if _, ok := Clients[clientID]; !ok {
 		return Token{}, oauthError("invalid_client", "客户端信息无效")
 	}
-	if _, err := validateRedirectURI(clientID, redirectURI); err != nil {
+	if _, err := s.validateRedirectURI(clientID, redirectURI); err != nil {
 		slog.WarnContext(ctx, "操作失败", "module", "identity", "operation", "ExchangeCode", "error", err)
 		return Token{}, oauthError("invalid_grant", "授权回调地址无效")
 	}
@@ -378,8 +382,8 @@ func (s *Service) Refresh(ctx context.Context, clientID, refreshToken string) (T
 	return token, nil
 }
 
-func validateRedirectURI(clientID, value string) (*url.URL, error) {
-	if !validClientRedirect(clientID, value) {
+func (s *Service) validateRedirectURI(clientID, value string) (*url.URL, error) {
+	if !s.validClientRedirect(clientID, value) {
 		return nil, oauthError("invalid_request", "redirect_uri 未匹配客户端登记的回调地址")
 	}
 	return url.Parse(value)

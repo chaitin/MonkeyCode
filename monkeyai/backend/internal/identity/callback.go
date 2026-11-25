@@ -4,28 +4,51 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
 
-// Native applications use their registered URI. Desktop loopback listeners may
-// choose a port, but cannot change the host, protocol or callback path.
-func validClientRedirect(clientID, raw string) bool {
-	client, ok := Clients[clientID]
-	if !ok || raw == "" || client.RedirectURI == "" {
+func (s *Service) WithRedirectOrigins(origins []string) *Service {
+	s.redirectOrigins = slices.Clone(origins)
+	return s
+}
+
+func (s *Service) registeredClient(id string) Client {
+	client := Clients[id]
+	if id == webClientID && s.publicURL != "" {
+		client.RedirectURI = s.publicURL + "/client/oauth/callback"
+	}
+	if client.RedirectURI != "" {
+		client.LocalRedirectOrigins = s.redirectOrigins
+	}
+	return client
+}
+
+// 仅桌面客户端的本机监听回调允许使用动态端口。
+func (s *Service) validClientRedirect(clientID, raw string) bool {
+	client := s.registeredClient(clientID)
+	if raw == "" || client.RedirectURI == "" {
 		return false
 	}
 	if raw == client.RedirectURI {
 		return true
 	}
-	if clientID != "monkeyai-desktop" || strings.Contains(raw, "#") {
+	if strings.ContainsAny(raw, "?#\\") {
 		return false
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.EscapedPath() != "/oauth/callback" {
+	if err != nil || u.User != nil || u.Host == "" {
 		if err != nil {
 			slog.Warn("操作失败", "module", "identity", "operation", "validClientRedirect", "error", err)
 		}
+		return false
+	}
+	origin := u.Scheme + "://" + u.Host
+	if slices.Contains(client.LocalRedirectOrigins, origin) && raw == origin+u.EscapedPath() {
+		return true
+	}
+	if clientID != "monkeyai-desktop" || u.Scheme != "http" || u.EscapedPath() != "/oauth/callback" {
 		return false
 	}
 	host, port, err := net.SplitHostPort(u.Host)

@@ -170,10 +170,16 @@ func TestRegisteredCallbackConsentAndPKCERoundTrip(t *testing.T) {
 	s := NewService(pool, authenticationStub{json.RawMessage(`{}`)}, "https://ai.example.com")
 	user := grantUser(t, s)
 	cookie := &http.Cookie{Name: sessionCookie, Value: "callback-roundtrip"}
+	const origin = "http://localhost:5173"
+	s.WithRedirectOrigins([]string{origin})
 	if err := s.createBrowserSession(t.Context(), user.ID, tokenHash(cookie.Value), "password", time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ client, redirect string }{
+		{"monkeyai-web", origin + "/auth/return"},
+		{"monkeyai-desktop", origin + "/desktop/done"},
+		{"monkeyai-mobile", origin + "/mobile/login/complete"},
+		{"monkeyai-web", "https://ai.example.com/client/oauth/callback"},
 		{"monkeyai-desktop", "monkeyai-desktop://oauth/callback"},
 		{"monkeyai-mobile", "monkeyai-mobile://oauth/callback"},
 		{"monkeyai-desktop", "http://127.0.0.1:54321/oauth/callback"},
@@ -197,6 +203,9 @@ func TestRegisteredCallbackConsentAndPKCERoundTrip(t *testing.T) {
 			}
 			if err := json.Unmarshal(metadataResponse.Body.Bytes(), &metadata); err != nil || !metadata.Required || metadata.CSRF == "" || metadata.Client.RedirectURI != tc.redirect {
 				t.Fatalf("incorrect destination/consent: %s %v", metadataResponse.Body.String(), err)
+			}
+			if len(metadata.Client.LocalRedirectOrigins) != 1 || metadata.Client.LocalRedirectOrigins[0] != origin {
+				t.Fatal("确认页未收到已登记的本机来源")
 			}
 			complete := httptest.NewRequest(http.MethodPost, "/client-requests/"+request.ID+"/complete", strings.NewReader(`{"approved_scopes":[]}`))
 			complete.AddCookie(cookie)
@@ -224,6 +233,9 @@ func TestRegisteredCallbackConsentAndPKCERoundTrip(t *testing.T) {
 			}
 			if _, err := s.ExchangeCode(t.Context(), tc.client, tc.redirect, code, strings.Repeat("x", 64)); err == nil {
 				t.Fatal("incorrect PKCE verifier accepted")
+			}
+			if _, err := s.ExchangeCode(t.Context(), tc.client, origin+"/different-path", code, verifier); err == nil {
+				t.Fatal("同一来源不能更换路径兑换授权码")
 			}
 			token, err := s.ExchangeCode(t.Context(), tc.client, tc.redirect, code, verifier)
 			if err != nil || token.AccessToken == "" || token.RefreshToken == "" {

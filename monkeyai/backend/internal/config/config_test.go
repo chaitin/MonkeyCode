@@ -2,9 +2,28 @@ package config
 
 import (
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 )
+
+func TestOAuthRedirectOrigins(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://test")
+	const key = "MONKEYAI_OAUTH_REDIRECT_ORIGINS"
+	const local = "http://localhost:5173"
+	const ipv6 = "https://[::1]:8080"
+	t.Setenv(key, local+", "+ipv6+"/")
+	cfg, err := Load(nil)
+	if err != nil || !slices.Equal(cfg.OAuthRedirectOrigins, []string{local, ipv6}) {
+		t.Fatalf("读取本机回调失败: %v %v", cfg.OAuthRedirectOrigins, err)
+	}
+	for _, invalid := range []string{"https://example.com:5173", "http://localhost", "http://localhost:65536", "http://user@localhost:5173", "http://*.localhost:5173", local + "/path", local + "?", local + "#"} {
+		t.Setenv(key, local+","+invalid)
+		if _, err := Load(nil); err == nil {
+			t.Errorf("接受了无效配置 %s", invalid)
+		}
+	}
+}
 
 func TestRuntimeRelayDefaultsAndDisable(t *testing.T) {
 	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://test")

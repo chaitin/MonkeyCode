@@ -218,6 +218,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		return ok && user.Role == "admin"
 	})
 	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings).WithLicense(capabilities)
+	identities.WithRedirectOrigins(cfg.OAuthRedirectOrigins)
 	executions := endpoint.NewExecution(pool, identities)
 	sessions.WithHostAuthorizer(executions)
 	identities.WithUserWriter(users)
