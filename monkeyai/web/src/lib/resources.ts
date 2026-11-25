@@ -52,6 +52,7 @@ export type ResourceRow = {
   avatar_path?: string | null
   rule_ids: string[]
   skill_ids: string[]
+  knowledge_base_ids?: string[]
   connectors: {
     connector_id: string
     required: boolean

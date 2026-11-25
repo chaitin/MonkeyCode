@@ -64,6 +64,7 @@ try {
         tags: [],
         rule_ids: [],
         skill_ids: [],
+        knowledge_base_ids: id === "ordinary" ? ["archived"] : [],
         connectors: [],
         avatar_path: `/api/admin/v1/experts/${id}/avatar?v=initial`,
       })
@@ -166,6 +167,17 @@ try {
           }
           if (endpoint.endsWith("/experts"))
             return json({ items, next_cursor: null })
+          if (endpoint.endsWith("/kb")) {
+            assert.equal(url.searchParams.get("ownership_type"), "system")
+            if (!url.searchParams.has("cursor"))
+              return json({
+                items: [{ id: "archived", name: "归档知识库", enabled: false }],
+                next_cursor: "archived",
+              })
+            return json({
+              items: [{ id: "handbook", name: "产品手册", enabled: true }],
+            })
+          }
           return json({ items: [], groups: [], users: [], settings: [] })
         }
         const candidate = path.resolve(dist, `.${endpoint}`)
@@ -416,6 +428,12 @@ try {
       await dialog().locator("#expert-name").fill("新建头像专家")
       await dialog().locator("#expert-description").fill("新建说明")
       await dialog().locator("#expert-prompt").fill("新建提示词")
+      const selectBooks = () =>
+        dialog().locator("#expert-knowledgeBaseIds").click()
+      await selectBooks()
+      await page.getByRole("textbox", { name: "搜索知识库" }).fill("手册")
+      await page.getByText("产品手册", { exact: true }).click()
+      await page.keyboard.press("Escape")
       failNext = true
       await dialog().getByRole("button", { name: "创建", exact: true }).click()
       await page.getByText("模拟头像保存失败", { exact: true }).waitFor()
@@ -449,6 +467,7 @@ try {
       assert(writes[1].multipart)
       assert.equal(writes[1].avatar.size, png.length)
       assert.equal(writes[1].metadata.prompt, "新建提示词")
+      assert.deepEqual(writes[1].metadata.knowledge_base_ids, ["handbook"])
       assert.deepEqual(writes[1].metadata.grants, [
         { group_id: "root", usage_requirement: "optional" },
       ])
@@ -491,16 +510,22 @@ try {
       await page.getByTitle("已换头像专家", { exact: true }).waitFor()
       assert.equal(writes[2].match, '"1"')
       assert.equal(writes[2].avatar.type, "image/webp")
+      assert(!Object.hasOwn(writes[2].metadata, "knowledge_base_ids"))
       assert.deepEqual(writes[2].metadata.grants, [])
       assert(
         (await cardImage("已换头像专家").getAttribute("src")).includes("v=2")
       )
       // A subsequent edit without choosing an image stays JSON and preserves the path.
       await edit("已换头像专家")
-      await dialog().locator("#expert-description").fill("仅修改说明")
+      await selectBooks()
+      const archived = page.locator("#expert-knowledgeBaseIds-archived")
+      assert(await archived.isChecked())
+      await page.getByText("归档知识库 · 已禁用", { exact: true }).click()
+      await page.keyboard.press("Escape")
       await dialog().getByRole("button", { name: "保存", exact: true }).click()
       await dialog().waitFor({ state: "hidden" })
       assert.equal(writes[3].multipart, false)
+      assert.deepEqual(writes[3].metadata.knowledge_base_ids, [])
       assert.equal(writes[3].match, '"2"')
       assert(
         (await cardImage("已换头像专家").getAttribute("src")).includes("v=2")
@@ -509,6 +534,7 @@ try {
       assert(await dialog().locator("#expert-avatar-upload").isDisabled())
       assert(await dialog().locator("#expert-avatar-file").isDisabled())
       assert(await dialog().locator("#expert-tags").isDisabled())
+      assert(await dialog().locator("#expert-knowledgeBaseIds").isDisabled())
       assert(!(await dialog().locator("#expert-authorization").isDisabled()))
       assert(
         !(await dialog().locator("#expert-name").isDisabled()),
