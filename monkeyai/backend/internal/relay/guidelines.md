@@ -4,7 +4,9 @@
 
 relay 为运行端发布控制和数据通道，按设备和连接代次向桌面代理请求。控制就绪或收到有效 Pong 后，路由有 45 秒的存活窗口。路由关闭时，用 `relay.route.closed` 的 `machine_id`、`boot_id`、`lease_epoch`、`reason` 和 `last_seen_age_ms` 对照执行端日志。EOF 只能说明本端观察到连接关闭。
 
-数据通道只能附着在启动标识、授权和代次都匹配的控制路由上。控制发布尚未就绪时，relay 在原数据握手内最多等待 1 秒。发布就绪或关闭会唤醒等待者，relay 随后复核设备状态和授权。旧代次立即返回既有错误码 `device_registration_changed`。查 `protocol.response.error` 的 `reason` 可区分未就绪、代次不匹配和授权变化。若数据 ready_ack 到达时路由已被替换，查 `relay.bridge.rejected` 的 `phase=ready_ack`。对端在确认前断开时结束握手，收到无效确认时仍回复协议错误。
+数据通道只能附着在启动标识、授权和代次都匹配的控制路由上。控制发布尚未就绪时，relay 在原数据握手内最多等待 1 秒。等待者被唤醒后先检查原路由。原路由已关闭或被替换时，直接返回 `device_registration_changed`。原路由仍在且就绪时，复核数据库中的设备状态和授权，再确认当前代次。
+
+查 `protocol.response.error` 的 `reason` 可区分未就绪、代次不匹配、路由替换和授权变化。若数据 ready_ack 到达时路由已被替换，查 `relay.bridge.rejected` 的 `phase=ready_ack`。确认读取中断时，relay 以调试级别记录 `relay.bridge.interrupted` 并结束握手。收到完整消息但确认内容无效时，回复 `invalid_tunnel_message`。
 
 ## 实现
 
@@ -39,7 +41,7 @@ relay 为运行端发布控制和数据通道，按设备和连接代次向桌�
 - `management_test.go` 验证设备目录、撤销权限和旧通知对新路由的隔离。
 - `nginxfixture_test.go` 把测试配置复制到 Nginx 验收容器。
 - `overload_test.go` 验证满额窗口保留拒绝时的流占用。
-- `control_test.go` 验证持续失联、反向控制流限额、事件写超时及数据重连；真实握手覆盖同代次就绪、超时、换代、撤销及确认后的路由替换。
+- `control_test.go` 验证失联期限、反向控制流限额、事件写超时和数据重连。换代测试等待初始数据通道上线，覆盖确认读取中断、无效确认、授权撤销及连接池满时拒绝旧代次。
 - `cleanup_test.go` 验证并发回收只记一次关闭原因，超时可识别。设备与桌面共用授权时，整条路由只发一次撤销通知。
 - `relay_test.go` 验证票据、授权、文件和代理，覆盖租约宽限、代次切换与通道隔离。
 - `interop_test.go` 验证桌面来源、票据权限、长连接空闲、签名租约与独立撤销。

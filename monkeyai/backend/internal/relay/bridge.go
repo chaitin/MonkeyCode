@@ -1,5 +1,5 @@
 // [INPUT]: 设备身份、签名握手、WebSocket 与对应通道的 yamux 配置。
-// [OUTPUT]: 验证设备证明，发布控制路由；数据附着只等待同代次就绪，失败时记录拒绝原因。
+// [OUTPUT]: 发布已验证的控制路由，按代次与授权附着数据通道，区分确认中断和无效确认。
 // [POS]: 设备隧道入口，与 lease 的存活探测共用进程接管窗口。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -208,14 +208,12 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ack ReadyAck
-	if err := readWS(handshake, ws, &ack); err != nil || ack.Type != "ready_ack" || ack.RegistrationVersion != ready.RegistrationVersion || !identityOnly && ack.LeaseEpoch != ready.LeaseEpoch {
-		// 换代和撤销可以在确认前关闭连接，此时已没有接收协议错误的对端。
-		if closedConnection(err) || websocket.CloseStatus(err) != -1 {
-			return
-		}
-		if err != nil {
-			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
-		}
+	readErr := readWS(handshake, ws, &ack)
+	if readErr != nil && !errors.Is(readErr, errProtocol) {
+		logging.Event(handshake, s.logger, slog.LevelDebug, "relay.bridge.interrupted", "读取设备确认时连接中断", "phase", "ready_ack", "error", readErr)
+		return
+	}
+	if readErr != nil || ack.Type != "ready_ack" || ack.RegistrationVersion != ready.RegistrationVersion || !identityOnly && ack.LeaseEpoch != ready.LeaseEpoch {
 		s.wsError(handshake, ws, errProtocol)
 		return
 	}
@@ -238,11 +236,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	if channel == "data" {
 		gate.Lock()
 		s.mu.Lock()
-		if s.routes[key] != old || !old.ready || old.control == nil || old.control.IsClosed() {
-			reason := "control_closed"
-			if current := s.routes[key]; current != nil && current != old {
-				reason = "route_replaced"
-			}
+		if reason := s.dataRouteChange(old); reason != "" {
 			s.mu.Unlock()
 			gate.Unlock()
 			logging.Event(r.Context(), s.logger, slog.LevelWarn, "relay.bridge.rejected", "数据确认时控制路由已失效", "reason", reason, "phase", "ready_ack")
@@ -299,6 +293,21 @@ func (s *Service) verifyBridgeGrant(ctx context.Context, p identity.Principal) e
 	return nil
 }
 
+// 调用方持有 s.mu。从等待发布到安装数据通道，握手只接受原控制路由。
+func (s *Service) dataRouteChange(expected *route) string {
+	current := s.routes[expected.target]
+	switch {
+	case current == nil:
+		return "control_missing"
+	case current != expected:
+		return "route_replaced"
+	case !expected.ready || expected.control == nil || expected.control.IsClosed():
+		return "control_closed"
+	default:
+		return ""
+	}
+}
+
 func (s *Service) dataRoute(ctx context.Context, key target, p identity.Principal, hello Hello, state endpoint.ExecutionState) (*route, error) {
 	r, pending, reason := s.matchDataRoute(key, p.GrantID, hello, state)
 	if pending != nil {
@@ -312,6 +321,12 @@ func (s *Service) dataRoute(ctx context.Context, key target, p identity.Principa
 				return nil, err
 			}
 		case <-pending:
+			s.mu.Lock()
+			reason = s.dataRouteChange(r)
+			s.mu.Unlock()
+			if reason != "" {
+				break
+			}
 			fresh, err := s.devices.State(ctx, key.user, key.machine)
 			if err != nil {
 				return nil, err
@@ -356,7 +371,7 @@ func (s *Service) matchDataRoute(key target, grantID string, hello Hello, state 
 	case r.state.GrantVersion != state.GrantVersion:
 		return nil, nil, "grant_version_mismatch"
 	case !r.ready:
-		return nil, r.publishDone, "control_not_ready"
+		return r, r.publishDone, "control_not_ready"
 	case r.control == nil || r.control.IsClosed():
 		return nil, nil, "control_closed"
 	default:

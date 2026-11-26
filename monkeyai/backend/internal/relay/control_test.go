@@ -1,5 +1,5 @@
-// [INPUT]: 双通道测试夹具、真实 yamux 和不回应 Pong 的连接。
-// [OUTPUT]: 验证失联期限、反向流预算，以及数据附着在控制就绪、换代和撤销边界的回包与诊断。
+// [INPUT]: 双通道测试夹具、占满的数据库连接池和可注入读错误的传输连接。
+// [OUTPUT]: 验证失联期限、反向流预算、数据附着换代与撤销，以及确认中断和无效确认的回包与诊断。
 // [POS]: 控制事件协议和传输生命周期回归。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -7,18 +7,24 @@ package relay
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"uuid"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestHTTPDataReattachStatus(t *testing.T) {
@@ -70,6 +76,7 @@ func TestHTTPDataReattachStatus(t *testing.T) {
 
 type attachLog struct {
 	Event, Reason, Code, Phase string
+	Channel                    string `json:"channel_kind"`
 }
 
 type attachLogs chan attachLog
@@ -78,7 +85,8 @@ func (logs attachLogs) Write(data []byte) (int, error) {
 	var event attachLog
 	if json.Unmarshal(data, &event) == nil {
 		switch {
-		case event.Event == "relay.bridge.waiting",
+		case event.Event == "relay.bridge.ready" && event.Channel == "data",
+			event.Event == "relay.bridge.waiting",
 			event.Event == "protocol.response.error",
 			event.Event == "relay.bridge.rejected" && event.Phase == "ready_ack":
 			logs <- event
@@ -99,6 +107,33 @@ func (logs attachLogs) expect(t *testing.T, event, reason string) {
 	}
 }
 
+// 让服务端的真实 WebSocket 读操作在对端断开时收到指定的底层错误。
+type ackFaultListener struct {
+	net.Listener
+	cause error
+}
+
+func (l ackFaultListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return ackFaultConn{c, l.cause}, nil
+}
+
+type ackFaultConn struct {
+	net.Conn
+	cause error
+}
+
+func (c ackFaultConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if errors.Is(err, io.EOF) {
+		return n, &net.OpError{Op: "read", Net: "tcp", Err: c.cause}
+	}
+	return n, err
+}
+
 func TestDataAttachAcrossControlPublish(t *testing.T) {
 	for _, tc := range []struct {
 		action string
@@ -109,8 +144,11 @@ func TestDataAttachAcrossControlPublish(t *testing.T) {
 		{"stale", "lease_epoch_mismatch"},
 		{"wrong_boot", "boot_id_mismatch"},
 		{"closed", "control_missing"},
+		{"tcp_reset", "control_missing"},
+		{"short_frame", "control_missing"},
 		{"invalid_ack", "control_missing"},
-		{"replaced", "lease_epoch_mismatch"},
+		{"malformed_ack", "control_missing"},
+		{"replaced", "route_replaced"},
 		{"revoked", "remote_access_disabled"},
 		{"grant_revoked", "grant_invalid"},
 		{"replaced_after_ready", "route_replaced"},
@@ -119,10 +157,18 @@ func TestDataAttachAcrossControlPublish(t *testing.T) {
 			f := newFixture(t)
 			logs := make(attachLogs, 16)
 			f.s.logger = logging.New(logs, slog.LevelDebug)
-			server := httptest.NewServer(logging.HTTP(f.s.logger)(f.server.Config.Handler))
+			server := httptest.NewUnstartedServer(logging.HTTP(f.s.logger)(f.server.Config.Handler))
+			switch tc.action {
+			case "tcp_reset":
+				server.Listener = ackFaultListener{server.Listener, syscall.ECONNRESET}
+			case "short_frame":
+				server.Listener = ackFaultListener{server.Listener, io.ErrUnexpectedEOF}
+			}
+			server.Start()
 			t.Cleanup(server.Close)
 			f.server = server
 			r := f.runtime(t)
+			logs.expect(t, "relay.bridge.ready", "")
 			ctx, cancel := context.WithTimeout(t.Context(), 6*time.Second)
 			defer cancel()
 
@@ -146,11 +192,17 @@ func TestDataAttachAcrossControlPublish(t *testing.T) {
 				logs.expect(t, "relay.bridge.waiting", "control_not_ready")
 			}
 			switch tc.action {
-			case "closed":
+			case "closed", "tcp_reset", "short_frame":
 				control.CloseNow()
-			case "invalid_ack":
-				ack.LeaseEpoch++
-				if err := writeWS(ctx, control, ack); err != nil {
+			case "invalid_ack", "malformed_ack":
+				var err error
+				if tc.action == "malformed_ack" {
+					err = control.Write(ctx, websocket.MessageText, []byte("{"))
+				} else {
+					ack.LeaseEpoch++
+					err = writeWS(ctx, control, ack)
+				}
+				if err != nil {
 					t.Fatal(err)
 				}
 				var reply map[string]string
@@ -190,20 +242,7 @@ func TestDataAttachAcrossControlPublish(t *testing.T) {
 				if tc.action == "replaced_after_ready" {
 					logs.expect(t, "relay.bridge.rejected", tc.reason)
 				} else {
-					for {
-						f.s.mu.Lock()
-						active := f.s.routes[target{f.user, h.MachineID}]
-						attached := active != nil && active.state.LeaseEpoch == h.LeaseEpoch && active.data != nil && !active.data.IsClosed()
-						f.s.mu.Unlock()
-						if attached {
-							break
-						}
-						select {
-						case <-ctx.Done():
-							t.Fatal("已确认的数据通道未上线")
-						case <-time.After(5 * time.Millisecond):
-						}
-					}
+					logs.expect(t, "relay.bridge.ready", "")
 				}
 				return
 			}
@@ -220,6 +259,47 @@ func TestDataAttachAcrossControlPublish(t *testing.T) {
 			}
 			logs.expect(t, "protocol.response.error", tc.reason)
 		})
+	}
+}
+
+func TestReplacedDataAttachWithBusyPool(t *testing.T) {
+	f := newFixture(t)
+	cfg := f.pool.Config()
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	held, err := pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+	f.s.devices = endpoint.NewExecution(pool, f.ids)
+	logs := make(attachLogs, 8)
+	f.s.logger = logging.New(logs, slog.LevelDebug)
+	key := target{f.user, uuid.New().String()}
+	hello := Hello{BootID: uuid.New().String(), LeaseEpoch: 1}
+	principal := identity.Principal{GrantID: f.grant}
+	state := endpoint.ExecutionState{ActiveGrantID: f.grant, RemoteAccessState: "enabled", LeaseEpoch: 1}
+	old := &route{target: key, hello: hello, state: state, principal: principal, publishDone: make(chan struct{})}
+	f.s.routes[key] = old
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := f.s.dataRoute(ctx, key, principal, hello, state)
+		result <- err
+	}()
+	logs.expect(t, "relay.bridge.waiting", "control_not_ready")
+	f.s.mu.Lock()
+	f.s.routes[key] = &route{target: key, state: endpoint.ExecutionState{LeaseEpoch: 2}}
+	f.s.mu.Unlock()
+	f.s.closeRoute(old, "epoch_replaced")
+	var rejected *resource.Error
+	if err := <-result; !errors.As(err, &rejected) || rejected.Code != "device_registration_changed" {
+		t.Fatalf("数据库无可用连接时旧代次仍应收到登记变化回包: %v", err)
 	}
 }
 
