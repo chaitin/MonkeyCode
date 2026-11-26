@@ -170,11 +170,15 @@ func TestMCPEditDocumentTransaction(t *testing.T) {
 		t.Fatalf("clear: %v %v", empty, err)
 	}
 
-	fileDoc, err := service.CreateUserDocument(ctx, owner, DocumentInput{KbID: book.String("id"), Title: "file", SourceType: "file", FileName: "a.txt", MimeType: "text/plain", Content: "文件正文"})
+	fileDoc, err := service.CreateUserDocument(ctx, owner, DocumentInput{KbID: book.String("id"), Title: "file", FileName: "a.txt", MimeType: "text/plain", Content: "文件正文"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := call("kb_edit_document", resource.Object{"kb_id": book.String("id"), "document_id": fileDoc.String("id"), "expected_revision": fileDoc["revision"], "edits": []textEdit{{"文件", "x"}}}); err == nil || !strings.Contains(resource.AsError(err).Message, "仅文本文档") {
+	// Historical file records without a verified format remain read-only.
+	if _, err := pool.Exec(ctx, `UPDATE knowledge_base_documents SET source_type='file',file_type=NULL WHERE id=$1`, fileDoc.String("id")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call("kb_edit_document", resource.Object{"kb_id": book.String("id"), "document_id": fileDoc.String("id"), "expected_revision": fileDoc["revision"], "edits": []textEdit{{"文件", "x"}}}); err == nil || !strings.Contains(resource.AsError(err).Message, "只读") {
 		t.Fatalf("file edit: %v", err)
 	}
 	folder, err := service.CreateUserDocument(ctx, owner, DocumentInput{KbID: book.String("id"), Title: "folder", NodeType: "folder"})

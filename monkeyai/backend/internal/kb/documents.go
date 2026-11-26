@@ -22,7 +22,11 @@ var documentStatuses = []string{"pending", "learning", "learned", "failed"}
 var documentSourceTypes = []string{"text", "file", "url"}
 
 type DocumentInput struct {
-	edits []textEdit // Internal MCP edits, applied only after locking and authorization.
+	imported      *importContext
+	resultContext string
+	ClearContent  bool       `json:"clear_content,omitempty"`
+	FileType      string     `json:"file_type,omitempty"`
+	edits         []textEdit // Internal MCP edits, applied only after locking and authorization.
 
 	ExpectedRevision int64   `json:"expected_revision,omitempty"`
 	KbID             string  `json:"kb_id"`
@@ -59,10 +63,11 @@ type DocumentPage struct {
 }
 
 type SearchInput struct {
-	KbIDs   []string       `json:"kb_ids"`
-	Query   string         `json:"query"`
-	TopK    int            `json:"top_k"`
-	Filters map[string]any `json:"filters"`
+	FileTypes []string       `json:"file_types,omitempty"`
+	KbIDs     []string       `json:"kb_ids"`
+	Query     string         `json:"query"`
+	TopK      int            `json:"top_k"`
+	Filters   map[string]any `json:"filters"`
 }
 
 func optionalString(value string) *string {
@@ -269,6 +274,9 @@ func (s *Service) CreateDocument(ctx context.Context, actor string, input Docume
 	return s.createDocument(ctx, actor, input, false)
 }
 func (s *Service) createDocument(ctx context.Context, actor string, input DocumentInput, personal bool) (resource.Object, error) {
+	if input.FileType != "" {
+		return nil, resource.Invalid("file_type 由服务端确定")
+	}
 	input.KbID = strings.TrimSpace(input.KbID)
 	input.Title = strings.TrimSpace(input.Title)
 	input.SourceType = strings.TrimSpace(input.SourceType)
@@ -280,6 +288,12 @@ func (s *Service) createDocument(ctx context.Context, actor string, input Docume
 	}
 	if input.SourceType != "text" && input.SourceType != "file" && input.SourceType != "url" {
 		return nil, resource.Invalid("文档来源类型无效")
+	}
+	if input.imported == nil && input.SourceType != "text" {
+		return nil, resource.Invalid("正文创建接口仅支持 source_type=text；上传文件请使用文件导入接口，暂不支持链接导入")
+	}
+	if len(input.Content) > importContentLimit || !utf8.ValidString(input.Content) || strings.ContainsRune(input.Content, 0) {
+		return nil, resource.Invalid("正文必须为 UTF-8 且不超过 16 MiB")
 	}
 	if input.SizeBytes <= 0 {
 		input.SizeBytes = int64(len(input.Content))
@@ -299,6 +313,37 @@ func (s *Service) createDocument(ctx context.Context, actor string, input Docume
 	if personal {
 		if err = requireContentWrite(ctx, tx, input.KbID, actor); err != nil {
 			return nil, err
+		}
+	}
+	if input.imported != nil {
+		c := *input.imported
+		if err = s.importAccessTx(ctx, tx, c); err != nil {
+			return nil, err
+		}
+		existing, existingErr := resource.DecodeObject(queries.GetKbDocument(ctx, c.DocumentID))
+		if existingErr == nil {
+			if existing.String("kb_id") != c.KB || existing.String("created_by_user_id") != c.Actor || existing.String("storage_key") != c.Key {
+				return nil, resource.NotFound
+			}
+			return existing, nil
+		}
+		if !errors.Is(existingErr, pgx.ErrNoRows) {
+			return nil, existingErr
+		}
+		if _, _, _, err = s.storage.(ImportStorage).OriginalInfo(ctx, c.Key); err != nil {
+			return nil, resource.Invalid("原文件不存在，请重新上传")
+		}
+		if _, err = validateImportText([]byte(input.Content)); err != nil {
+			return nil, err
+		}
+		if !textFileType(c.Type) {
+			result, e := s.verifyImport(input.resultContext, "result")
+			if e != nil {
+				return nil, e
+			}
+			if result.ID != c.ID || result.DocumentID != c.DocumentID || result.KB != c.KB || result.Actor != c.Actor || result.Type != c.Type || result.Hash != convertedHash(input.Content) {
+				return nil, resource.Invalid("转换结果无效或已修改")
+			}
 		}
 	}
 	binding, err := queries.GetKbEmbedding(ctx, input.KbID)
@@ -348,8 +393,20 @@ func (s *Service) createDocument(ctx context.Context, actor string, input Docume
 		input.SizeBytes = 0
 	}
 	id := resource.ID()
+	fileType := "md"
+	var storageKey *string
+	if nodeType == "folder" {
+		fileType = ""
+	}
+	if input.imported != nil {
+		id = input.imported.DocumentID
+		fileType = input.imported.Type
+		storageKey = &input.imported.Key
+	}
 	if err = queries.CreateKbDocument(ctx, sqlc.CreateKbDocumentParams{
 		ID:              id,
+		FileType:        optionalString(fileType),
+		StorageKey:      storageKey,
 		KbID:            input.KbID,
 		Title:           input.Title,
 		SourceType:      input.SourceType,
@@ -388,7 +445,11 @@ func (s *Service) createDocument(ctx context.Context, actor string, input Docume
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.GetDocument(ctx, id)
+	doc, err := s.GetDocument(ctx, id)
+	if err == nil && input.imported != nil {
+		doc["import_created"] = true
+	}
+	return doc, err
 }
 
 // lockDocument serializes document writes with KB deletion and index maintenance.
@@ -471,27 +532,28 @@ func (s *Service) updateDocument(ctx context.Context, id string, input DocumentI
 	if current.String("source_type") == "file" && sourceType != "file" {
 		return nil, resource.Invalid("文件文档不支持改为文本文档，请重新上传文件")
 	}
+	if input.FileType != "" && input.FileType != current.String("file_type") {
+		return nil, resource.Invalid("file_type 不可修改")
+	}
+	editable := textFileType(current.String("file_type"))
+	if !editable && (input.edits != nil || input.ClearContent || (input.Content != "" && input.Content != current.String("content")) || sourceType != current.String("source_type") || (input.FileName != "" && input.FileName != current.String("file_name")) || (input.MimeType != "" && input.MimeType != current.String("mime_type"))) {
+		return nil, resource.Invalid("此文档正文只读")
+	}
 	content := input.Content
 	if input.edits != nil {
-		if current.String("source_type") != "text" {
-			return nil, resource.Invalid("仅文本文档支持正文编辑，文件或链接文档请重新上传或导入")
+		if !editable {
+			return nil, resource.Invalid("此文档正文只读")
 		}
 		content, err = applyTextEdits(current.String("content"), input.edits)
 		if err != nil {
 			return nil, err
 		}
-	} else if strings.TrimSpace(content) == "" {
+	} else if input.ClearContent {
+		content = ""
+	} else if content == "" {
 		content = current.String("content")
 	}
-	size := input.SizeBytes
-	if size <= 0 {
-		if sourceType == "file" {
-			size = objectInt64(current["size_bytes"])
-		}
-		if size <= 0 {
-			size = int64(len(content))
-		}
-	}
+	size := int64(len(content))
 	fileName := strings.TrimSpace(input.FileName)
 	if fileName == "" {
 		fileName = current.String("file_name")
@@ -499,6 +561,9 @@ func (s *Service) updateDocument(ctx context.Context, id string, input DocumentI
 	mimeType := strings.TrimSpace(input.MimeType)
 	if mimeType == "" {
 		mimeType = current.String("mime_type")
+	}
+	if len(content) > importContentLimit || !utf8.ValidString(content) || strings.ContainsRune(content, 0) {
+		return nil, resource.Invalid("正文必须为 UTF-8 且不超过 16 MiB")
 	}
 	contentChanged := content != current.String("content")
 	if contentChanged {
@@ -723,6 +788,12 @@ func normalizeSearchInput(input SearchInput) (SearchInput, error) {
 	if topK > 20 {
 		return SearchInput{}, resource.Invalid("top_k 必须在 1—20 之间")
 	}
+	for _, typ := range input.FileTypes {
+		if !imageFileType(typ) {
+			return SearchInput{}, resource.Invalid("file_types 仅支持 jpg、png")
+		}
+	}
+	input.FileTypes = uniqueStrings(input.FileTypes)
 	input.Query = query
 	input.TopK = topK
 	return input, nil

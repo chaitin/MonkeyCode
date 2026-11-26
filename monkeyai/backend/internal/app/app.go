@@ -251,8 +251,20 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	}
 	store := resource.NewStore(pool)
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings).WithNetworkSettings(settings)
-	knowledgeBases := kb.NewService(store, models).WithStorage(storage)
+	if storage != nil && cfg.AnyDocSigningKey == "" {
+		stateDir := cfg.RuntimeStateDir
+		if stateDir == "" {
+			stateDir = "data/runtime"
+		}
+		var err error
+		cfg.AnyDocSigningKey, err = kb.LoadImportSigningKey(filepath.Join(stateDir, "kb-import-signing.key"))
+		if err != nil {
+			return nil, fmt.Errorf("初始化知识库导入签名密钥: %w", err)
+		}
+	}
+	knowledgeBases := kb.NewService(store, models).WithStorage(storage).WithAnyDoc(kb.AnyDocConfig{URL: cfg.AnyDocURL, CallbackBaseURL: cfg.AnyDocCallbackBaseURL, SigningKey: cfg.AnyDocSigningKey})
 	execution := executionServices{pool: pool, settings: settings, sessions: sessions, identities: identities, executions: executions, keys: keys, charges: charges, modelRepo: modelRepo, models: models, storage: storage, connectors: connectors, knowledgeBases: knowledgeBases}
+	knowledgeBases.WithImageDescriber(knowledgeVision{services: execution, logger: logger})
 	if cfg.Role == config.RoleProxy {
 		return execution.proxyHandler(ctx, cfg, logger, registrars)
 	}
@@ -388,6 +400,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 			}
 		})
 	}).Get("/api/kb/{id}/assets/{name}", knowledgeBases.ServeAsset)
+	knowledgeBases.RegisterImportCallbacks(router)
 	router.NotFound(web.NotFound)
 	router.MethodNotAllowed(web.MethodNotAllowed)
 	designs.RegisterCatalog(router, requireResource)

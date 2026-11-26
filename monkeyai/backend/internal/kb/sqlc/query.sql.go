@@ -205,9 +205,9 @@ func (q *Queries) CountKbLearningJobs(ctx context.Context, kbID string) ([]Count
 const createKbDocument = `-- name: CreateKbDocument :exec
 INSERT INTO knowledge_base_documents (
     id, kb_id, title, source_type, content, file_name, mime_type, size_bytes,
-    status, created_by_user_id, parent_id, node_type, position
+    status, created_by_user_id, parent_id, node_type, position, file_type, storage_key
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 `
 
 type CreateKbDocumentParams struct {
@@ -224,6 +224,8 @@ type CreateKbDocumentParams struct {
 	ParentID        *string
 	NodeType        string
 	Position        float64
+	FileType        *string
+	StorageKey      *string
 }
 
 func (q *Queries) CreateKbDocument(ctx context.Context, arg CreateKbDocumentParams) error {
@@ -241,6 +243,8 @@ func (q *Queries) CreateKbDocument(ctx context.Context, arg CreateKbDocumentPara
 		arg.ParentID,
 		arg.NodeType,
 		arg.Position,
+		arg.FileType,
+		arg.StorageKey,
 	)
 	return err
 }
@@ -680,6 +684,44 @@ func (q *Queries) KbContentAccess(ctx context.Context, arg KbContentAccessParams
 	return level, err
 }
 
+const kbImportActorActive = `-- name: KbImportActorActive :one
+SELECT EXISTS(SELECT 1 FROM users WHERE id=$1::uuid AND status='active' AND deleted_at IS NULL AND ($2::boolean=false OR role='admin'))
+`
+
+type KbImportActorActiveParams struct {
+	Actor string
+	Admin bool
+}
+
+func (q *Queries) KbImportActorActive(ctx context.Context, arg KbImportActorActiveParams) (bool, error) {
+	row := q.db.QueryRow(ctx, kbImportActorActive, arg.Actor, arg.Admin)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const kbLockImageImport = `-- name: KbLockImageImport :one
+SELECT pg_try_advisory_xact_lock(hashtextextended($1::text, 0))::boolean
+`
+
+func (q *Queries) KbLockImageImport(ctx context.Context, importLock string) (bool, error) {
+	row := q.db.QueryRow(ctx, kbLockImageImport, importLock)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const kbOriginalReferenced = `-- name: KbOriginalReferenced :one
+SELECT EXISTS(SELECT 1 FROM knowledge_base_documents WHERE storage_key=$1::text)
+`
+
+func (q *Queries) KbOriginalReferenced(ctx context.Context, storageKey string) (bool, error) {
+	row := q.db.QueryRow(ctx, kbOriginalReferenced, storageKey)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listKbChunks = `-- name: ListKbChunks :many
 SELECT jsonb_build_object(
     'chunk_id', c.id,
@@ -722,7 +764,7 @@ func (q *Queries) ListKbChunks(ctx context.Context, documentID string) ([][]byte
 }
 
 const listKbChunksForRebuild = `-- name: ListKbChunksForRebuild :many
-SELECT c.id::text AS id, c.document_id::text AS document_id, c.content
+SELECT c.id::text AS id, c.document_id::text AS document_id, c.content, COALESCE(d.file_type, '')::text AS file_type
 FROM knowledge_base_chunks c
 JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = $1
@@ -733,6 +775,7 @@ type ListKbChunksForRebuildRow struct {
 	ID         string
 	DocumentID string
 	Content    string
+	FileType   string
 }
 
 func (q *Queries) ListKbChunksForRebuild(ctx context.Context, kbID string) ([]ListKbChunksForRebuildRow, error) {
@@ -744,7 +787,12 @@ func (q *Queries) ListKbChunksForRebuild(ctx context.Context, kbID string) ([]Li
 	items := []ListKbChunksForRebuildRow{}
 	for rows.Next() {
 		var i ListKbChunksForRebuildRow
-		if err := rows.Scan(&i.ID, &i.DocumentID, &i.Content); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.DocumentID,
+			&i.Content,
+			&i.FileType,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1076,6 +1124,8 @@ SELECT jsonb_build_object(
     'chunk_index', c.chunk_index,
     'content', c.content,
     'title', d.title,
+    'file_type', d.file_type,
+    'has_original', d.storage_key IS NOT NULL AND d.storage_key <> '',
     'heading_path', c.heading_path,
     'page_no', c.page_no,
     'source_url', c.source_url,
@@ -1084,21 +1134,28 @@ SELECT jsonb_build_object(
 FROM knowledge_base_chunks c
 JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = $2
+    AND (COALESCE(cardinality($3::text[]), 0) = 0 OR d.file_type = ANY($3::text[]))
     AND c.search_tsv @@ to_tsquery('simple', $1)
 ORDER BY ts_rank_cd(c.search_tsv, to_tsquery('simple', $1)) DESC,
          c.chunk_index,
          c.id
-LIMIT $3::integer
+LIMIT $4::integer
 `
 
 type SearchKbChunksLexicalParams struct {
 	QueryExpression string
 	KbID            string
+	FileTypes       []string
 	RowLimit        int32
 }
 
 func (q *Queries) SearchKbChunksLexical(ctx context.Context, arg SearchKbChunksLexicalParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, searchKbChunksLexical, arg.QueryExpression, arg.KbID, arg.RowLimit)
+	rows, err := q.db.Query(ctx, searchKbChunksLexical,
+		arg.QueryExpression,
+		arg.KbID,
+		arg.FileTypes,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1125,6 +1182,8 @@ SELECT jsonb_build_object(
     'chunk_index', c.chunk_index,
     'content', c.content,
     'title', d.title,
+    'file_type', d.file_type,
+    'has_original', d.storage_key IS NOT NULL AND d.storage_key <> '',
     'heading_path', c.heading_path,
     'page_no', c.page_no,
     'source_url', c.source_url,
@@ -1133,15 +1192,17 @@ SELECT jsonb_build_object(
 FROM knowledge_base_chunks c
 JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = $2
+    AND (COALESCE(cardinality($3::text[]), 0) = 0 OR d.file_type = ANY($3::text[]))
     AND c.embedding IS NOT NULL
-    AND c.embedding_model_id = $3::uuid
+    AND c.embedding_model_id = $4::uuid
 ORDER BY c.embedding <=> $1::text::vector
-LIMIT $4::integer
+LIMIT $5::integer
 `
 
 type SearchKbChunksVectorParams struct {
 	Embedding        string
 	KbID             string
+	FileTypes        []string
 	EmbeddingModelID string
 	RowLimit         int32
 }
@@ -1150,6 +1211,7 @@ func (q *Queries) SearchKbChunksVector(ctx context.Context, arg SearchKbChunksVe
 	rows, err := q.db.Query(ctx, searchKbChunksVector,
 		arg.Embedding,
 		arg.KbID,
+		arg.FileTypes,
 		arg.EmbeddingModelID,
 		arg.RowLimit,
 	)

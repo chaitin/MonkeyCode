@@ -1,6 +1,6 @@
 {
-  "cloud_computer_not_licensed": {"zh-CN":"当前无法新建云电脑。","en-US":"Creating cloud computers is currently unavailable."},
-  "custom_branding_not_licensed": {"zh-CN":"当前无法编辑自定义品牌。","en-US":"Custom branding is currently unavailable."},
+  "import_unavailable": {"zh-CN":"文件导入签名密钥未配置。","en-US":"The file import signing key is not configured."},
+  "anydoc_unavailable": {"zh-CN":"文档转换服务未配置。","en-US":"The document conversion service is not configured."},
   "api_key_name_required": {"zh-CN":"名称不能为空。","en-US":"A name is required."},
   "group_conflict": {"zh-CN":"分组操作与当前状态冲突。","en-US":"The group operation conflicts with the current state."},
   "invalid_tunnel_message": {"zh-CN":"隧道消息无效。","en-US":"The tunnel message is invalid."},
@@ -10,7 +10,6 @@
   "authorization_pending": {"zh-CN":"等待用户确认授权。","en-US":"Waiting for the user to approve authorization."},
   "authorization_state_unavailable": {"zh-CN":"授权状态暂不可用，请稍后重试。","en-US":"Authorization state is temporarily unavailable. Please try again later."},
   "baizhiyun_identity_required": {"zh-CN":"请通过百智云登录后使用系统资源。","en-US":"Sign in through Baizhiyun to use system resources in this billing mode."},
-  "cannot_delete_self": {"zh-CN":"不能删除自己的账号。","en-US":"You cannot delete your own account."},
   "cannot_disable_self": {"zh-CN":"不能停用自己或移除自己的管理员角色。","en-US":"You cannot disable yourself or remove your own administrator role."},
   "capabilities_unavailable": {"zh-CN":"功能策略暂不可用。","en-US":"The capability policy is temporarily unavailable."},
   "clock_sync_unavailable": {"zh-CN":"授时参考不可用。","en-US":"The clock synchronization reference is unavailable."},

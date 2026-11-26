@@ -119,14 +119,15 @@ func MCPTools() []resource.Object {
 		},
 		{
 			"name":        "kb_search",
-			"description": "在可访问知识库中检索；绑定可用向量模型的知识库自动执行 lexical+vector 混合检索，否则仅执行 lexical",
+			"description": "在可访问知识库中检索；绑定可用向量模型的知识库自动执行 lexical+vector 混合检索，否则仅执行 lexical。查找图片时传 file_types=[jpg,png]，query 使用具体画面对象或场景，如狗、草地；按画面描述判断匹配，不能把图片内文字提到狗等同于画面有狗。图片命中返回 image 元数据，用 kb_get_document_image 获取原图并在客户端展示，不能生成新图替代。top_k 仅为相关候选，不是全库完整清单。",
 			"inputSchema": resource.Object{
 				"type": "object",
 				"properties": resource.Object{
-					"query":   resource.Object{"type": "string", "description": "检索问题"},
-					"kb_ids":  resource.Object{"type": "array", "items": resource.Object{"type": "string", "format": "uuid"}},
-					"top_k":   resource.Object{"type": "integer", "minimum": 1, "maximum": 20, "default": 8},
-					"filters": resource.Object{"type": "object", "additionalProperties": true, "description": "兼容保留，目前不执行过滤并返回 filters_not_applied 警告；请勿传入，使用 kb_ids 限定检索范围"},
+					"file_types": resource.Object{"type": "array", "items": resource.Object{"type": "string", "enum": []string{"jpg", "png"}}, "description": "可选，仅检索指定图片格式；在召回前过滤"},
+					"query":      resource.Object{"type": "string", "description": "检索问题"},
+					"kb_ids":     resource.Object{"type": "array", "items": resource.Object{"type": "string", "format": "uuid"}},
+					"top_k":      resource.Object{"type": "integer", "minimum": 1, "maximum": 20, "default": 8},
+					"filters":    resource.Object{"type": "object", "additionalProperties": true, "description": "兼容保留，目前不执行过滤并返回 filters_not_applied 警告；请勿传入，使用 kb_ids 限定检索范围"},
 				},
 				"required": []string{"query"},
 			},
@@ -146,6 +147,8 @@ func MCPTools() []resource.Object {
 			"description": "读取本人个人知识库的完整授权列表和 revision；仅所有者可调用，内容读写成员不能查看完整授权。",
 			"inputSchema": mcpObjectSchema(resource.Object{"kb_id": mcpIDSchema()}, "kb_id"),
 		},
+		{"name": "kb_get_document_image", "description": "读取检索命中的独立图片文档原图。kb_id/document_id 来自 kb_search 的 image；按当前 MCP Key 检查阅读权限，返回 MCP image 内容块及元数据，客户端须支持图片展示。原图最多8 MiB可内联，超限须用已登录网页下载或预览；不要复制或生成 Base64，不接受任意URL。", "inputSchema": mcpObjectSchema(resource.Object{"kb_id": mcpIDSchema(), "document_id": mcpIDSchema()}, "kb_id", "document_id")},
+
 		{
 			"name":        "kb_get_image",
 			"description": "读取知识库正文图片，要求当前用户对启用的知识库有阅读权限。name 使用 kb_upload_image 返回的名称或正文 assets URL 的最后一段；默认返回 MCP image 内容块与图片元数据；只需引用地址时传 include_data=false，避免传输图片数据。不接受任意 URL。",
@@ -202,8 +205,9 @@ func MCPTools() []resource.Object {
 			"inputSchema": mcpDocumentOperationSchema(resource.Object{"kb_id": mcpIDSchema(), "document_id": mcpIDSchema()}),
 		},
 	}
+	tools = append(tools, mcpFileTools()...)
 	for _, tool := range tools {
-		readOnly := slices.Contains([]string{"kb_list", "kb_get", "kb_list_tags", "kb_list_permissions", "kb_list_documents", "kb_get_document", "kb_read_document", "kb_get_image", "kb_search"}, tool.String("name"))
+		readOnly := slices.Contains([]string{"kb_list", "kb_get", "kb_list_tags", "kb_list_permissions", "kb_list_documents", "kb_get_document", "kb_read_document", "kb_get_image", "kb_get_document_image", "kb_search"}, tool.String("name"))
 		tool["annotations"] = resource.Object{"readOnlyHint": readOnly, "destructiveHint": !readOnly, "idempotentHint": readOnly, "openWorldHint": false}
 		if !readOnly {
 			tool["description"] = tool.String("description") + " 写入超时或连接中断不代表失败，先读取核实结果，勿盲目重试；批量操作须逐项检查 failed，仅重试确认失败项。"
@@ -248,7 +252,7 @@ func mcpUpdateDocumentProperties() resource.Object {
 func editMCPTool() resource.Object {
 	return resource.Object{
 		"name":        "kb_edit_document",
-		"description": "局部编辑文档正文的首选工具：先读取原文和 revision，再提交 edits；按顺序对前一步结果做唯一精确替换，不做模糊匹配。old_text 必须非空且恰好出现一次，new_text 可为空以删除文字。所有编辑在同一事务内执行，任一步失败整批不写入。所有者也必须提供 expected_revision；冲突需重新读取。成功仅返回元数据和新 revision，不回传全文。超时后先读取核实结果，不自动重试或重复应用。仅文本文档可编辑，文件夹、文件和链接文档不可编辑正文。",
+		"description": "局部编辑文档正文的首选工具：先读取原文和 revision，再提交 edits；按顺序对前一步结果做唯一精确替换，不做模糊匹配。old_text 必须非空且恰好出现一次，new_text 可为空以删除文字。所有编辑在同一事务内执行，任一步失败整批不写入。所有者也必须提供 expected_revision；冲突需重新读取。成功仅返回元数据和新 revision，不回传全文。超时后先读取核实结果，不自动重试或重复应用。仅 file_type 为 txt/md/html/svg 的文档允许正文编辑；Office/PDF 派生正文、未知格式和文件夹不允许正文编辑。",
 		"inputSchema": mcpObjectSchema(resource.Object{
 			"kb_id": mcpIDSchema(), "document_id": mcpIDSchema(),
 			"expected_revision": resource.Object{"type": "integer", "minimum": 1},
@@ -278,6 +282,7 @@ func mcpCreateParentSchema() resource.Object {
 
 func mcpCreateDocumentProperties() resource.Object {
 	properties := mcpDocumentProperties(true)
+	properties["source_type"] = resource.Object{"type": "string", "enum": []string{"text"}, "description": "仅支持创建文本正文；上传文件请使用网页或 REST 文件导入接口"}
 	properties["parent_id"] = mcpCreateParentSchema()
 	return properties
 }

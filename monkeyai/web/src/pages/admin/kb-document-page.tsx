@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from "react"
+import { knowledgeSourcePreview } from "@/lib/kb-source-preview"
+import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useBlocker, useNavigate, useParams } from "react-router-dom"
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons"
@@ -17,6 +20,10 @@ type Document = {
   kb_id: string
   title: string
   content: string
+  file_type?: string | null
+  content_editable?: boolean
+  has_original?: boolean
+  revision?: number
   source_type: "text" | "file"
   file_name: string | null
   mime_type: string | null
@@ -68,6 +75,14 @@ function DocumentEditorPage({
       content !== loaded.document.content)
   )
   const readOnly = !loaded?.writable
+  const contentReadOnly = readOnly || loaded?.document.content_editable !== true
+  const sourceEditor = ["txt", "html", "svg", "csv"].includes(loaded?.document.file_type ?? "")
+  const imageDocument = Boolean(loaded?.document.has_original && ["jpg", "png"].includes(loaded.document.file_type ?? ""))
+  const previewable = ["html", "svg"].includes(loaded?.document.file_type ?? "")
+  const preview = useMemo(() => {
+    if (!previewable) return ""
+    try { return knowledgeSourcePreview(content, loaded?.document.file_type ?? "") } catch { return "" }
+  }, [content, loaded?.document.file_type, previewable])
   const blocker = useBlocker(dirty || saving || uploading > 0)
 
   useEffect(() => {
@@ -163,18 +178,19 @@ function DocumentEditorPage({
       uploadingRef.current > 0 ||
       (currentTitle === current.document.title &&
         currentContent === current.document.content) ||
-      !currentTitle.trim() ||
-      !currentContent.trim()
+      !currentTitle.trim()
     )
       return
     savingRef.current = true
     setSaving(true)
-    const submitted = { title: currentTitle.trim(), content: currentContent }
+    const submitted = { title: currentTitle.trim(), content: current.document.content_editable === true ? currentContent : current.document.content }
     try {
       const document = await api<Document>(path, {
         method: "PUT",
         body: JSON.stringify({
           ...submitted,
+          expected_revision: current.document.revision,
+          clear_content: current.document.content_editable === true && currentContent === "",
           source_type: current.document.source_type,
           file_name: current.document.file_name,
           mime_type: current.document.mime_type,
@@ -182,6 +198,7 @@ function DocumentEditorPage({
         }),
       })
       setLoaded({ ...current, document })
+      if (contentRef.current === currentContent) setContent(document.content)
       if (titleRef.current.trim() === submitted.title) setTitle(submitted.title)
       showToast({
         status: "success",
@@ -241,6 +258,8 @@ function DocumentEditorPage({
             )}
           </span>
         )}
+        {loaded?.document.has_original && <Button variant="outline" render={<a href={`${path}/file/detail`} download />}>{t("pages.knowledgeBases.downloadOriginal")}</Button>}
+        {loaded?.document.has_original && ["pdf", "jpg", "png"].includes(loaded.document.file_type ?? "") && <Button variant="outline" render={<a href={`${path}/file/detail?preview=true`} target="_blank" rel="noopener noreferrer" />}>{t("pages.knowledgeBases.previewOriginal")}</Button>}
         {loaded?.writable && (
           <Button
             loading={saving}
@@ -248,8 +267,7 @@ function DocumentEditorPage({
               loading ||
               uploading > 0 ||
               !dirty ||
-              !title.trim() ||
-              !content.trim()
+              !title.trim()
             }
             onClick={() => void save()}
           >
@@ -265,16 +283,34 @@ function DocumentEditorPage({
             {error}
           </p>
         ) : (
-          loaded && (
-            <MarkdownEditor
-              key={path}
-              value={content}
-              readOnly={readOnly || saving}
-              onChange={setContent}
-              onSave={() => void save()}
-              onImageUpload={uploadImage}
-            />
-          )
+          loaded && (imageDocument ? (
+            <div data-kb-image-detail className="grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,2fr)_minmax(0,3fr)] gap-4 md:grid-cols-2 md:grid-rows-1">
+              <div data-kb-image-preview className="flex min-h-0 min-w-0 items-center justify-center overflow-auto rounded-md border p-4">
+                <img src={`${path}/file/detail?preview=true`} alt={loaded.document.title} className="h-full w-full object-contain" />
+              </div>
+              <div data-kb-image-description className="min-h-0 min-w-0 overflow-hidden">
+                <MarkdownEditor key={path} value={content} readOnly={contentReadOnly || saving} onChange={setContent} onSave={() => void save()} onImageUpload={uploadImage} />
+              </div>
+            </div>
+          ) : sourceEditor ? (
+            <Tabs defaultValue="source" className="flex h-full min-h-0 flex-col">
+              {previewable && <TabsList>
+                <TabsTrigger value="source">{t("pages.knowledgeBases.sourceCode")}</TabsTrigger>
+                <TabsTrigger value="preview">{t("pages.knowledgeBases.preview")}</TabsTrigger>
+              </TabsList>}
+              <TabsContent value="source" className="min-h-0 flex-1">
+                <Textarea className="h-full resize-none [field-sizing:fixed]" aria-label={t("pages.knowledgeBases.textContent")} value={content} readOnly={contentReadOnly || saving} spellCheck={false} onChange={(event) => setContent(event.target.value)} onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "s") { event.preventDefault(); void save() }
+                }} />
+              </TabsContent>
+              {previewable && <TabsContent value="preview" className="flex min-h-0 flex-1 flex-col gap-2">
+                <p className="text-sm text-muted-foreground">{t("pages.knowledgeBases.sourcePreviewNotice")}</p>
+                {preview ? <iframe title={t("pages.knowledgeBases.preview")} sandbox="" referrerPolicy="no-referrer" srcDoc={preview} className="min-h-0 w-full flex-1 border" /> : <p role="status">{t("pages.knowledgeBases.sourcePreviewUnavailable")}</p>}
+              </TabsContent>}
+            </Tabs>
+          ) : (
+            <MarkdownEditor key={path} value={content} readOnly={contentReadOnly || saving} onChange={setContent} onSave={() => void save()} onImageUpload={uploadImage} />
+          ))
         )}
       </div>
     </section>

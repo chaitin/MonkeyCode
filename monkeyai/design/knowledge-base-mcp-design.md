@@ -1,5 +1,7 @@
 # 知识库 MCP 设计
 
+新增源码能力：JPEG/JPG/PNG 通过视觉 LLM 生成画面描述（含图中文字），支持按描述检索并返回知识库原图。图片格式过滤、检索结果原图引用及新增 `kb_get_document_image` 的方案见 [文件解析方案第 10 节](knowledge-base-file-parsing.md#10-jpegjpgpng-独立文档导入)。下文既有接口清单保留原有能力说明，新增工具与当前 schema 以代码和文件解析方案为准，真实客户端附图验收范围见该方案。
+
 ## 1. 入口与调用链
 
 知识库通过独立的 `POST /mcp/kb` 入口向客户端提供 MCP 工具，由 `kb.Service.RegisterMCP` 注册并直接调用知识库业务服务，不经过远程连接器 MCP 网关。
@@ -12,7 +14,7 @@
 
 ## 2. 工具集合
 
-当前提供以下 19 个工具（以 `MCPTools()` 为准），按实际操作对象分为 `kb` 和 `doc`，每个接口独占一行。`kb` 包含知识库信息、授权、标签及库级图片资源；`doc` 包含文档、文件夹和文档内容检索。图片以 `kb_id/name` 定位，不绑定单篇文档；检索虽然可跨知识库，但操作对象是文档分片，因此归入 `doc`。
+当前提供以下 22 个工具（以 `MCPTools()` 为准），按实际操作对象分为 `kb` 和 `doc`，每个接口独占一行。`kb` 包含知识库信息、授权、标签及库级图片资源；`doc` 包含文档、文件夹和文档内容检索。正文插图以 `kb_id/name` 定位；独立图片文档以 `kb_id/document_id` 定位；检索虽然可跨知识库，但操作对象是文档分片，因此归入 `doc`。
 
 ### 2.1 全部接口与调用边界
 
@@ -29,7 +31,7 @@
 | `kb_upload_image` | kb：正文图片资源 | 要求启用知识库的正文读写权限；仅供程序化客户端注入 Base64，上传不修改文档；优先使用 REST multipart 通道，凭证和传输限制见第 3 节 |
 | `kb_get_image` | kb：正文图片资源 | 以 kb_id/name 读取图片，要求启用知识库的阅读权限；默认返回 image 内容块，include_data=false 仅返回元数据及地址 |
 
-**doc：文档、目录及内容检索（11 个）**
+**doc：文档、目录及内容检索（14 个）**
 
 | 接口 | 操作对象 | 功能与调用边界 |
 | --- | --- | --- |
@@ -43,7 +45,10 @@
 | `kb_delete_document` | doc：文档或文件夹 | 删除节点并取消活跃学习任务；支持 ids（最多 200 项），协作删除提供 expected_revisions；兼容 document_id/expected_revision，批量结果须逐项检查 succeeded/failed |
 | `kb_move_document` | doc：文档或文件夹 | 在同库移动及排序，禁止移入自身或子目录；parent_id 省略或 null 表示根目录，prev_id/next_id 仅用于单项排序；支持 ids 和协作 expected_revisions，兼容 document_id/expected_revision，批量结果须逐项检查 |
 | `kb_restudy_document` | doc：文档 | 要求启用知识库的正文读写权限，取消旧活跃任务后按现有索引状态重新学习；支持 ids，兼容 document_id，文件夹不支持，批量结果须逐项检查 |
-| `kb_search` | doc：文档分片 | 在可访问知识库中检索，kb_ids 限定范围；自动选择全文或混合检索，top_k 默认 8、最多 20；filters 当前不执行过滤并返回 filters_not_applied，不应依赖它约束结果 |
+| `kb_upload_file` | doc：文件导入 | 同 Key 二进制上传后携带 import_context；图片需 model_id，LLM 生成画面描述及图中文字并保存；Office/PDF 走 anydoc，文本直接保存 |
+| `kb_get_file_import_status` | doc：文件导入 | 查询 anydoc 转换并由服务端保存；图片为同步 LLM 解析，不调用此工具 |
+| `kb_get_document_image` | doc：独立图片原件 | 按 kb_id/document_id 校验阅读权限并返回 MCP image 内容块，原图内联最多8 MiB；客户端须支持展示，超限通过已登录网页获取 |
+| `kb_search` | doc：文档分片 | 在可访问知识库中检索，kb_ids 限定范围；自动选择全文或混合检索，top_k 默认 8、最多 20；file_types 可限定 jpg/png，在召回前过滤；图片命中返回 image 元数据并按文档去重。泛化 filters 仍不执行过滤并返回 filters_not_applied，不应依赖它约束结果 |
 
 所有工具保留原始 schema，并提供 `readOnlyHint`、`destructiveHint`、`idempotentHint`、`openWorldHint`。annotations 仅为客户端提示，不代替授权。写操作保守标为非幂等；超时或连接中断后先核实实际结果，不盲目重试。批量操作返回 `succeeded/failed`，不能把 HTTP 200 当作全部成功。
 

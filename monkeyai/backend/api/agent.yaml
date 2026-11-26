@@ -4654,7 +4654,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     post:
       summary: 上传知识库正文图片
-      description: 需要 OAuth access token 及启用知识库的正文写权限，支持个人库所有者或拥有 read_write 授权的成员；只有阅读权限时返回 403，无访问权限时返回 404。 使用 multipart/form-data 的 file 字段上传一张图片，最多 32 MiB、2500 万像素，支持 PNG、JPEG、GIF、WebP；按真实内容完整解码校验，拒绝 SVG。图片按知识库和内容摘要存入对象存储，不新增关联表。返回的 url 及 markdown 可写入文档正文，读取时仍检查当前权限。此操作不创建或修改文档。
+      description: 需要 OAuth access token 及启用知识库的正文写权限，支持个人库所有者或拥有 read_write 授权的成员；只有阅读权限时返回 403，无访问权限时返回 404。 使用 multipart/form-data 的 file 字段上传一张图片，最多 32 MiB、2500 万像素，支持 PNG、JPEG、GIF、WebP、BMP、TIFF；按真实内容完整解码校验，拒绝 SVG。图片按知识库和内容摘要存入对象存储，不新增关联表。返回的 url 及 markdown 可写入文档正文，读取时仍检查当前权限。此操作不创建或修改文档。
       requestBody:
         required: true
         content:
@@ -4675,7 +4675,7 @@ paths:
                 properties:
                   name: {type: string, description: 内容摘要加真实图片扩展名}
                   url: {type: string, description: 受权限保护的 /api/kb/<id>/assets/<name> 相对地址}
-                  mime_type: {type: string, enum: [image/png, image/jpeg, image/gif, image/webp]}
+                  mime_type: {type: string, enum: [image/png, image/jpeg, image/gif, image/webp, image/bmp, image/tiff]}
                   size_bytes: {type: integer, minimum: 1, maximum: 33554432}
                   markdown: {type: string, description: 可直接插入正文的 Markdown 图片语法}
         '400': {description: 无效图片、文件超限或 multipart 字段不合法}
@@ -4834,6 +4834,130 @@ paths:
         '401': {$ref: '#/components/responses/ResourceError401'}
         '403': {description: 仅有只读权限}
         '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/v1/kb/{id}/imports/upload:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 上传待导入文件
+      description: 上传并处理原件，最多32 MiB。文本直接保存，JPEG/PNG 同步视觉解析后保存，Office/PDF 返回 pending；以预分配 document_id 作为 AnyDoc task_id，提交信号量限制进程内并发。上下文及等待队列不落表，客户端退出后不后台查询或入库。响应不含正文；原件保存后的下游失败返回 failed/error/import_context，retryable 表示上游暂时不可用或提交结果不确定，须复用原上下文重试。需要当前知识库写权限，图片必须提供 model_id。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                upload_key: {type: string, pattern: "^[0-9a-fA-F]{32}$", description: 客户端生成的上传键，同一次上传重试复用。}
+                title: {type: string}
+                parent_id: {type: string, format: uuid}
+                model_id: {type: string, format: uuid}
+          application/json:
+            schema:
+              type: object
+              required: [import_context]
+              properties:
+                import_context: {type: string}
+                title: {type: string}
+                parent_id: {type: [string, 'null'], format: uuid}
+                model_id: {type: string, format: uuid}
+      responses:
+        '200':
+          description: 上传待导入文件成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbImportUploadResult'}
+        '400': {description: 格式、上下文或输入无效}
+        '401': {description: 未登录或凭证失效}
+        '404': {description: 知识库或文档不可访问}
+        '413': {description: 请求超过大小限制}
+        '503': {description: 导入签名、对象存储或 anydoc 未配置}
+  /api/v1/kb/{id}/imports/models:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    get:
+      summary: 列出当前调用者可用的图片描述模型
+      description: 要求目标知识库写权限；仅返回支持视觉输入的文本模型，不返回上游凭证。
+      responses:
+        '200':
+          description: 可用模型
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, display_name, protocol]
+                      properties:
+                        id: {type: string, format: uuid}
+                        display_name: {type: string}
+                        protocol: {type: string}
+        '400': {description: 图片解析未配置}
+        '401': {description: 未认证}
+        '404': {description: 知识库不可写}
+  /api/v1/kb/{id}/imports/query:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 查询 anydoc 转换结果
+      description: 校验当前身份、知识库权限及 task_context，先检查同 ID 文档是否已保存；未保存时查询 AnyDoc 并校验结果，事务保存正文及学习任务后返回 completed/document_id。pending 每3秒重查；任务失效返回 failed。仅客户端请求驱动，无后台 worker，不返回正文或 result_context。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbImportTaskContext'}
+      responses:
+        '200':
+          description: 查询 anydoc 转换结果成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbImportQueryResult'}
+        '400': {description: 格式、上下文或输入无效}
+        '401': {description: 未登录或凭证失效}
+        '404': {description: 知识库或文档不可访问}
+        '413': {description: 请求超过大小限制}
+        '503': {description: 导入签名、对象存储或 anydoc 未配置}
+  /api/v1/kb/{id}/imports/result:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 查询导入文档当前是否存在
+      description: 每次重新验证当前知识库写权限；管理端仅允许写系统知识库。签名上下文绑定身份、知识库及原件，不能指定任意对象URL。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbImportContextInput'}
+      responses:
+        '200':
+          description: 查询导入文档当前是否存在成功
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbImportResult'}
+        '400': {description: 格式、上下文或输入无效}
+        '401': {description: 未登录或凭证失效}
+        '404': {description: 知识库或文档不可访问}
+        '413': {description: 请求超过大小限制}
+        '503': {description: 导入签名、对象存储或 anydoc 未配置}
+  /api/v1/kb/{id}/documents/{documentId}/file/detail:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+      - {name: documentId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 下载或预览知识库原件
+      description: 每次验证阅读权限，按私有 storage_key 读取原件，不返回对象URL。默认附件；preview=true 仅允许 PDF 内联预览，HTML/SVG 始终附件。响应禁止缓存。
+      parameters:
+        - {name: preview, in: query, schema: {type: boolean, default: false}}
+      responses:
+        '200':
+          description: 原件二进制
+          content:
+            application/octet-stream: {schema: {type: string, format: binary}}
+            application/pdf: {schema: {type: string, format: binary}}
+        '401': {description: 未登录或凭证失效}
+        '404': {description: 无权限或无原件}
+        '503': {description: 对象存储不可用}
   /api/v1/kb/{id}/documents:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
@@ -4959,10 +5083,41 @@ paths:
         '428': {description: 缺少文档版本}
         '500': {$ref: '#/components/responses/ResourceError500'}
 
+  /mcp/kb/{id}/files/upload:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+    post:
+      summary: 使用 MCP Key 上传知识库原文件
+      description: 上传并处理原件，最多32 MiB。文本直接保存，JPEG/PNG 同步视觉解析后保存，Office/PDF 返回 pending；以预分配 document_id 作为 AnyDoc task_id，提交信号量限制进程内并发。上下文及等待队列不落表，客户端退出后不后台查询或入库。响应不含正文；原件保存后的下游失败返回 failed/error/import_context，retryable 表示上游暂时不可用或提交结果不确定，须复用原上下文重试。需要当前知识库写权限，图片必须提供 model_id。
+      security: [{InvocationKey: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary, description: 单个原始文件字节，最多32 MiB}
+                upload_key: {type: string, pattern: "^[0-9a-fA-F]{32}$", description: 客户端生成的上传键，同一次上传重试复用。}
+                title: {type: string}
+                parent_id: {type: string, format: uuid}
+                model_id: {type: string, format: uuid}
+      responses:
+        '201':
+          description: 原件已保存，签名上下文有效期24小时。响应中不返回正文。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbImportUploadResult'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {description: MCP Key缺失、无效或缺少mcp:invoke权限}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '503': {description: 文件签名或对象存储未配置}
   /mcp/kb:
     post:
       summary: 百智办公知识库 MCP
-      description: 使用含 mcp:invoke 的全局 API Key。无状态 streamable HTTP JSON-RPC；支持 initialize、ping、tools/list、tools/call。工具为 kb_list、kb_list_documents、kb_get_document、kb_create_document、kb_update_document、kb_delete_document、kb_search。kb_list 支持 owner、q、标签和分页，返回与 GET /api/v1/kb 一致的 knowledge_bases、user、total_count、page、page_size 和 version；kb_list_documents 支持分页、标题或文件名搜索、学习状态和来源类型筛选。文档读取工具支持当前用户有权限的系统或个人知识库；文档写入允许个人库所有者或目标库的读写成员，不能管理授权或删除整个库。MCP 协作更新/删除须传 expected_revision。
+      description: 使用含 mcp:invoke 的全局 API Key。无状态 streamable HTTP JSON-RPC；支持 initialize、ping、tools/list、tools/call。工具为 kb_list、kb_list_documents、kb_get_document、kb_create_document、kb_update_document、kb_delete_document、kb_search。kb_list 支持 owner、q、标签和分页，返回与 GET /api/v1/kb 一致的 knowledge_bases、user、total_count、page、page_size 和 version；kb_list_documents 支持分页、标题或文件名搜索、学习状态和来源类型筛选。文档读取工具支持当前用户有权限的系统或个人知识库；文档写入允许个人库所有者或目标库的读写成员，不能管理授权或删除整个库。MCP 协作更新/删除须传 expected_revision。多格式文件使用 kb_upload_file、kb_get_file_import_status；优先在客户端以同一 MCP Key 调用 POST /mcp/kb/{id}/files/upload 上传原始字节及处理参数，pending 时按 task_context 查询；import_context 仅用于复用原件继续提交。kb_upload_file 也兼容客户端程序化注入 file_name/data_base64，但禁止模型生成或复制Base64。原文件最多32 MiB；Base64 JSON允许44,804,780字节（编码膨胀加64 KiB），其他常规请求仍最多1 MiB。转换正文不回传模型，查询完成时服务端直接保存并返回document_id；completed表示入库成功，学习仍异步。
       security: [{InvocationKey: []}]
       parameters:
         - {name: MCP-Protocol-Version, in: header, required: false, schema: {type: string, enum: ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']}}
@@ -8204,6 +8359,41 @@ components:
             readOnly: true
             items: {$ref: '#/components/schemas/ResourceGrant'}
             description: 仅知识库所有者可见的授权范围；被分享者不返回。
+    KbFileType:
+      type: string
+      enum: [txt, md, html, svg, csv, docx, xls, xlsx, pptx, pdf, jpg, png]
+      description: 后端校验的原始格式；直接创建文本为 md，转换后的 Office/PDF 仍保留原格式。客户端不能修改。
+    KbImportContextInput:
+      type: object
+      required: [import_context]
+      properties:
+        import_context: {type: string, description: 上传返回的签名上下文，仅保存在当前客户端内存中，有效期24小时。}
+    KbImportUploadResult:
+      $ref: '#/components/schemas/KbImportQueryResult'
+    KbImportTaskContext:
+      type: object
+      required: [task_context]
+      properties:
+        task_context: {type: string}
+    KbImportQueryResult:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [pending, failed, completed]}
+        import_context: {type: string, description: 原件引用；处理失败时保留，供显式重试。}
+        task_context: {type: string, description: pending 时返回，绑定 document_id 作为 AnyDoc task_id。}
+        file_type: {$ref: '#/components/schemas/KbFileType'}
+        document_id: {type: string, format: uuid, description: completed 时已保存的文档 ID。}
+        poll_after_seconds: {type: integer, minimum: 1}
+        error: {type: string}
+        retryable: {type: boolean, description: 上游暂时不可用或提交结果不确定时为 true；客户端复用原上下文有界退避重试，图片不自动重试。}
+        restart_required: {type: boolean, description: 仅转换任务终态失败、过期或不存在时为 true；结果不确定时保留上传键及上下文，重试前查询 result。}
+    KbImportResult:
+      type: object
+      required: [exists]
+      properties:
+        exists: {type: boolean, description: false 无法区分尚未提交与已删除。}
+        document_id: {type: string, format: uuid}
     KbDocument:
       type: object
       required: [id, kb_id, node_type, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
@@ -8218,6 +8408,9 @@ components:
         children: {type: array, items: {$ref: '#/components/schemas/KbDocument'}}
         title: {type: string}
         source_type: {type: string, enum: [text, file, url]}
+        file_type: {type: [string, 'null'], enum: [txt, md, html, svg, csv, docx, xls, xlsx, pptx, pdf, jpg, png, null], readOnly: true}
+        content_editable: {type: boolean, readOnly: true, description: 正文格式允许编辑；调用方仍须满足当前写权限。}
+        has_original: {type: boolean, readOnly: true}
         content: {type: string}
         file_name: {type: [string, 'null']}
         mime_type: {type: [string, 'null']}
@@ -8243,6 +8436,9 @@ components:
         children: {type: array, items: {$ref: '#/components/schemas/KbDocumentSummary'}}
         title: {type: string}
         source_type: {type: string, enum: [text, file, url]}
+        file_type: {type: [string, 'null'], enum: [txt, md, html, svg, csv, docx, xls, xlsx, pptx, pdf, jpg, png, null], readOnly: true}
+        content_editable: {type: boolean, readOnly: true, description: 正文格式允许编辑；调用方仍须满足当前写权限。}
+        has_original: {type: boolean, readOnly: true}
         file_name: {type: [string, 'null']}
         mime_type: {type: [string, 'null']}
         size_bytes: {type: integer}
@@ -8292,7 +8488,7 @@ components:
         title: {type: string, minLength: 1}
         parent_id: {type: [string, 'null'], format: uuid}
         node_type: {type: string, enum: [folder, document], default: document}
-        source_type: {type: string, enum: [text, file, url], default: text}
+        source_type: {type: string, enum: [text], default: text, description: 仅创建文本正文；上传文件使用 imports 接口，暂不支持链接导入。}
         content: {type: string, minLength: 1}
         file_name: {type: string}
         mime_type: {type: string}
@@ -8304,7 +8500,8 @@ components:
         expected_revision: {type: integer, minimum: 1, description: 协作写入必须提供读取到的文档版本。}
         title: {type: string, minLength: 1}
         source_type: {type: string, enum: [text, file, url]}
-        content: {type: string}
+        content: {type: string, description: 源码正文；Office/PDF 派生正文禁止修改。}
+        clear_content: {type: boolean, default: false, description: 显式清空可编辑文本正文，派生正文及未知格式拒绝。}
         file_name: {type: string}
         mime_type: {type: string}
         size_bytes: {type: integer, minimum: 0}
@@ -8314,6 +8511,7 @@ components:
       required: [query]
       properties:
         kb_ids: {type: array, maxItems: 50, items: {type: string, format: uuid}}
+        file_types: {type: array, items: {type: string, enum: [jpg, png]}, description: 可选图片格式，在候选召回前过滤。}
         query: {type: string, minLength: 1}
         top_k: {type: integer, minimum: 1, maximum: 20, default: 8}
         filters: {type: object, additionalProperties: true, description: 当前版本保留字段，暂不参与过滤。}
@@ -8329,6 +8527,19 @@ components:
         title: {type: string}
         score: {type: number}
         retrieval_source: {type: string, enum: [lexical, vector, both]}
+        file_type: {type: [string, 'null']}
+        image:
+          type: object
+          description: 图片命中且原件存在时返回。阅读仍需浏览器或 OAuth 凭证，MCP Key 通过 kb_get_document_image 读取。相同图片只返回一次，不包含对象存储键。
+          properties:
+            kb_id: {type: string, format: uuid}
+            document_id: {type: string, format: uuid}
+            file_type: {type: string, enum: [jpg, png]}
+            mime_type: {type: string, enum: [image/jpeg, image/png]}
+            file_name: {type: string}
+            preview_url: {type: string}
+            download_url: {type: string}
+            read_tool: {type: string, const: kb_get_document_image}
         citation: {$ref: '#/components/schemas/KbCitation'}
     KbFusionConfig:
       type: object

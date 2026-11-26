@@ -18,12 +18,15 @@ import (
 )
 
 type Service struct {
-	CRUD    *resource.CRUD
-	store   *resource.Store
-	models  Embedder
-	worker  string
-	storage resource.Storage
-	syncMu  sync.Mutex
+	anydoc       AnyDocConfig
+	CRUD         *resource.CRUD
+	store        *resource.Store
+	models       Embedder
+	worker       string
+	storage      resource.Storage
+	vision       ImageDescriber
+	imageImports sync.Map
+	syncMu       sync.Mutex
 }
 
 type Embedder interface {

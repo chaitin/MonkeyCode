@@ -227,7 +227,7 @@ SET embedding = NULL,
 WHERE document_id = $1;
 
 -- name: ListKbChunksForRebuild :many
-SELECT c.id::text AS id, c.document_id::text AS document_id, c.content
+SELECT c.id::text AS id, c.document_id::text AS document_id, c.content, COALESCE(d.file_type, '')::text AS file_type
 FROM knowledge_base_chunks c
 JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = $1
@@ -356,9 +356,9 @@ WHERE c.id = $1;
 -- name: CreateKbDocument :exec
 INSERT INTO knowledge_base_documents (
     id, kb_id, title, source_type, content, file_name, mime_type, size_bytes,
-    status, created_by_user_id, parent_id, node_type, position
+    status, created_by_user_id, parent_id, node_type, position, file_type, storage_key
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
 
 -- name: UpdateKbDocument :exec
 UPDATE knowledge_base_documents
@@ -499,6 +499,8 @@ SELECT jsonb_build_object(
     'chunk_index', c.chunk_index,
     'content', c.content,
     'title', d.title,
+    'file_type', d.file_type,
+    'has_original', d.storage_key IS NOT NULL AND d.storage_key <> '',
     'heading_path', c.heading_path,
     'page_no', c.page_no,
     'source_url', c.source_url,
@@ -507,6 +509,7 @@ SELECT jsonb_build_object(
 FROM knowledge_base_chunks c
 JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = sqlc.arg(kb_id)
+    AND (COALESCE(cardinality(sqlc.arg(file_types)::text[]), 0) = 0 OR d.file_type = ANY(sqlc.arg(file_types)::text[]))
     AND c.search_tsv @@ to_tsquery('simple', sqlc.arg(query_expression))
 ORDER BY ts_rank_cd(c.search_tsv, to_tsquery('simple', sqlc.arg(query_expression))) DESC,
          c.chunk_index,
@@ -521,6 +524,8 @@ SELECT jsonb_build_object(
     'chunk_index', c.chunk_index,
     'content', c.content,
     'title', d.title,
+    'file_type', d.file_type,
+    'has_original', d.storage_key IS NOT NULL AND d.storage_key <> '',
     'heading_path', c.heading_path,
     'page_no', c.page_no,
     'source_url', c.source_url,
@@ -529,6 +534,7 @@ SELECT jsonb_build_object(
 FROM knowledge_base_chunks c
 JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = sqlc.arg(kb_id)
+    AND (COALESCE(cardinality(sqlc.arg(file_types)::text[]), 0) = 0 OR d.file_type = ANY(sqlc.arg(file_types)::text[]))
     AND c.embedding IS NOT NULL
     AND c.embedding_model_id = sqlc.arg(embedding_model_id)::uuid
 ORDER BY c.embedding <=> sqlc.arg(embedding)::text::vector
@@ -613,3 +619,12 @@ SELECT EXISTS (SELECT 1 FROM knowledge_bases WHERE avatar_s3_key = $1);
 INSERT INTO tags(name,created_by_user_id) VALUES($1,$2)
 ON CONFLICT (lower(name)) WHERE deleted_at IS NULL
 DO UPDATE SET name=tags.name RETURNING id::text;
+
+-- name: KbImportActorActive :one
+SELECT EXISTS(SELECT 1 FROM users WHERE id=sqlc.arg(actor)::uuid AND status='active' AND deleted_at IS NULL AND (sqlc.arg(admin)::boolean=false OR role='admin'));
+
+-- name: KbOriginalReferenced :one
+SELECT EXISTS(SELECT 1 FROM knowledge_base_documents WHERE storage_key=sqlc.arg(storage_key)::text);
+
+-- name: KbLockImageImport :one
+SELECT pg_try_advisory_xact_lock(hashtextextended(sqlc.arg(import_lock)::text, 0))::boolean;

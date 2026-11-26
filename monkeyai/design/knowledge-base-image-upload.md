@@ -1,5 +1,7 @@
 # 知识库正文图片上传
 
+本文描述正文插图上传。JPEG/JPG/PNG 作为独立知识文档导入时，由后端调用视觉 LLM 生成画面描述并提取图中文字，描述参与检索，命中后可返回原图；不调用 anydoc；方案与验证范围见 [多格式解析方案第 10 节](knowledge-base-file-parsing.md#10-jpegjpgpng-独立文档导入)。两类入口的入库与学习行为不同。
+
 管理端：`POST /api/admin/v1/kb/{id}/images/upload`，使用管理员登录 Cookie，仅支持系统知识库。个人知识库在管理端保持只读。
 
 客户端：`POST /api/v1/kb/{id}/images/upload`，使用 OAuth Bearer access token。知识库必须启用，调用者为个人库所有者或拥有正文 `read_write` 授权的成员。只读成员返回 403，无访问权限返回 404。上传时锁定知识库并检查权限，与权限撤销、删除操作串行。
@@ -60,7 +62,7 @@ curl 'https://example.com/api/v1/kb/KB_ID/images/upload' \
 
 上传调用允许的 JSON 请求体上限为 44,804,780 字节（32 MiB 图片的 Base64 长度加 64 KiB 开销）；其他 MCP 请求仍最多 1 MiB。先通过 `kb_upload_image` 获得 Markdown，再将其合并到正文，通过 `kb_create_document` 或 `kb_update_document` 保存。上传本身不创建文档或触发学习，文档保存仍受现有请求体大小和版本检查约束。
 
-知识库 MCP 现共提供 19 个工具，完整清单见 [内置 MCP 工具清单](knowledge-base-technical-design.md#83-内置-mcp)。返回的图片地址仍受阅读权限保护；MCP API Key 用于上传工具调用，浏览器预览或 REST 读取图片需使用浏览器会话或 OAuth access token。
+知识库 MCP 现共提供 22 个工具，完整清单见 [内置 MCP 工具清单](knowledge-base-technical-design.md#83-内置-mcp)。返回的图片地址仍受阅读权限保护；MCP API Key 用于上传工具调用，浏览器预览或 REST 读取图片需使用浏览器会话或 OAuth access token。
 
 ## 管理端与图片存储
 

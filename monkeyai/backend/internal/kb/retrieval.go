@@ -205,6 +205,28 @@ func tokenizeText(value string) string {
 	return strings.Join(tokens, " ")
 }
 
+// Images need object queries such as 狗 to match within a longer description.
+// Keep the existing text tokenizer unchanged for other document formats.
+func tokenizeDocument(value, fileType string) string {
+	tokens := tokenizeText(value)
+	if !imageFileType(fileType) {
+		return tokens
+	}
+	words := strings.Fields(tokens)
+	seen := map[string]bool{}
+	for _, word := range words {
+		seen[word] = true
+	}
+	for _, r := range value {
+		word := string(r)
+		if unicode.Is(unicode.Han, r) && !seen[word] && len(words) < defaultMaxSearchTokens {
+			words = append(words, word)
+			seen[word] = true
+		}
+	}
+	return strings.Join(words, " ")
+}
+
 func weightedRRF(rank, k int, weight float64) float64 {
 	if rank <= 0 || k <= 0 || weight <= 0 {
 		return 0
@@ -295,7 +317,11 @@ func limitPerDocument(items []resource.Object, topK int) []resource.Object {
 	counts := map[string]int{}
 	for _, item := range items {
 		documentID := item.String("document_id")
-		if counts[documentID] >= 2 {
+		limit := 2
+		if imageFileType(item.String("file_type")) {
+			limit = 1
+		}
+		if counts[documentID] >= limit {
 			continue
 		}
 		counts[documentID]++

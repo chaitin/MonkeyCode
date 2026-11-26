@@ -39,6 +39,9 @@ try {
     content:
       "# 文档标题\n\n**粗体**与列表：\n\n- 第一项\n- 第二项\n\n| 项目 | 内容 |\n| --- | --- |\n| 示例 | 测试 |",
     source_type: "text",
+    file_type: "md",
+    content_editable: true,
+    revision: 1,
     file_name: null,
     mime_type: null,
     size_bytes: 100,
@@ -165,6 +168,8 @@ try {
           document = { ...document, ...input }
         }
         body = document
+      } else if (pathname.endsWith("/file/detail")) {
+        return route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1cAAAAASUVORK5CYII=", "base64") })
       } else if (pathname.includes("/documents")) {
         documentRequests++
         body = { items: [document] }
@@ -194,6 +199,32 @@ try {
   })
 
   const url = `http://admin.test/admin/resources/kb/${kbId}/documents/${documentId}`
+  if (process.argv.includes("--images-only")) {
+    document = { ...document, content_editable: false, file_type: "png", has_original: true, content: "## 画面描述\n\n一只狗坐在草地上。\n\n## 图片内文字\n\n未见可辨识文字" }
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(url, { waitUntil: "networkidle" })
+      const picture = page.getByRole("img", { name: document.title, exact: true })
+      await picture.waitFor()
+      assert.equal(await picture.evaluate(img => img.complete && img.naturalWidth > 0), true)
+      const left = await page.locator("[data-kb-image-preview]").boundingBox()
+      const right = await page.locator("[data-kb-image-description]").boundingBox()
+      assert.ok(left && right)
+      if (width >= 768) {
+        assert.ok(left.x + left.width <= right.x, "图片应位于文字左侧")
+        assert.ok(Math.abs(left.y - right.y) < 1, "左右区域应顶部对齐")
+      } else {
+        assert.ok(left.y + left.height <= right.y, "窄屏应上下排列")
+      }
+
+      await page.getByText("一只狗坐在草地上。", { exact: true }).waitFor()
+      assert.equal(await page.locator('.tiptap[contenteditable="true"]').count(), 0)
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+    }
+    await page.screenshot({ path: "/tmp/monkeyai-kb-image-preview.png", fullPage: true })
+    assert.deepEqual(errors, [])
+    console.log("knowledge image original preview regression passed")
+  } else {
   await page.goto("http://admin.test/admin/resources/kb", {
     waitUntil: "networkidle",
   })
@@ -381,12 +412,37 @@ try {
     path: "/tmp/monkeyai-document-editor.png",
     fullPage: true,
   })
+  document = { ...document, content_editable: false, file_type: "pdf", has_original: true }
+  await page.goto(url, { waitUntil: "networkidle" })
+  await page.locator(".tiptap h1").waitFor()
+  assert.equal(await page.locator('.tiptap[contenteditable="true"]').count(), 0)
+  assert.ok((await page.getByRole("link", { name: "预览原件" }).getAttribute("href")).endsWith("?preview=true"))
+  document = { ...document, content_editable: false, file_type: "png", has_original: true, content: "## 画面描述\n\n一只狗坐在草地上。\n\n## 图片内文字\n\n未见可辨识文字" }
+  await page.goto(url, { waitUntil: "networkidle" })
+  await page.getByRole("img", { name: document.title, exact: true }).waitFor()
+  assert.ok((await page.getByRole("img", { name: document.title, exact: true }).getAttribute("src")).endsWith("/file/detail?preview=true"))
+  assert.equal(await page.locator('.tiptap[contenteditable="true"]').count(), 0)
+  await page.getByText("一只狗坐在草地上。", { exact: true }).waitFor()
+  document = { ...document, content_editable: true, file_type: "html", file_name: "source.html", content: '<h1>源码</h1><script>window.badPreview = true</script><img src="https://invalid.example/image">' }
+  await page.goto(url, { waitUntil: "networkidle" })
+  const source = page.getByRole("textbox", { name: "文本内容", exact: true })
+  await page.locator('textarea').waitFor()
+  assert.equal(await page.locator('textarea').inputValue(), document.content)
+  await page.getByRole("tab", { name: "预览", exact: true }).click()
+  const frame = page.frameLocator('iframe[sandbox=""]')
+  await frame.locator('h1').waitFor()
+  assert.equal(await frame.locator('script,img').count(), 0)
+  assert.equal(await page.evaluate(() => window.badPreview), undefined)
+  await page.getByRole("tab", { name: "源码", exact: true }).click()
+  assert.equal(await page.locator('textarea').inputValue(), document.content)
+
   failLoad = true
   await page.reload({ waitUntil: "networkidle" })
   await page.getByRole("alert").filter({ hasText: "模拟请求失败" }).waitFor()
   assert.equal(await page.locator("[data-markdown-editor]").count(), 0)
   assert.deepEqual(errors, [])
   console.log("knowledge document editor regression check passed")
+  }
 } finally {
   await browser.close()
 }
