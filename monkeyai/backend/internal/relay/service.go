@@ -1,5 +1,5 @@
 // [INPUT]: 设备登记、身份授权、yamux 会话与结构化日志。
-// [OUTPUT]: 组装 relay 服务，按代次回收设备访问并记录首次关闭原因。
+// [OUTPUT]: 组装 relay 服务，按代次通知发布完成、回收设备访问并记录首次关闭原因。
 // [POS]: relay 服务入口，按控制或数据通道分配复用器的超时预算。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -96,6 +96,7 @@ type route struct {
 	control            *yamux.Session
 	data               *yamux.Session
 	ws                 *websocket.Conn
+	publishDone        chan struct{}
 	ready              bool
 	closed             bool
 	seen               time.Time
@@ -294,6 +295,14 @@ func (s *Service) current(key target) *route {
 	return r
 }
 
+// 持有服务锁时调用；发布就绪或提前关闭都会唤醒同代次的数据握手。
+func (r *route) finishPublish() {
+	if r.publishDone != nil {
+		close(r.publishDone)
+		r.publishDone = nil
+	}
+}
+
 func (s *Service) closeRoute(r *route, reason string) {
 	if r == nil {
 		return
@@ -308,6 +317,7 @@ func (s *Service) closeRoute(r *route, reason string) {
 		delete(s.routes, r.target)
 	}
 	r.ready = false
+	r.finishPublish()
 	lastSeenAge := time.Since(r.seen)
 	data, control := r.data, r.control
 	accesses := make([]*access, 0, len(r.streams))

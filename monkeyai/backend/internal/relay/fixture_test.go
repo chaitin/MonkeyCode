@@ -1,5 +1,5 @@
 // [INPUT]: 隔离 PostgreSQL schema 和真实 WebSocket 握手。
-// [OUTPUT]: 提供两类通道、运行端替身、访问票据及代理请求测试夹具。
+// [OUTPUT]: 提供可分步完成证明与确认的双通道握手、运行端替身、访问票据及代理请求测试夹具。
 // [POS]: relay 集成测试入口，按通道选择与服务端一致的配置。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -153,7 +153,7 @@ type runtimeFixture struct {
 	sequence atomic.Int64
 }
 
-func (f *fixture) handshake(t *testing.T, hello Hello, private ed25519.PrivateKey, channel, token string) (*websocket.Conn, Ready) {
+func (f *fixture) prove(t *testing.T, hello Hello, private ed25519.PrivateKey, channel, token string) *websocket.Conn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -173,11 +173,19 @@ func (f *fixture) handshake(t *testing.T, hello Hello, private ed25519.PrivateKe
 	if err = writeWS(ctx, ws, Proof{Type: "proof", ChallengeID: challenge.ChallengeID, Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, message))}); err != nil {
 		t.Fatal(err)
 	}
+	return ws
+}
+
+func (f *fixture) handshake(t *testing.T, hello Hello, private ed25519.PrivateKey, channel, token string) (*websocket.Conn, Ready) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	ws := f.prove(t, hello, private, channel, token)
 	var ready Ready
-	if err = readWS(ctx, ws, &ready); err != nil {
+	if err := readWS(ctx, ws, &ready); err != nil {
 		t.Fatal(err)
 	}
-	if err = writeWS(ctx, ws, ReadyAck{Type: "ready_ack", RegistrationVersion: ready.RegistrationVersion, LeaseEpoch: ready.LeaseEpoch}); err != nil {
+	if err := writeWS(ctx, ws, ReadyAck{Type: "ready_ack", RegistrationVersion: ready.RegistrationVersion, LeaseEpoch: ready.LeaseEpoch}); err != nil {
 		t.Fatal(err)
 	}
 	return ws, ready
