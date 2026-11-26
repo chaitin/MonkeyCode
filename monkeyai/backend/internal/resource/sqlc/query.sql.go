@@ -306,7 +306,7 @@ SELECT
         SELECT
             1
         FROM
-            resource_access_grants rag
+            effective_resource_grants rag
         WHERE
             rag.resource_type = $1
             AND rag.resource_id = $2
@@ -902,6 +902,36 @@ func (q *Queries) SubjectExists(ctx context.Context, arg SubjectExistsParams) (b
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const unshareableExpertKnowledge = `-- name: UnshareableExpertKnowledge :many
+SELECT DISTINCT jsonb_build_object('id', k.id, 'name', k.name, 'enabled', k.enabled,
+    'ownership_type', k.ownership_type, 'owner_user_id', k.owner_user_id) AS kb
+FROM expert_knowledge_bases x JOIN knowledge_bases k ON k.id = x.kb_id
+JOIN experts e ON e.id = x.expert_id
+WHERE x.expert_id::text = ANY($1::text[])
+    AND NOT (k.ownership_type = 'user' AND k.owner_user_id = e.owner_user_id)
+ORDER BY kb
+`
+
+func (q *Queries) UnshareableExpertKnowledge(ctx context.Context, expertIds []string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, unshareableExpertKnowledge, expertIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var kb []byte
+		if err := rows.Scan(&kb); err != nil {
+			return nil, err
+		}
+		items = append(items, kb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateKbGrant = `-- name: UpdateKbGrant :exec

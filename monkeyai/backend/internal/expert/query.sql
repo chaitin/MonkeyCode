@@ -217,6 +217,19 @@ WHERE
     id = $1
     AND deleted_at IS NULL FOR SHARE;
 
+-- name: LockKnowledgeBase :one
+SELECT to_jsonb(k) FROM knowledge_bases k WHERE id = $1 FOR SHARE;
+
+-- name: DeleteKnowledgeLinks :exec
+DELETE FROM expert_knowledge_bases WHERE expert_id = $1;
+
+-- name: CreateKnowledgeLinks :exec
+INSERT INTO expert_knowledge_bases (expert_id, kb_id)
+SELECT sqlc.arg(expert_id)::uuid, unnest(sqlc.arg(kb_ids)::text[])::uuid;
+
+-- name: ListKnowledgeIDs :many
+SELECT kb_id::text FROM expert_knowledge_bases WHERE expert_id = $1 ORDER BY kb_id;
+
 -- name: DeleteSkillLinks :exec
 DELETE FROM expert_skills
 WHERE expert_id = $1;

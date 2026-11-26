@@ -289,6 +289,40 @@ func (q *Queries) CatalogExpertsPage(ctx context.Context, arg CatalogExpertsPage
 	return i, err
 }
 
+const catalogKnowledgeLinks = `-- name: CatalogKnowledgeLinks :many
+SELECT jsonb_build_object('expert_id', x.expert_id, 'id', k.id, 'owner_user_id', k.owner_user_id,
+    'ownership_type', k.ownership_type, 'enabled', k.enabled AND (k.ownership_type <> 'system' OR $1::boolean))
+FROM expert_knowledge_bases x JOIN knowledge_bases k ON k.id = x.kb_id
+WHERE $2::boolean OR x.expert_id::text = ANY($3::text[])
+ORDER BY x.expert_id, k.id
+`
+
+type CatalogKnowledgeLinksParams struct {
+	SystemAccess bool
+	AllResources bool
+	ExpertIds    []string
+}
+
+func (q *Queries) CatalogKnowledgeLinks(ctx context.Context, arg CatalogKnowledgeLinksParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogKnowledgeLinks, arg.SystemAccess, arg.AllResources, arg.ExpertIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const catalogRuleLinks = `-- name: CatalogRuleLinks :many
 SELECT to_jsonb(t)
 FROM expert_rules t
@@ -659,7 +693,7 @@ SELECT
     jsonb_build_object('kind', resource_type, 'id', resource_id, 'required',
 	bool_or(usage_requirement = 'required'))
 FROM
-    resource_access_grants rag
+    effective_resource_grants rag
 WHERE
     (rag.all_users AND EXISTS (
         SELECT 1 FROM users u WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL

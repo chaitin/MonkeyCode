@@ -142,6 +142,15 @@ WHERE
     user_id IS NOT NULL
         DO NOTHING;
 
+-- name: UnshareableExpertKnowledge :many
+SELECT DISTINCT jsonb_build_object('id', k.id, 'name', k.name, 'enabled', k.enabled,
+    'ownership_type', k.ownership_type, 'owner_user_id', k.owner_user_id) AS kb
+FROM expert_knowledge_bases x JOIN knowledge_bases k ON k.id = x.kb_id
+JOIN experts e ON e.id = x.expert_id
+WHERE x.expert_id::text = ANY(sqlc.arg(expert_ids)::text[])
+    AND NOT (k.ownership_type = 'user' AND k.owner_user_id = e.owner_user_id)
+ORDER BY kb;
+
 -- name: HasAccess :one
 WITH RECURSIVE user_groups (
     group_id
@@ -176,7 +185,7 @@ SELECT
         SELECT
             1
         FROM
-            resource_access_grants rag
+            effective_resource_grants rag
         WHERE
             rag.resource_type = sqlc.arg(resource_type)
             AND rag.resource_id = sqlc.arg(resource_id)

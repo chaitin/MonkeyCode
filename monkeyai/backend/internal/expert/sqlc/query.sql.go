@@ -45,6 +45,21 @@ func (q *Queries) CreateConnectorLink(ctx context.Context, arg CreateConnectorLi
 	)
 }
 
+const createKnowledgeLinks = `-- name: CreateKnowledgeLinks :exec
+INSERT INTO expert_knowledge_bases (expert_id, kb_id)
+SELECT $1::uuid, unnest($2::text[])::uuid
+`
+
+type CreateKnowledgeLinksParams struct {
+	ExpertID string
+	KbIds    []string
+}
+
+func (q *Queries) CreateKnowledgeLinks(ctx context.Context, arg CreateKnowledgeLinksParams) error {
+	_, err := q.db.Exec(ctx, createKnowledgeLinks, arg.ExpertID, arg.KbIds)
+	return err
+}
+
 const createResource = `-- name: CreateResource :exec
 INSERT INTO experts (name, description, prompt, enabled, id, created_by_user_id, owner_user_id, ownership_type)
     VALUES (
@@ -110,6 +125,15 @@ WHERE expert_id = $1
 
 func (q *Queries) DeleteConnectorLinks(ctx context.Context, expertID string) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, deleteConnectorLinks, expertID)
+}
+
+const deleteKnowledgeLinks = `-- name: DeleteKnowledgeLinks :exec
+DELETE FROM expert_knowledge_bases WHERE expert_id = $1
+`
+
+func (q *Queries) DeleteKnowledgeLinks(ctx context.Context, expertID string) error {
+	_, err := q.db.Exec(ctx, deleteKnowledgeLinks, expertID)
+	return err
 }
 
 const deleteResource = `-- name: DeleteResource :exec
@@ -189,6 +213,30 @@ func (q *Queries) ListConnectorLinks(ctx context.Context, expertID string) ([][]
 			return nil, err
 		}
 		items = append(items, to_jsonb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKnowledgeIDs = `-- name: ListKnowledgeIDs :many
+SELECT kb_id::text FROM expert_knowledge_bases WHERE expert_id = $1 ORDER BY kb_id
+`
+
+func (q *Queries) ListKnowledgeIDs(ctx context.Context, expertID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listKnowledgeIDs, expertID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var kb_id string
+		if err := rows.Scan(&kb_id); err != nil {
+			return nil, err
+		}
+		items = append(items, kb_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -302,6 +350,17 @@ WHERE
 
 func (q *Queries) LockConnector(ctx context.Context, id string) ([]byte, error) {
 	row := q.db.QueryRow(ctx, lockConnector, id)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
+}
+
+const lockKnowledgeBase = `-- name: LockKnowledgeBase :one
+SELECT to_jsonb(k) FROM knowledge_bases k WHERE id = $1 FOR SHARE
+`
+
+func (q *Queries) LockKnowledgeBase(ctx context.Context, id string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, lockKnowledgeBase, id)
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err

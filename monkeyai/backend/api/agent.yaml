@@ -2758,7 +2758,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户或分组
-      description: 支持 model、rule、skill、connector、expert、kb；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证。分享个人专家时，其所有者持有的个人 skill、connector 自动随专家授予只读使用权限，新增或移除依赖即时生效；规则、系统资源及他人资源仍需单独授权，不允许借专家转分享。个人知识库分享可指定 access_level=read_only 或 read_write，读写包含内容删除，不包含转授权。省略权限的新授权默认只读，重复分享保留已有权限；明确权限可更新对应主体的权限。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示全员授权，包括后续新增用户；个人知识库不允许新增全员分享，历史全员分享可保留或撤销。
+      description: 支持 model、rule、skill、connector、expert、kb；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证。分享个人专家时，其所有者持有的个人 skill、connector、知识库 自动随专家授予只读使用权限，新增或移除依赖即时生效；规则、系统资源及他人资源仍需单独授权，不允许借专家转分享。个人知识库分享可指定 access_level=read_only 或 read_write，读写包含内容删除，不包含转授权。省略权限的新授权默认只读，重复分享保留已有权限；明确权限可更新对应主体的权限。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示全员授权，包括后续新增用户。
       requestBody:
         required: true
         content:
@@ -2766,6 +2766,23 @@ paths:
             schema:
               $ref: '#/components/schemas/ShareResourcesInput'
       responses:
+        '200':
+          description: 专家已分享，但列出的知识库不归分享者管理，未随专家授权。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unshared_knowledge_bases]
+                properties:
+                  unshared_knowledge_bases:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, reason]
+                      properties:
+                        id: {type: string, format: uuid}
+                        name: {type: string}
+                        reason: {type: string, enum: [cannot_manage_visibility]}
         '204':
           description: 整批分享成功，无响应体。
         '400':
@@ -2970,6 +2987,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentTagsResponse'
+  /api/v1/experts/knowledge-support:
+    get:
+      summary: 查询个人专家知识库绑定能力
+      responses:
+        '200':
+          description: 已认证用户的能力探测结果，不可缓存。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, available]
+                properties:
+                  version: {type: integer, enum: [1]}
+                  available: {type: boolean}
+        '401':
+          $ref: '#/components/responses/ResourceError401'
   /api/v1/experts/avatar-support:
     get:
       summary: 查询个人专家头像写入能力
@@ -5871,9 +5904,17 @@ components:
       required:
       - name
       description: 仅声明的字段可由当前用户写入；归属、启用状态、授权和其他服务端字段忽略。
+    ExpertKnowledgeIDs:
+      type: array
+      description: 绑定的知识库 ID；更新时省略表示保留，空数组表示清除。
+      maxItems: 50
+      uniqueItems: true
+      items: {type: string, format: uuid}
     UserExpertInput:
       type: object
       properties:
+        knowledge_base_ids:
+          $ref: '#/components/schemas/ExpertKnowledgeIDs'
         avatar:
           type: [string, 'null']
           writeOnly: true
@@ -7405,6 +7446,9 @@ components:
     ExpertManifest:
       type: object
       properties:
+        knowledge_base_ids:
+          description: 仅包含调用者可读的绑定；有库不可读时返回非阻断的 knowledge_access_missing 问题。
+          $ref: '#/components/schemas/ExpertKnowledgeIDs'
         expert_id:
           type: string
         name:
@@ -7694,6 +7738,8 @@ components:
     ExpertResource:
       type: object
       properties:
+        knowledge_base_ids:
+          $ref: '#/components/schemas/ExpertKnowledgeIDs'
         avatar_path:
           type: string
           readOnly: true
@@ -7769,6 +7815,8 @@ components:
     ExpertInput:
       type: object
       properties:
+        knowledge_base_ids:
+          $ref: '#/components/schemas/ExpertKnowledgeIDs'
         tag_ids:
           type: array
           items: {type: string, format: uuid}

@@ -136,6 +136,7 @@ type AssociationOption = {
   id: string
   name: string
   description: string
+  disabled?: boolean
 }
 
 function toExpert(row: ResourceRow, language: string): Expert {
@@ -155,7 +156,7 @@ function toExpert(row: ResourceRow, language: string): Expert {
     prompt: row.prompt,
     tagIds: (row.tags ?? []).map((tag) => tag.id),
     connectorSettings: row.connectors ?? [],
-    knowledgeBaseIds: [],
+    knowledgeBaseIds: row.knowledge_base_ids ?? [],
     toolIds: (row.connectors ?? []).map((p) => p.connector_id),
     ruleIds: row.rule_ids ?? [],
     skillIds: row.skill_ids ?? [],
@@ -187,6 +188,7 @@ const ASSOCIATION_SECTIONS: Array<{
   { key: "skillIds", labelKey: "pages.experts.skills" },
   { key: "ruleIds", labelKey: "pages.experts.rules" },
   { key: "toolIds", labelKey: "pages.tools.title" },
+  { key: "knowledgeBaseIds", labelKey: "pages.experts.knowledgeBases" },
 ]
 
 function ExpertAssociationSelect({
@@ -194,22 +196,26 @@ function ExpertAssociationSelect({
   label,
   options,
   value,
+  limit,
   onValueChange,
 }: {
   id: string
   label: string
   options: AssociationOption[]
   value: string[]
+  limit?: number
   onValueChange: (value: string[]) => void
 }) {
   const { i18n, t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const normalizedQuery = query.trim().toLocaleLowerCase(i18n.language)
-  const filteredOptions = options.filter((option) =>
-    [option.name, option.description].some((text) =>
-      text.toLocaleLowerCase(i18n.language).includes(normalizedQuery)
-    )
+  const filteredOptions = options.filter(
+    (option) =>
+      (!option.disabled || value.includes(option.id)) &&
+      [option.name, option.description].some((text) =>
+        text.toLocaleLowerCase(i18n.language).includes(normalizedQuery)
+      )
   )
   const selectedNames = options
     .filter((option) => value.includes(option.id))
@@ -285,6 +291,9 @@ function ExpertAssociationSelect({
                   <Checkbox
                     id={optionId}
                     checked={checked}
+                    disabled={
+                      !checked && limit !== undefined && value.length >= limit
+                    }
                     onCheckedChange={(nextChecked) =>
                       onValueChange(
                         nextChecked
@@ -296,6 +305,7 @@ function ExpertAssociationSelect({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">
                       {option.name}
+                      {option.disabled && " · " + t("pages.experts.disabled")}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {option.description}
@@ -357,22 +367,24 @@ export function ExpertsPage() {
       listResources(base + "/rules?ownership_type=system"),
       listResources(base + "/skills?ownership_type=system"),
       listResources(base + "/connectors?ownership_type=system"),
+      listResources(base + "/kb?ownership_type=system"),
     ])
-      .then(([rules, skills, connectors]) => {
+      .then(([rules, skills, connectors, books]) => {
         if (cancelled) return
-        const map = (rows: ResourceRow[]) =>
+        const map = (rows: ResourceRow[], includeDisabled = false) =>
           rows
-            .filter((r) => r.enabled !== false)
+            .filter((r) => includeDisabled || r.enabled !== false)
             .map((r) => {
               const text = localized(r, i18n.language)
               return {
                 id: r.id,
                 name: text.name,
+                disabled: r.enabled === false,
                 description: text.description ?? r.content ?? "",
               }
             })
         setOptions({
-          knowledgeBaseIds: [],
+          knowledgeBaseIds: map(books.items, true),
           ruleIds: map(rules.items),
           skillIds: map(skills.items),
           toolIds: map(connectors.items),
@@ -474,6 +486,15 @@ export function ExpertsPage() {
           tag_ids: form.tagIds,
           rule_ids: form.ruleIds,
           skill_ids: form.skillIds,
+          knowledge_base_ids:
+            editingExpert &&
+            form.knowledgeBaseIds.length ===
+              editingExpert.knowledgeBaseIds.length &&
+            form.knowledgeBaseIds.every((id) =>
+              editingExpert.knowledgeBaseIds.includes(id)
+            )
+              ? undefined
+              : form.knowledgeBaseIds,
           connectors: form.toolIds.map(
             (connector_id) =>
               form.connectorSettings.find(
@@ -878,13 +899,7 @@ export function ExpertsPage() {
                 </Field>
                 <div className="grid min-w-0 grid-cols-2 gap-4">
                   {ASSOCIATION_SECTIONS.map(({ key, labelKey }) => (
-                    <Field
-                      key={key}
-                      className={cn(
-                        "min-w-0",
-                        key === "toolIds" && "col-span-2"
-                      )}
-                    >
+                    <Field key={key} className="min-w-0">
                       <FieldLabel htmlFor={`expert-${key}`}>
                         {t(labelKey)}
                       </FieldLabel>
@@ -893,6 +908,7 @@ export function ExpertsPage() {
                         label={t(labelKey)}
                         options={options[key]}
                         value={form[key]}
+                        limit={key === "knowledgeBaseIds" ? 50 : undefined}
                         onValueChange={(value) => updateForm(key, value)}
                       />
                     </Field>

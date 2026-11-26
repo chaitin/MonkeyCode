@@ -10038,9 +10038,16 @@ components:
             $ref: '#/components/schemas/ResourceGrant'
       required:
       - name
+    ExpertKnowledgeIDs:
+      type: array
+      maxItems: 50
+      uniqueItems: true
+      items: {type: string, format: uuid}
     ExpertResource:
       type: object
       properties:
+        knowledge_base_ids:
+          $ref: '#/components/schemas/ExpertKnowledgeIDs'
         avatar_path:
           type: string
           readOnly: true
@@ -10123,6 +10130,9 @@ components:
     ExpertInput:
       type: object
       properties:
+        knowledge_base_ids:
+          description: 系统专家只能绑定已启用的系统知识库；绑定不替使用者授权。
+          $ref: '#/components/schemas/ExpertKnowledgeIDs'
         tag_ids:
           type: array
           items: {type: string, format: uuid}
