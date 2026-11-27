@@ -441,6 +441,11 @@ func (s *Service) serveOriginal(w http.ResponseWriter, r *http.Request, admin bo
 		resource.Fail(ctx, w, e)
 		return
 	}
+	s.writeOriginal(w, r, doc, r.URL.Query().Get("preview") == "true")
+}
+
+func (s *Service) writeOriginal(w http.ResponseWriter, r *http.Request, doc resource.Object, preview bool) {
+	ctx := r.Context()
 	storage, ok := s.storage.(ImportStorage)
 	if !ok || doc.String("storage_key") == "" {
 		resource.Fail(ctx, w, resource.NotFound)
@@ -458,7 +463,7 @@ func (s *Service) serveOriginal(w http.ResponseWriter, r *http.Request, admin bo
 		kind = "application/octet-stream"
 	}
 	disposition := "attachment"
-	if r.URL.Query().Get("preview") == "true" && (doc.String("file_type") == "pdf" || imageFileType(doc.String("file_type"))) {
+	if preview && (doc.String("file_type") == "pdf" || imageFileType(doc.String("file_type"))) {
 		disposition = "inline"
 		kind = map[string]string{"pdf": "application/pdf", "jpg": "image/jpeg", "png": "image/png"}[doc.String("file_type")]
 	}

@@ -161,7 +161,7 @@ func bumpDocumentVersion(ctx context.Context, tx pgx.Tx, current resource.Object
 }
 
 // Embedding requests may outlive a grant. Recheck before returning retrieved text.
-func (s *Service) searchWithPermissionRecheck(ctx context.Context, actor string, accessible []resource.Object, input SearchInput) (SearchResponse, error) {
+func (s *Service) searchWithPermissionRecheck(ctx context.Context, actor string, accessible []resource.Object, input SearchInput, includeOriginalURL bool) (SearchResponse, error) {
 	response, err := s.searchAccessible(ctx, accessible, input)
 	if err != nil {
 		return SearchResponse{}, err
@@ -169,13 +169,16 @@ func (s *Service) searchWithPermissionRecheck(ctx context.Context, actor string,
 	checked := map[string]bool{}
 	for _, result := range response.Items {
 		id := result.String("kb_id")
-		if checked[id] {
-			continue
+		if !checked[id] {
+			if _, err = s.accessibleKB(ctx, actor, id); err != nil {
+				return SearchResponse{}, err
+			}
+			checked[id] = true
 		}
-		if _, err = s.accessibleKB(ctx, actor, id); err != nil {
-			return SearchResponse{}, err
+		if includeOriginalURL {
+			result["url"] = s.originalAssetURL(result, result.String("document_id"), result.Bool("has_original"))
 		}
-		checked[id] = true
+		delete(result, "has_original")
 	}
 	return response, nil
 }

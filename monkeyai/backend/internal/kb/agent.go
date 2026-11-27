@@ -213,7 +213,7 @@ func (s *Service) RegisterAgent(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusAccepted, publicDocument(item))
+		resource.JSON(r.Context(), w, http.StatusAccepted, s.agentDocument(item))
 	})
 
 	r.Get("/kb/{id}/documents/{documentId}", func(w http.ResponseWriter, r *http.Request) {
@@ -223,7 +223,7 @@ func (s *Service) RegisterAgent(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusOK, publicDocument(item))
+		resource.JSON(r.Context(), w, http.StatusOK, s.agentDocument(item))
 	})
 
 	r.Put("/kb/{id}/documents/{documentId}", func(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +250,7 @@ func (s *Service) RegisterAgent(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusAccepted, publicDocument(item))
+		resource.JSON(r.Context(), w, http.StatusAccepted, s.agentDocument(item))
 	})
 
 }

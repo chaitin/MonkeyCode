@@ -90,3 +90,48 @@ func project(item resource.Object, fields []string) resource.Object {
 	}
 	return out
 }
+
+// agentDocument keeps derived parsing text internal while exposing authenticated originals.
+func (s *Service) agentDocument(item resource.Object) resource.Object {
+	out := publicDocument(item)
+	if !out.Bool("content_editable") {
+		out["content"] = ""
+	}
+	out["url"] = s.originalDocumentURL(item)
+	return out
+}
+
+func (s *Service) originalDocumentURL(item resource.Object) string {
+	return s.originalAssetURL(item, item.String("id"), item.String("node_type") != "folder" && item.String("storage_key") != "")
+}
+
+func (s *Service) originalAssetURL(item resource.Object, documentID string, hasOriginal bool) string {
+	if !hasOriginal || s.publicURL == "" {
+		return ""
+	}
+	return s.publicURL + assetURL(item.String("kb_id"), documentID+"."+originalDocumentExtension(item))
+}
+
+func (s *Service) agentDocumentSummary(item resource.Object) resource.Object {
+	out := s.agentDocument(item)
+	delete(out, "content")
+	return out
+}
+
+func (s *Service) agentDocumentTree(items []resource.Object) []resource.Object {
+	out := make([]resource.Object, 0, len(items))
+	for _, item := range items {
+		node := s.agentDocumentSummary(item)
+		children, _ := item["children"].([]resource.Object)
+		node["children"] = s.agentDocumentTree(children)
+		out = append(out, node)
+	}
+	return out
+}
+
+func originalDocumentExtension(item resource.Object) string {
+	if knownFileType(item.String("file_type")) {
+		return item.String("file_type")
+	}
+	return "bin"
+}

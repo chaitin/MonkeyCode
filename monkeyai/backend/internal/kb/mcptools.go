@@ -68,7 +68,7 @@ func MCPTools() []resource.Object {
 		},
 		{
 			"name":        "kb_get_document",
-			"description": "读取文档元数据和 revision；include_content=true 返回完整正文（兼容接口），长文档优先使用 kb_read_document 分段读取；无权文档返回 kb_not_found",
+			"description": "读取文档元数据和 revision；include_content=true 仅对可编辑格式返回完整正文；不可编辑格式 content 固定为空字符串，通过 url 读取原件，长文档优先使用 kb_read_document 分段读取；无权文档返回 kb_not_found",
 			"inputSchema": resource.Object{
 				"type": "object",
 				"properties": resource.Object{
@@ -119,7 +119,7 @@ func MCPTools() []resource.Object {
 		},
 		{
 			"name":        "kb_search",
-			"description": "在可访问知识库中检索；绑定可用向量模型的知识库自动执行 lexical+vector 混合检索，否则仅执行 lexical。查找图片时传 file_types=[jpg,png]，query 使用具体画面对象或场景，如狗、草地；按画面描述判断匹配，不能把图片内文字提到狗等同于画面有狗。图片命中返回 image 元数据，用 kb_get_document_image 获取原图并在客户端展示，不能生成新图替代。top_k 仅为相关候选，不是全库完整清单。",
+			"description": "在可访问知识库中检索；绑定可用向量模型的知识库自动执行 lexical+vector 混合检索，否则仅执行 lexical。查找图片时传 file_types=[jpg,png]，query 使用具体画面对象或场景，如狗、草地；检索 content 返回命中的正文分片（包括不可编辑格式），并返回原件 url；结合画面描述和原图判断匹配，不能把图片内文字提到狗等同于画面有狗。图片命中返回 image 元数据，用 kb_get_document_image 获取原图并在客户端展示，不能生成新图替代。top_k 仅为相关候选，不是全库完整清单。",
 			"inputSchema": resource.Object{
 				"type": "object",
 				"properties": resource.Object{
@@ -264,7 +264,7 @@ func editMCPTool() resource.Object {
 }
 
 func readMCPDocumentTool() resource.Object {
-	return resource.Object{"name": "kb_read_document", "description": "按 Unicode 字符偏移分段读取原始正文，适合长文档编辑。返回 content、document（含 revision）、next_offset、has_more 和 total_characters。首次从 offset=0 读取；后续使用 next_offset 并提供首页 revision 作为 expected_revision，冲突时从头重新读取。索引分块不是原始正文，不应拿来整体覆盖文档。文件夹没有正文，不能读取。",
+	return resource.Object{"name": "kb_read_document", "description": "不可编辑格式返回空字符串 content、document 元数据和原件 url。可编辑格式按 Unicode 字符偏移分段读取原始正文，适合长文档编辑。返回 content、document（含 revision）、next_offset、has_more 和 total_characters。首次从 offset=0 读取；后续使用 next_offset 并提供首页 revision 作为 expected_revision，冲突时从头重新读取。索引分块不是原始正文，不应拿来整体覆盖文档。文件夹没有正文，不能读取。",
 		"inputSchema": mcpObjectSchema(resource.Object{
 			"kb_id": mcpIDSchema(), "document_id": mcpIDSchema(),
 			"offset":            resource.Object{"type": "integer", "minimum": 0, "default": 0},

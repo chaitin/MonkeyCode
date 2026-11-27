@@ -178,7 +178,6 @@ func (s *Service) searchAccessible(ctx context.Context, accessible []resource.Ob
 				}
 			}
 		}
-		delete(result, "has_original")
 	}
 	if len(normalized.Filters) > 0 {
 		warnings = append(warnings, "filters_not_applied")

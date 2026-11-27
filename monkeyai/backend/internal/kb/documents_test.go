@@ -55,10 +55,10 @@ func TestFilterDocumentPage(t *testing.T) {
 		{"id": "1", "title": "差旅制度", "file_name": "travel.pdf", "source_type": "file", "status": "learned", "content": "正文 1"},
 		{"id": "2", "title": "差旅报销", "file_name": "reimburse.pdf", "source_type": "file", "status": "learning", "content": "正文 2"},
 		{"id": "3", "title": "员工手册", "file_name": "handbook.pdf", "source_type": "file", "status": "learned", "content": "正文 3"},
-		{"id": "4", "title": "差旅说明", "file_name": "travel.txt", "source_type": "text", "status": "learned", "content": "正文 4"},
+		{"id": "4", "title": "差旅说明", "file_name": "travel.txt", "file_type": "txt", "source_type": "text", "status": "learned", "content": "正文 4"},
 	}
 
-	page, err := filterDocumentPage(items, DocumentListFilter{Query: "TRAVEL", Status: "learned", SourceType: "file", Page: 1, PageSize: 1})
+	page, err := (&Service{}).filterDocumentPage(items, DocumentListFilter{Query: "TRAVEL", Status: "learned", SourceType: "file", Page: 1, PageSize: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,10 +66,10 @@ func TestFilterDocumentPage(t *testing.T) {
 		t.Fatalf("筛选和分页结果不正确: %+v", page)
 	}
 	if _, ok := page.Items[0]["content"]; ok {
-		t.Fatal("文档列表不应返回正文")
+		t.Fatal("不可编辑文档列表不应包含 content 字段")
 	}
 
-	page, err = filterDocumentPage(items, DocumentListFilter{Query: "差旅", Page: 2, PageSize: 2})
+	page, err = (&Service{}).filterDocumentPage(items, DocumentListFilter{Query: "差旅", Page: 2, PageSize: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,10 @@ func TestFilterDocumentPage(t *testing.T) {
 		t.Fatalf("第二页结果不正确: %+v", page)
 	}
 
-	page, err = filterDocumentPage(items, DocumentListFilter{})
+	if _, ok := page.Items[0]["content"]; ok {
+		t.Fatal("可编辑文档列表不应包含 content 字段")
+	}
+	page, err = (&Service{}).filterDocumentPage(items, DocumentListFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +94,7 @@ func TestFilterDocumentPage(t *testing.T) {
 		{Page: -1},
 		{PageSize: documentMaxPageSize + 1},
 	} {
-		if _, err := filterDocumentPage(items, filter); err == nil {
+		if _, err := (&Service{}).filterDocumentPage(items, filter); err == nil {
 			t.Fatalf("非法筛选参数应返回错误: %+v", filter)
 		}
 	}
