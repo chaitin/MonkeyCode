@@ -611,7 +611,7 @@ export const es419 = {
         failed: "Error",
       },
       learnedSummary: "{{learned}} de {{total}} elementos aprendidos",
-      userReadOnlyHint: "Las bases de usuarios son de solo lectura aquí.",
+      userReadOnlyHint: "Las bases de usuarios permiten consultar y volver a aprender, pero no editar ni eliminar contenido.",
       preview: "Vista previa",
       view: "Ver",
       rename: "Renombrar",

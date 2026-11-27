@@ -319,9 +319,6 @@ func (s *Service) rebuildLexicalIndex(ctx context.Context, job sqlc.ClaimKbLearn
 	}
 	for _, row := range rows {
 		tokens := tokenizeDocument(row.Content, row.FileType)
-		if tokens == "" {
-			return fmt.Errorf("分片 %s 未生成可检索词", row.ID)
-		}
 		if err = queries.UpdateKbChunkLexical(ctx, sqlc.UpdateKbChunkLexicalParams{SearchTokens: tokens, ID: row.ID}); err != nil {
 			return err
 		}

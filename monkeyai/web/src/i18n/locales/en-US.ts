@@ -1816,7 +1816,7 @@ export const enUS = {
         failed: "Failed",
       },
       learnedSummary: "{{learned}} of {{total}} items learned",
-      userReadOnlyHint: "User knowledge bases are view-only here.",
+      userReadOnlyHint: "User knowledge bases support viewing and relearning; content cannot be edited or deleted.",
       preview: "Preview",
       view: "View",
       rename: "Rename",

@@ -598,7 +598,7 @@ export const zhTW = {
         failed: "學習失敗",
       },
       learnedSummary: "已學習 {{learned}} 筆，共 {{total}} 筆",
-      userReadOnlyHint: "使用者知識庫在管理後台中僅供查看。",
+      userReadOnlyHint: "使用者知識庫支援查看及重新學習，無法修改或刪除內容。",
       preview: "預覽",
       view: "查看",
       rename: "重新命名",

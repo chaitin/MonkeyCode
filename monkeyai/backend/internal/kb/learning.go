@@ -172,13 +172,10 @@ func (s *Service) learnDocument(ctx context.Context, id string, job sqlc.ClaimKb
 
 	learned := make([]learnedChunk, 0, len(chunks))
 	var vectorErr error
-	if len(chunks) > 0 && vectorEnabled && s.models == nil {
-		vectorErr = resource.InvalidCode("vector_unavailable", "向量模型服务不可用")
-	}
-	for index, chunk := range chunks {
+	for _, chunk := range chunks {
 		searchTokens := tokenizeDocument(chunk, document.String("file_type"))
 		if searchTokens == "" {
-			return fmt.Errorf("文档分片 %d 未生成可检索词", index)
+			continue
 		}
 		learned = append(learned, learnedChunk{
 			content:      chunk,
@@ -186,7 +183,12 @@ func (s *Service) learnDocument(ctx context.Context, id string, job sqlc.ClaimKb
 			searchTokens: searchTokens,
 			metadata:     "{}",
 		})
-		if !vectorEnabled || s.models == nil {
+		index := len(learned) - 1
+		if !vectorEnabled {
+			continue
+		}
+		if s.models == nil {
+			vectorErr = resource.InvalidCode("vector_unavailable", "向量模型服务不可用")
 			continue
 		}
 		result, embedErr := s.models.EmbedText(ctx, modelID, chunk)

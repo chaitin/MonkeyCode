@@ -585,7 +585,7 @@ export const ar = {
         failed: "فشل التعلّم",
       },
       learnedSummary: "تم تعلم {{learned}} من أصل {{total}} عناصر",
-      userReadOnlyHint: "قواعد معرفة المستخدمين متاحة للعرض فقط هنا.",
+      userReadOnlyHint: "يمكن عرض قواعد معرفة المستخدمين وإعادة تعلّمها، دون تعديل المحتوى أو حذفه.",
       preview: "معاينة المحتوى",
       view: "عرض",
       rename: "إعادة التسمية",

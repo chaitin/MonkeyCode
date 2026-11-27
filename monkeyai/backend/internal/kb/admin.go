@@ -22,7 +22,28 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		r.Get("/kb/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, true) })
 	}
 
-	// Personal knowledge bases remain read-only through every admin write route.
+	// Admins may restart learning for both system and personal documents.
+	r.Post("/kb/{id}/documents/restudy", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := s.Get(r.Context(), chi.URLParam(r, "id")); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		var input struct {
+			IDs []string `json:"ids"`
+		}
+		if err := resource.Decode(w, r, &input); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		result, err := s.RestudyDocuments(r.Context(), chi.URLParam(r, "id"), input.IDs)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		resource.JSON(r.Context(), w, http.StatusAccepted, result)
+	})
+
+	// Other admin write routes keep personal knowledge bases read-only.
 	r = r.With(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet && r.Method != http.MethodHead && chi.URLParam(r, "id") != "" {
@@ -131,22 +152,6 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 			return
 		}
 		resource.JSON(r.Context(), w, http.StatusAccepted, publicDocument(item))
-	})
-
-	r.Post("/kb/{id}/documents/restudy", func(w http.ResponseWriter, r *http.Request) {
-		var input struct {
-			IDs []string `json:"ids"`
-		}
-		if err := resource.Decode(w, r, &input); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		result, err := s.RestudyDocuments(r.Context(), chi.URLParam(r, "id"), input.IDs)
-		if err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		resource.JSON(r.Context(), w, http.StatusAccepted, result)
 	})
 
 	r.Get("/kb/{id}/documents/{documentId}/chunks", func(w http.ResponseWriter, r *http.Request) {

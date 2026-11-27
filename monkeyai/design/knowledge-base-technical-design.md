@@ -60,7 +60,7 @@ flowchart LR
 
 | 调用端 | 系统知识库 | 本人个人知识库 | 他人分享的个人知识库 |
 | --- | --- | --- | --- |
-| 管理端 | 可管理资源、文档、授权、启停和索引 | 只读 | 只读 |
+| 管理端 | 可管理资源、文档、授权、启停和索引 | 可读取和重新学习文档；不能修改、移动或删除内容 | 可读取和重新学习文档；不能修改、移动或删除内容 |
 | Agent REST | 有访问权限时读取、检索；不可写 | 可创建、更新、删除资源及文档 | 按授权读取、检索；不可写 |
 | MCP | 按有效授权读取、检索及读写文档；不能管理库信息 | 可创建、更新库信息、查看授权、读写文档 | 按有效授权读取、检索及读写文档；不能管理库信息或查看完整授权 |
 
@@ -204,7 +204,7 @@ sequenceDiagram
 - `token_count` 是 `max(1, rune_count / 4)` 估算值，不是实际模型 tokenizer 结果。
 - 每片始终生成词索引；未绑定可用模型时不调用向量服务。已绑定模型但 Embedder 不可用按向量失败处理。
 - 普通学习中，单片 embedding 调用失败、维度不匹配或非有限数值时，该片保留正文和全文索引，向量为空，错误写入 `metadata.vector_error`（最多 500 字符）；其余成功分片保留向量，文档置 `failed` 并记录错误。
-- 空切片或无法生成检索词等错误使学习失败。正文更新会先删除旧分片，学习成功后在同一事务原子写入新分片；重新学习完成前不会召回旧分片。
+- 学习时跳过无法生成检索词的分片，不调用向量模型；有效分片连续编号。整篇为空或全部分片无检索词时仍学习成功，状态为 `learned`、分片数为 0，并清除旧分片和错误信息。词索引重建对历史无检索词分片写入空索引，不因此失败。正文更新会先删除旧分片，学习成功后在同一事务原子写入新分片；重新学习完成前不会召回旧分片。
 - 文档删除会取消活跃任务并硬删除分片和文档；成功写回前检查当前任务、revision 和模型绑定，防止被删除/更新的数据被旧任务写回。
 
 ### 6.3 队列与并发
@@ -380,6 +380,6 @@ query embedding 或向量 SQL 失败时，相关知识库保留 lexical，响应
 
 后续修改应同时核对 `api/admin.yaml`、`api/agent.yaml`、DTO 和管理端行为，避免只更新契约或设计文案。本文不将上述差异隐含为本次已经修复。
 
-文档删除、移动、重新学习统一使用原生操作接口的 body `ids`（单条也传数组，去重后最多 200 项），返回 `succeeded/failed`。删除使用 `POST /kb/{id}/documents/delete`；移动使用 `POST /kb/{id}/documents/move`；管理端重新学习使用 `POST /kb/{id}/documents/restudy`，用户端使用 `POST /kb/documents/restudy` 并附带 `kb_id`。协作删除和移动逐项提供 `expected_revisions`；`prev_id/next_id` 仅用于单条排序。
+文档删除、移动、重新学习统一使用原生操作接口的 body `ids`（单条也传数组，去重后最多 200 项），返回 `succeeded/failed`。删除使用 `POST /kb/{id}/documents/delete`；移动使用 `POST /kb/{id}/documents/move`；管理端在文档行的操作菜单点击“重新学习”，系统和用户知识库均可使用（文件夹不支持），使用 `POST /kb/{id}/documents/restudy`，用户端使用 `POST /kb/documents/restudy` 并附带 `kb_id`。协作删除和移动逐项提供 `expected_revisions`；`prev_id/next_id` 仅用于单条排序。
 
 文档移动、删除、重新学习的 REST 请求统一使用 body `ids`，不再提供 `/documents/batch` 或带文档 ID 路径的删除/重新学习接口。单条操作也传数组（去重后最多 200 项），结果为 `succeeded/failed`。协作移动和删除使用 `expected_revisions`；移动指定 `prev_id/next_id` 时仅接受单条。

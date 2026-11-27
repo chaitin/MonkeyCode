@@ -13,9 +13,19 @@ import (
 )
 
 func TestBatchRestudyRoute(t *testing.T) {
+	for _, ownership := range []string{"system", "user"} {
+		t.Run(ownership, func(t *testing.T) { testBatchRestudyRoute(t, ownership) })
+	}
+}
+
+func testBatchRestudyRoute(t *testing.T, ownership string) {
+	t.Helper()
 	pool, actor, s, createKB := indexRegressionFixture(t)
 	ctx := t.Context()
 	kbID := createKB()
+	if _, err := pool.Exec(ctx, `UPDATE knowledge_bases SET ownership_type=$2 WHERE id=$1`, kbID, ownership); err != nil {
+		t.Fatal(err)
+	}
 	create := func(id, nodeType string) string {
 		t.Helper()
 		doc, err := s.CreateDocument(ctx, actor, DocumentInput{KbID: id, Title: nodeType, NodeType: nodeType, Content: "restudy test content"})

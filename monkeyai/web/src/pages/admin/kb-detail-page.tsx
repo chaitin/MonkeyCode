@@ -1029,7 +1029,7 @@ const DocumentTreeRow = ({
         {item.node_type === "folder" ? <span className="text-muted-foreground">-</span> : <LearningStatusBadge status={item.status} />}
         <span>{dateFormatter.format(new Date(item.updated_at))}</span>
         <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-          {canManage && !renaming && (
+          {(canManage || item.node_type !== "folder") && !renaming && (
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button type="button" size="icon-sm" variant="ghost" aria-label={t("pages.knowledgeBases.columns.actions")} />}>
                 <HugeiconsIcon icon={MoreHorizontalIcon} />
@@ -1042,10 +1042,12 @@ const DocumentTreeRow = ({
                       {t("pages.knowledgeBases.view")}
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={() => onRenameDocument(item)}>
-                    <HugeiconsIcon icon={Edit02Icon} strokeWidth={2} />
-                    {t("pages.knowledgeBases.rename")}
-                  </DropdownMenuItem>
+                  {canManage && (
+                    <DropdownMenuItem onClick={() => onRenameDocument(item)}>
+                      <HugeiconsIcon icon={Edit02Icon} strokeWidth={2} />
+                      {t("pages.knowledgeBases.rename")}
+                    </DropdownMenuItem>
+                  )}
                   {item.node_type !== "folder" && (
                     <DropdownMenuItem onClick={() => onRestudyDocument(item)}>
                       <HugeiconsIcon icon={Loading03Icon} strokeWidth={2} />
@@ -1053,13 +1055,17 @@ const DocumentTreeRow = ({
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem variant="destructive" onClick={() => onDeleteDocument(item)}>
-                    <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
-                    {t("pages.knowledgeBases.delete")}
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
+                {canManage && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem variant="destructive" onClick={() => onDeleteDocument(item)}>
+                        <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                        {t("pages.knowledgeBases.delete")}
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}

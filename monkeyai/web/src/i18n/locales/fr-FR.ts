@@ -621,7 +621,7 @@ export const frFR = {
         failed: "Échec",
       },
       learnedSummary: "{{learned}} éléments appris sur {{total}}",
-      userReadOnlyHint: "Les bases utilisateur sont en lecture seule ici.",
+      userReadOnlyHint: "Les bases utilisateur peuvent être consultées et réapprises, sans modification ni suppression du contenu.",
       preview: "Aperçu du contenu",
       view: "Voir",
       rename: "Renommer",

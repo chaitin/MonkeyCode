@@ -1717,7 +1717,7 @@ export const zhCN = {
         failed: "学习失败",
       },
       learnedSummary: "已学习 {{learned}} 条，共 {{total}} 条",
-      userReadOnlyHint: "用户知识库在管理后台中仅供查看。",
+      userReadOnlyHint: "用户知识库支持查看和重新学习，不能修改或删除内容。",
       preview: "预览",
       view: "查看",
       rename: "重命名",
