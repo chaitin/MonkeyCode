@@ -591,7 +591,7 @@ export const koKR = {
         failed: "학습 실패",
       },
       learnedSummary: "전체 {{total}}개 중 {{learned}}개 학습 완료",
-      userReadOnlyHint: "사용자 지식 베이스는 여기에서 보기만 가능합니다.",
+      userReadOnlyHint: "사용자 지식 베이스는 조회 및 재학습이 가능하며, 내용을 수정하거나 삭제할 수 없습니다.",
       preview: "콘텐츠 미리보기",
       view: "보기",
       rename: "이름 바꾸기",

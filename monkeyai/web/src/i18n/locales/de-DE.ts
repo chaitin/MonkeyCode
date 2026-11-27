@@ -619,8 +619,7 @@ export const deDE = {
         failed: "Fehlgeschlagen",
       },
       learnedSummary: "{{learned}} von {{total}} Inhalten gelernt",
-      userReadOnlyHint:
-        "Benutzer-Wissensdatenbanken können hier nur angezeigt werden.",
+      userReadOnlyHint: "Benutzer-Wissensdatenbanken können angezeigt und erneut gelernt werden. Inhalte können nicht bearbeitet oder gelöscht werden.",
       preview: "Inhalt anzeigen",
       view: "Anzeigen",
       rename: "Umbenennen",

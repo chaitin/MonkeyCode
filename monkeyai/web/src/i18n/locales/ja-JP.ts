@@ -602,7 +602,7 @@ export const jaJP = {
         failed: "学習失敗",
       },
       learnedSummary: "{{total}} 件中 {{learned}} 件を学習済み",
-      userReadOnlyHint: "ユーザーナレッジベースはここでは閲覧のみ可能です。",
+      userReadOnlyHint: "ユーザーナレッジベースは閲覧と再学習が可能です。内容の編集や削除はできません。",
       preview: "コンテンツをプレビュー",
       view: "表示",
       rename: "名前を変更",

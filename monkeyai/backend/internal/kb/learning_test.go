@@ -1,6 +1,9 @@
 package kb
 
 import (
+	"context"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"strings"
 	"testing"
 )
@@ -28,7 +31,7 @@ func TestSplitContentIgnoresBlankInput(t *testing.T) {
 }
 
 func TestLearningBlankDocumentSucceeds(t *testing.T) {
-	for _, content := range []string{"", " \n\t "} {
+	for _, content := range []string{"", " \n\t ", "---\n| :---: | --- |\n***", strings.Repeat("-", chunkRunes*3)} {
 		t.Run("content="+content, func(t *testing.T) {
 			pool, actor := kbTestPool(t)
 			ctx := t.Context()
@@ -71,5 +74,38 @@ func TestFormatVectorRejectsInvalidValues(t *testing.T) {
 	}
 	if _, err := formatVector([]float64{1, 0}); err != nil {
 		t.Fatalf("有效向量被拒绝: %v", err)
+	}
+}
+
+func TestLearningSkipsUnsearchableChunksBeforeEmbedding(t *testing.T) {
+	pool, actor := kbTestPool(t)
+	ctx := t.Context()
+	s, kbID, docID := seedLearningKB(t, pool, actor, OperationRelearn, "pending")
+	content := strings.Repeat("-", chunkRunes*2) + "有效正文"
+	if _, err := pool.Exec(ctx, `UPDATE knowledge_base_documents SET content=$2,file_type='txt' WHERE id=$1`, docID, content); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE knowledge_base_learning_jobs SET document_id=$2 WHERE kb_id=$1`, kbID, docID); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	s.models = callbackEmbedder(func(_ context.Context, _, input string) (model.EmbeddingResult, error) {
+		calls++
+		if !strings.Contains(input, "有效正文") {
+			t.Fatalf("embedded invalid chunk: %q", input)
+		}
+		return model.EmbeddingResult{Vector: []float64{1, 0, 0}}, nil
+	})
+	if worked, err := s.runLearningJob(ctx); err != nil || !worked {
+		t.Fatalf("worked=%v err=%v", worked, err)
+	}
+	var index int
+	var hasVector bool
+	if err := pool.QueryRow(ctx, `SELECT chunk_index,embedding IS NOT NULL FROM knowledge_base_chunks WHERE document_id=$1`, docID).Scan(&index, &hasVector); err != nil {
+		t.Fatal(err)
+	}
+	document, err := s.GetDocument(ctx, docID)
+	if err != nil || document.String("status") != "learned" || objectInt64(document["chunk_count"]) != 1 || calls != 1 || index != 0 || !hasVector {
+		t.Fatalf("document=%v err=%v calls=%d index=%d vector=%v", document, err, calls, index, hasVector)
 	}
 }
