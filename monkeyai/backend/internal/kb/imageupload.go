@@ -15,6 +15,8 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 )
 
@@ -25,9 +27,9 @@ func readContentImage(data []byte) (string, string, error) {
 		return "", "", resource.Invalid("图片不能为空且不能超过 32 MiB")
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
-	ext := map[string]string{"png": "png", "jpeg": "jpg", "gif": "gif", "webp": "webp"}[format]
+	ext := map[string]string{"png": "png", "jpeg": "jpg", "gif": "gif", "webp": "webp", "bmp": "bmp", "tiff": "tiff"}[format]
 	if err != nil || ext == "" || config.Width <= 0 || config.Height <= 0 {
-		return "", "", resource.Invalid("请选择有效的 PNG、JPEG、GIF 或 WebP 图片")
+		return "", "", resource.Invalid("请选择有效的 PNG、JPEG、GIF、WebP、BMP 或 TIFF 图片")
 	}
 	if int64(config.Width)*int64(config.Height) > 25_000_000 {
 		return "", "", resource.Invalid("图片不能超过 2500 万像素")

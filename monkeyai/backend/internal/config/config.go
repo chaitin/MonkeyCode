@@ -32,13 +32,16 @@ const (
 )
 
 type Config struct {
-	Role              Role
-	ImageStateDir     string
-	ImageImportDir    string
-	RuntimeReleaseDir string
-	RuntimeVersion    string
-	EngineReleaseDir  string
-	EngineVersion     string
+	Role                  Role
+	AnyDocURL             string
+	AnyDocCallbackBaseURL string
+	AnyDocSigningKey      string
+	ImageStateDir         string
+	ImageImportDir        string
+	RuntimeReleaseDir     string
+	RuntimeVersion        string
+	EngineReleaseDir      string
+	EngineVersion         string
 	HTTP
 	Database
 	Design
@@ -97,6 +100,9 @@ func Load(args []string) (Config, error) {
 	}
 	cfg := Config{
 		Role:                         role,
+		AnyDocURL:                    strings.TrimRight(strings.TrimSpace(envOr("MONKEYAI_ANYDOC_URL", "http://anydoc:8080")), "/"),
+		AnyDocCallbackBaseURL:        strings.TrimRight(strings.TrimSpace(envOr("MONKEYAI_ANYDOC_CALLBACK_BASE_URL", "http://backend:8080")), "/"),
+		AnyDocSigningKey:             os.Getenv("MONKEYAI_ANYDOC_SIGNING_KEY"),
 		ImageStateDir:                os.Getenv("MONKEYAI_ENVIRONMENT_IMAGE_STATE_DIR"),
 		ImageImportDir:               os.Getenv("MONKEYAI_ENVIRONMENT_IMAGE_IMPORT_DIR"),
 		RuntimeReleaseDir:            os.Getenv("MONKEYAI_ENVIRONMENT_RUNTIME_DIR"),
@@ -123,6 +129,18 @@ func Load(args []string) (Config, error) {
 		InitialAdminPassword:         os.Getenv("MONKEYAI_INITIAL_ADMIN_PASSWORD"),
 	}
 
+	if cfg.AnyDocSigningKey != "" && len(cfg.AnyDocSigningKey) < 32 {
+		return Config{}, errors.New("MONKEYAI_ANYDOC_SIGNING_KEY 至少需要 32 字节")
+	}
+	for name, value := range map[string]string{"MONKEYAI_ANYDOC_URL": cfg.AnyDocURL, "MONKEYAI_ANYDOC_CALLBACK_BASE_URL": cfg.AnyDocCallbackBaseURL} {
+		if value == "" {
+			continue
+		}
+		u, err := url.Parse(value)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+			return Config{}, fmt.Errorf("%s 必须为无凭据、查询或片段的 HTTP(S) 地址", name)
+		}
+	}
 	if err := parseFlags(args, &cfg, &logLevel); err != nil {
 		return Config{}, fmt.Errorf("解析启动参数: %w", err)
 	}

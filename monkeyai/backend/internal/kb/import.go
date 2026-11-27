@@ -108,14 +108,17 @@ func (s *Service) ApplyImport(ctx context.Context, tx pgx.Tx, p *ImportPackage, 
 				if err != nil {
 					return plan, err
 				}
-				content = book.RewriteAssets(content, id)
+				content, err = book.importImageContent(content, id)
+				if err != nil {
+					return plan, err
+				}
 				status = "pending"
 			}
 			sourceType := node.SourceType
 			if sourceType == "" {
 				sourceType = "text"
 			}
-			if err = q.CreateKbDocument(ctx, sqlc.CreateKbDocumentParams{ID: documentID, KbID: id, Title: node.Title, SourceType: sourceType, Content: content, FileName: optionalString(node.FileName), MimeType: optionalString(node.MIMEType), SizeBytes: int64(len(content)), Status: status, CreatedByUserID: actor, ParentID: parentID, NodeType: node.NodeType, Position: float64(node.Order+1) * 1000}); err != nil {
+			if err = q.CreateKbDocument(ctx, sqlc.CreateKbDocumentParams{ID: documentID, FileType: optionalString("md"), KbID: id, Title: node.Title, SourceType: sourceType, Content: content, FileName: optionalString(node.FileName), MimeType: optionalString(node.MIMEType), SizeBytes: int64(len(content)), Status: status, CreatedByUserID: actor, ParentID: parentID, NodeType: node.NodeType, Position: float64(node.Order+1) * 1000}); err != nil {
 				return plan, err
 			}
 			if err = recordContentChange(ctx, tx, actor, id, documentID, "create"); err != nil {

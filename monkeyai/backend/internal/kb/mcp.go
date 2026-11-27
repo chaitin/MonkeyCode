@@ -38,6 +38,7 @@ type mcpError struct {
 }
 
 func (s *Service) RegisterMCP(router chi.Router, keys MCPKeyAuthenticator) {
+	s.registerMCPFileUpload(router, keys)
 	router.Post("/mcp/kb", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
@@ -145,6 +146,8 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 			return nil, err
 		}
 		payload = item
+	case "kb_get_document_image":
+		return s.readMCPDocumentImage(ctx, userID, call.Arguments)
 	case "kb_get_image":
 		return s.readMCPImage(ctx, userID, call.Arguments)
 	case "kb_update":
@@ -163,6 +166,12 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		} else {
 			payload = publicDocument(item)
 		}
+	case "kb_upload_file", "kb_get_file_import_status":
+		item, err := s.callMCPFileImport(ctx, userID, call.Name, call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		payload = item
 	case "kb_upload_image":
 		item, err := s.uploadMCPImage(ctx, userID, call.Arguments)
 		if err != nil {
@@ -227,7 +236,7 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		if !includeContent {
 			delete(out, "content")
 		}
-		payload = publicDocument(out)
+		payload = out
 	case "kb_create_folder":
 		input, err := mcpFolderInput(call.Arguments)
 		if err != nil {
@@ -458,7 +467,7 @@ func readMCPRequest(w http.ResponseWriter, r *http.Request) (mcpRequest, bool) {
 			Name string `json:"name"`
 		}
 		if request.Method != "tools/call" || json.Unmarshal(request.Params, &call) != nil ||
-			(call.Name != "kb_upload_image" && (call.Name != "kb_update" || len(body) > mcpAvatarRequestLimit)) {
+			(call.Name != "kb_upload_image" && call.Name != "kb_upload_file" && (call.Name != "kb_update" || len(body) > mcpAvatarRequestLimit)) {
 			writeMCPReply(r.Context(), w, http.StatusBadRequest, request.ID, nil, &mcpError{Code: -32700, Message: "请求超限或不完整"})
 			return request, false
 		}

@@ -123,7 +123,7 @@ func TestKBMCPInitializeAndToolsList(t *testing.T) {
 	for _, tool := range result.Result.Tools {
 		names = append(names, tool.Name)
 	}
-	want := []string{"kb_edit_document", "kb_read_document", "kb_upload_image", "kb_create", "kb_list", "kb_list_documents", "kb_get_document", "kb_create_folder", "kb_create_document", "kb_update_document", "kb_delete_document", "kb_search", "kb_get", "kb_list_tags", "kb_list_permissions", "kb_get_image", "kb_update", "kb_move_document", "kb_restudy_document"}
+	want := []string{"kb_edit_document", "kb_read_document", "kb_upload_image", "kb_create", "kb_list", "kb_list_documents", "kb_get_document", "kb_create_folder", "kb_create_document", "kb_update_document", "kb_delete_document", "kb_search", "kb_get", "kb_list_tags", "kb_list_permissions", "kb_get_document_image", "kb_get_image", "kb_update", "kb_move_document", "kb_restudy_document", "kb_upload_file", "kb_get_file_import_status"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("tools = %v, want %v", names, want)
 	}

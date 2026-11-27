@@ -2213,3 +2213,10 @@ JOIN expert_knowledge_bases x ON x.expert_id = e.id
 JOIN knowledge_bases k ON k.id = x.kb_id
 WHERE e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
     AND k.ownership_type = 'user' AND k.owner_user_id = e.owner_user_id AND k.enabled;
+
+ALTER TABLE knowledge_base_documents ADD COLUMN IF NOT EXISTS file_type text;
+
+ALTER TABLE knowledge_base_documents DROP CONSTRAINT IF EXISTS knowledge_base_documents_file_type_check;
+
+ALTER TABLE knowledge_base_documents ADD CONSTRAINT knowledge_base_documents_file_type_check
+    CHECK (file_type IS NULL OR file_type IN ('txt','md','html','svg','csv','docx','xls','xlsx','pptx','pdf','jpg','png'));

@@ -103,6 +103,7 @@ func (s *Service) searchAccessible(ctx context.Context, accessible []resource.Ob
 			case ChannelLexical:
 				raw, queryErr := queries.SearchKbChunksLexical(ctx, sqlc.SearchKbChunksLexicalParams{
 					KbID:            id,
+					FileTypes:       normalized.FileTypes,
 					QueryExpression: queryExpression,
 					RowLimit:        defaultSearchCandidate,
 				})
@@ -114,6 +115,7 @@ func (s *Service) searchAccessible(ctx context.Context, accessible []resource.Ob
 				modelID := strings.TrimSpace(item.String("embedding_model_id"))
 				raw, queryErr := queries.SearchKbChunksVector(ctx, sqlc.SearchKbChunksVectorParams{
 					KbID:             id,
+					FileTypes:        normalized.FileTypes,
 					Embedding:        modelVectors[modelID],
 					EmbeddingModelID: modelID,
 					RowLimit:         defaultSearchCandidate,
@@ -160,6 +162,24 @@ func (s *Service) searchAccessible(ctx context.Context, accessible []resource.Ob
 	}
 	items := fuseRankedChannels(ranked, configs)
 	items = limitPerDocument(items, normalized.TopK)
+	for _, result := range items {
+		if imageFileType(result.String("file_type")) && result.Bool("has_original") {
+			doc, err := s.GetDocument(ctx, result.String("document_id"))
+			if err != nil {
+				return SearchResponse{}, err
+			}
+			storage, ok := s.storage.(ImportStorage)
+			if ok && doc.String("storage_key") != "" {
+				name, _, _, err := storage.OriginalInfo(ctx, doc.String("storage_key"))
+				if err == nil {
+					meta := originalImageMetadata(doc, false)
+					meta["file_name"] = name
+					result["image"] = meta
+				}
+			}
+		}
+		delete(result, "has_original")
+	}
 	if len(normalized.Filters) > 0 {
 		warnings = append(warnings, "filters_not_applied")
 	}

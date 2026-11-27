@@ -237,6 +237,42 @@ try {
   await page.waitForTimeout(200)
   assert.equal(await page.getByText("当前文档 B", { exact: true }).count(), 1)
   assert.equal(await page.getByText("旧文档 A", { exact: true }).count(), 0)
+  checkStaleDocuments = false
+  const imports = []
+  let imageImport = false
+  await page.route("**/imports/*", async (route) => {
+    const operation = new URL(route.request().url()).pathname.split("/").at(-1)
+    if (operation === "models") return route.fulfill({ json: { items: [{ id: "vision", display_name: "Vision Test" }] } })
+    imports.push(operation)
+    if (operation === "upload") {
+      assert.match(route.request().headers()["content-type"], /multipart/)
+      assert.ok(route.request().postDataBuffer().includes(Buffer.from([0, 255, 128])))
+      const bytes = route.request().postDataBuffer().toString()
+      if (imageImport) assert.match(bytes, /name="model_id"\r\n\r\nvision/)
+      return route.fulfill({ json: imageImport
+        ? { status: "completed", document_id: "created-image", import_context: "import", file_type: "jpg" }
+        : { status: "pending", task_context: "task", import_context: "import", file_type: "pdf" } })
+    }
+    assert.equal(operation, "query")
+    assert.equal(route.request().postDataJSON().task_context, "task")
+    return route.fulfill({ json: { status: "completed", document_id: "created" } })
+  })
+  await page.getByRole("button", { name: "创建文档", exact: true }).click()
+  await page.getByRole("tab", { name: "文件", exact: true }).click()
+  await page.locator("#kb-document-file").setInputFiles({ name: "file.pdf", mimeType: "application/pdf", buffer: Buffer.from([0, 255, 128]) })
+  await page.getByRole("button", { name: "添加并学习", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "hidden" })
+  assert.deepEqual(imports, ["upload", "query"])
+  imageImport = true; imports.length = 0
+  await page.getByRole("button", { name: "创建文档", exact: true }).click()
+  await page.getByRole("tab", { name: "文件", exact: true }).click()
+  await page.locator("#kb-document-file").setInputFiles({ name: "photo.JPEG", mimeType: "image/jpeg", buffer: Buffer.from([0, 255, 128]) })
+  await page.getByRole("combobox", { name: "图片描述模型" }).click()
+  await page.getByRole("option", { name: "Vision Test" }).click()
+  await page.getByRole("button", { name: "添加并学习", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "hidden" })
+  assert.deepEqual(imports, ["upload"])
+
   assert.deepEqual(errors, [])
   console.log("knowledge base detail regression check passed")
 } finally {

@@ -13,6 +13,7 @@ import (
 )
 
 func (s *Service) RegisterAgent(r chi.Router) {
+	s.registerFileImports(r, false)
 	s.registerPersonalGrants(r)
 	if s.storage != nil {
 		r.Get("/kb/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, false) })

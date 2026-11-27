@@ -14,13 +14,13 @@ var kbPublicFields = []string{
 
 var documentPublicFields = []string{
 	"id", "kb_id", "parent_id", "node_type", "position", "title", "source_type", "content", "file_name", "mime_type",
-	"size_bytes", "status", "error_message", "chunk_count", "revision",
+	"file_type", "size_bytes", "status", "error_message", "chunk_count", "revision",
 	"learned_at", "created_at", "updated_at", "updated_by_user_id", "content_updated_at", "children",
 }
 
 var documentListPublicFields = []string{
 	"id", "kb_id", "parent_id", "node_type", "position", "title", "source_type", "file_name", "mime_type",
-	"size_bytes", "status", "error_message", "chunk_count", "revision",
+	"file_type", "size_bytes", "status", "error_message", "chunk_count", "revision",
 	"learned_at", "created_at", "updated_at", "updated_by_user_id", "content_updated_at", "children",
 }
 
@@ -71,7 +71,10 @@ func kbOwnedBy(item resource.Object, viewer string) bool {
 }
 
 func publicDocument(item resource.Object) resource.Object {
-	return project(item, documentPublicFields)
+	out := project(item, documentPublicFields)
+	out["content_editable"] = textFileType(item.String("file_type")) && item.String("node_type") != "folder"
+	out["has_original"] = item.String("storage_key") != ""
+	return out
 }
 
 func publicDocumentSummary(item resource.Object) resource.Object {

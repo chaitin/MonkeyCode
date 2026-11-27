@@ -42,6 +42,10 @@ test("技能上传代理允许 500 MiB 包并保留 multipart 开销", () => {
   for (const path of ["/api/admin/v1/rules", "/api/v1/skills/owned/manifest"]) {
     assert.doesNotMatch(matchingLocation(path), /client_max_body_size/, path)
   }
+  for (const path of ["/api/admin/v1/kb/id/imports/upload", "/api/v1/kb/id/imports/upload", "/mcp/kb/id/files/upload", "/mcp/kb"]) {
+    assert.match(matchingLocation(path), /proxy_read_timeout 150s;/, path)
+  }
+  assert.doesNotMatch(matchingLocation("/api/v1/kb/id/documents"), /proxy_read_timeout/)
   for (const path of [
     "/api/admin/v1/resource-import-uploads",
     "/api/admin/v1/resource-import-uploads/upload/chunks/0",

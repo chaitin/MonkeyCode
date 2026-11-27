@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/image/bmp"
+	"golang.org/x/image/tiff"
 	"image"
 	"image/color"
 	"image/gif"
@@ -225,4 +227,41 @@ func (s *assetTestStorage) DeletePrefix(_ context.Context, prefix string) error 
 		}
 	}
 	return nil
+}
+
+func TestBMPAndTIFFAssets(t *testing.T) {
+	for _, format := range []string{"bmp", "tiff"} {
+		t.Run(format, func(t *testing.T) {
+			var data bytes.Buffer
+			picture := image.NewRGBA(image.Rect(0, 0, 2, 2))
+			var err error
+			if format == "bmp" {
+				err = bmp.Encode(&data, picture)
+			} else {
+				err = tiff.Encode(&data, picture, nil)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			name, mime, err := readContentImage(data.Bytes())
+			if err != nil || !strings.HasSuffix(name, "."+format) || mime != "image/"+format {
+				t.Fatalf("%s %s %v", name, mime, err)
+			}
+			storage := &assetTestStorage{&avatarStorage{files: map[string][]byte{}}}
+			service := NewService(nil, nil).WithStorage(storage)
+			if err := storage.Put(t.Context(), assetObjectKey("book", name), data.Bytes(), mime); err != nil {
+				t.Fatal(err)
+			}
+			body, kind, err := service.readAsset(t.Context(), "book", name)
+			if err != nil || kind != mime || !bytes.Equal(body, data.Bytes()) {
+				t.Fatalf("readback %s %v", kind, err)
+			}
+			if err := service.validateConvertedAssets(t.Context(), "book", "![]("+assetURL("book", name)+")"); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := readContentImage(data.Bytes()[:len(data.Bytes())/2]); err == nil {
+				t.Fatal("truncated image accepted")
+			}
+		})
+	}
 }

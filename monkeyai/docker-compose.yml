@@ -59,6 +59,22 @@ services:
       retries: 20
       start_period: 20s
 
+  # Enable with --profile anydoc and a locally available image built from AnyDoc deploy/Dockerfile.slim.
+  anydoc:
+    profiles: [anydoc]
+    image: ${ANYDOC_IMAGE:-anydoc:slim}
+    pull_policy: never
+    restart: unless-stopped
+    logging: *monkeyai_logging
+    environment:
+      SERVER_ADDR: ":8080"
+      PARSER_CONCURRENT: "${ANYDOC_PARSER_CONCURRENT:-2}"
+      PARSER_MAX_OUTPUT_BYTES: "16777216"
+      # Current image logs callback credentials in task bodies and network errors.
+      GLOG_GLOBAL_LEVEL: discard
+      GLOG_DISABLE_AUTO_CHECK: "true"
+      NO_PROXY: db,rustfs,backend,anydoc,localhost,127.0.0.1,::1
+
   backend:
     logging: *monkeyai_logging
     image: ${BACKEND_IMAGE:-monkeyai-backend:local}
@@ -78,7 +94,7 @@ services:
       MONKEYAI_MCP_ALLOWED_CIDRS: ${MONKEYAI_MCP_ALLOWED_CIDRS:-}
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
-      NO_PROXY: ${MONKEYAI_NO_PROXY:-db,rustfs,localhost,127.0.0.1,::1}
+      NO_PROXY: ${MONKEYAI_NO_PROXY:-db,rustfs,backend,anydoc,localhost,127.0.0.1,::1}
 
       MONKEYAI_DATABASE_URL: ${MONKEYAI_DATABASE_URL:-postgres://${POSTGRES_USER:-monkeyai}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-monkeyai}?sslmode=disable}
       MONKEYAI_HTTP_ADDR: :8080

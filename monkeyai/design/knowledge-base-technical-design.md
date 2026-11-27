@@ -345,7 +345,7 @@ query embedding 或向量 SQL 失败时，相关知识库保留 lexical，响应
 
 ## 9. 管理端文档页面
 
-知识库主路由为 `/admin/resources/kb`。点击知识库仍以弹窗展示文档列表；“查看内容”和文本菜单中的“修改文本”进入独立路由：
+知识库主路由为 `/admin/resources/kb`。点击知识库仍以弹窗展示文档列表；“预览”和文本菜单中的“修改文本”进入独立路由：
 
 ```text
 /admin/resources/kb/:kbId/documents/:documentId

@@ -39,6 +39,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		})
 	})
 
+	s.registerFileImports(r, true)
 	r.Post("/kb/{id}/images/upload", func(w http.ResponseWriter, r *http.Request) { s.uploadContentImage(w, r, true) })
 
 	r.Get("/kb/{id}/documents", func(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +102,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusAccepted, item)
+		resource.JSON(r.Context(), w, http.StatusAccepted, publicDocument(item))
 	})
 
 	r.Get("/kb/{id}/documents/{documentId}", func(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +111,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusOK, item)
+		resource.JSON(r.Context(), w, http.StatusOK, publicDocument(item))
 	})
 
 	r.Put("/kb/{id}/documents/{documentId}", func(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +130,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusAccepted, item)
+		resource.JSON(r.Context(), w, http.StatusAccepted, publicDocument(item))
 	})
 
 	r.Post("/kb/{id}/documents/restudy", func(w http.ResponseWriter, r *http.Request) {
@@ -215,6 +216,13 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
+		}
+		for _, item := range response.Items {
+			if meta, ok := item["image"].(resource.Object); ok {
+				for _, key := range []string{"preview_url", "download_url"} {
+					meta[key] = strings.Replace(meta.String(key), "/api/v1/", "/api/admin/v1/", 1)
+				}
+			}
 		}
 		resource.JSON(r.Context(), w, http.StatusOK, response)
 	})

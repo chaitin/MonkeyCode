@@ -159,6 +159,16 @@ func (p *Proxy) Register(router chi.Router) {
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.serveHTTP(w, r, 32<<20)
+}
+
+// ServeKnowledgeImage is used only for server-built vision requests, never registered as a route.
+func (p *Proxy) ServeKnowledgeImage(w http.ResponseWriter, r *http.Request) {
+	const encodedImageLimit = ((32<<20 + 2) / 3) * 4
+	p.serveHTTP(w, r, encodedImageLimit+(64<<10))
+}
+
+func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request, bodyLimit int64) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		web.HTTPError(w, r, http.StatusMethodNotAllowed)
@@ -180,7 +190,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		web.HTTPError(w, r, http.StatusUnauthorized)
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, bodyLimit))
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
 		web.HTTPError(w, r, http.StatusBadRequest)

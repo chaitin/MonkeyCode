@@ -31,7 +31,7 @@ func seedLearningKB(t *testing.T, pool *pgxpool.Pool, actor, operation, status s
 		args []any
 	}{
 		{`INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id,embedding_model_id,embedding_dimension) VALUES($1,'regression',$2,$2,$3,3)`, []any{kbID, actor, modelID}},
-		{`INSERT INTO knowledge_base_documents(id,kb_id,title,content,status,chunk_count,created_by_user_id) VALUES($1,$2,'document','old content',$3,CASE WHEN $3='learned' THEN 1 ELSE 0 END,$4)`, []any{docID, kbID, status, actor}},
+		{`INSERT INTO knowledge_base_documents(id,kb_id,title,content,file_type,status,chunk_count,created_by_user_id) VALUES($1,$2,'document','old content','md',$3,CASE WHEN $3='learned' THEN 1 ELSE 0 END,$4)`, []any{docID, kbID, status, actor}},
 		{`INSERT INTO knowledge_base_learning_jobs(kb_id,operation,document_revision,embedding_model_id,embedding_dimension)
 			SELECT $1,$2,d.revision,$3,3 FROM knowledge_base_documents d WHERE d.id=$4`, []any{kbID, operation, modelID, docID}},
 	} {

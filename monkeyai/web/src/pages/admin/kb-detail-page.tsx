@@ -1,3 +1,4 @@
+import { importKnowledgeFile, knowledgeFileAccept, type FileImport } from "@/lib/kb-file-import"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 import {
   AlertCircleIcon,
@@ -10,6 +11,15 @@ import {
   DragDropVerticalIcon,
   Edit02Icon,
   File01Icon,
+  Image01Icon,
+  Txt01Icon,
+  DocumentCodeIcon,
+  HtmlFile01Icon,
+  Svg01Icon,
+  Doc01Icon,
+  Xls01Icon,
+  Ppt01Icon,
+  Pdf01Icon,
   Folder01Icon,
   Loading03Icon,
   MoreHorizontalIcon,
@@ -51,6 +61,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -88,6 +99,7 @@ type KbDocument = {
   title: string
   source_type: KbDocumentSource
   content: string
+  file_type?: string | null
   file_name: string | null
   mime_type: string | null
   size_bytes: number
@@ -129,6 +141,33 @@ export default function KbDetailPage() {
   const [folderSaving, setFolderSaving] = useState(false)
   const [documentMode, setDocumentMode] = useState<KbDocumentSource>("text")
   const [documentSaving, setDocumentSaving] = useState(false)
+  const [fileImports, setFileImports] = useState<FileImport[]>([])
+  const [hasSelectedImage, setHasSelectedImage] = useState(false)
+  const [imageModels, setImageModels] = useState<{ id: string; display_name: string }[]>([])
+  const [imageModelID, setImageModelID] = useState("")
+  const [imageModelsError, setImageModelsError] = useState("")
+  const importsRef = useRef<FileImport[]>([])
+  useEffect(() => {
+    if (!documentDialogOpen || documentMode !== "file") return
+    const controller = new AbortController()
+    api<{ items: { id: string; display_name: string }[] }>(`${base}/kb/${kbId}/imports/models`, { signal: controller.signal })
+      .then(({ items }) => { setImageModels(items); setImageModelsError("") })
+      .catch((error: unknown) => { if (!controller.signal.aborted) { setImageModels([]); setImageModelsError(error instanceof Error ? error.message : String(error)) } })
+    return () => controller.abort()
+  }, [documentDialogOpen, documentMode, kbId])
+  const importController = useRef<AbortController | null>(null)
+  useEffect(() => {
+    const stop = () => importController.current?.abort()
+    window.addEventListener("pagehide", stop)
+    return () => { window.removeEventListener("pagehide", stop); stop() }
+  }, [])
+  useEffect(() => {
+    if (!documentSaving) return
+    const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = "" }
+    window.addEventListener("beforeunload", beforeUnload)
+    return () => window.removeEventListener("beforeunload", beforeUnload)
+  }, [documentSaving])
+
   const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null)
   const [documentPendingDeletion, setDocumentPendingDeletion] = useState<KbDocument | null>(null)
   const [batchSelecting, setBatchSelecting] = useState(false)
@@ -200,6 +239,10 @@ export default function KbDetailPage() {
   const handleDocumentDialogOpenChange = (open: boolean) => {
     setDocumentDialogOpen(open)
     if (!open) {
+      importController.current?.abort()
+      importsRef.current = []
+      setFileImports([])
+      setHasSelectedImage(false)
       setDocumentMode("text")
       setEditingDocumentId(null)
       setDocumentParentId(null)
@@ -243,10 +286,30 @@ export default function KbDetailPage() {
         if (!title || !content) return
         await saveDocument({ title, parent_id: documentParentId, source_type: "text", content, size_bytes: content.length })
       } else {
-        for (const file of files) {
-          const text = await file.text()
-          await saveDocument({ title: file.name, parent_id: documentParentId, source_type: "file", file_name: file.name, mime_type: file.type || "application/octet-stream", size_bytes: file.size, content: text })
+        if (!importsRef.current.length) importsRef.current = files.map((file) => ({ file, parentID: documentParentId, stage: "uploading", modelID: imageModelID }))
+        const controller = new AbortController()
+        importController.current = controller
+        const changed = () => setFileImports([...importsRef.current])
+        changed()
+        for (const item of importsRef.current) {
+          if (controller.signal.aborted) break
+          if (item.documentID) continue
+          try {
+            item.modelID = imageModelID
+            await importKnowledgeFile(item, `${base}/kb/${kbId}/imports`, api, controller.signal, changed)
+            reload()
+          } catch (reason) {
+            item.stage = controller.signal.aborted ? "canceled" : "failed"
+            const message = reason instanceof Error ? reason.message : String(reason)
+            item.error = controller.signal.aborted ? undefined : t(`pages.knowledgeBases.${message}`, { defaultValue: message })
+            changed()
+          }
         }
+        if (controller.signal.aborted) {
+          for (const item of importsRef.current) if (!item.documentID && item.stage !== "failed") item.stage = "canceled"
+          changed()
+        }
+        if (importsRef.current.some((item) => !item.documentID)) return
       }
       handleDocumentDialogOpenChange(false)
     } catch (reason) {
@@ -394,6 +457,21 @@ export default function KbDetailPage() {
   }
   if (!selectedKb && documentsLoading) return <p className="p-6 text-sm text-muted-foreground">{t("resources.loading")}</p>
   if (!selectedKb) return null
+  const activeImport = fileImports.find((item) =>
+    !item.documentID && ["uploading", "converting", "saving"].includes(item.stage),
+  )
+  const documentSubmitLabel = editingDocument
+    ? "saveAndRelearn"
+    : documentMode !== "file"
+      ? "addAndLearn"
+      : documentSaving
+        ? `importStage_${activeImport?.stage ?? "saving"}`
+        : fileImports.some((item) => item.stage === "canceled")
+          ? "importResume"
+          : fileImports.some((item) => item.stage === "failed")
+            ? "importRetry"
+            : "addAndLearn"
+
   return (
     <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <div className="flex shrink-0 items-start gap-4 rounded-xl border p-4">
@@ -599,7 +677,7 @@ export default function KbDetailPage() {
               <DialogTitle>{editingDocument ? t("pages.knowledgeBases.editContentTitle") : t("pages.knowledgeBases.addContentTitle")}</DialogTitle>
               <DialogDescription>{editingDocument ? t("pages.knowledgeBases.editContentDescription") : t("pages.knowledgeBases.addContentDescription")}</DialogDescription>
             </DialogHeader>
-            <Tabs value={documentMode} onValueChange={(value) => setDocumentMode(value as KbDocumentSource)}>
+            <Tabs value={documentMode} onValueChange={(value) => { if (!documentSaving) { setDocumentMode(value as KbDocumentSource); if (!fileImports.length) setHasSelectedImage(false) } }}>
               {!editingDocument && <TabsList className="w-full"><TabsTrigger value="text">{t("pages.knowledgeBases.textContent")}</TabsTrigger><TabsTrigger value="file">{t("pages.knowledgeBases.fileContent")}</TabsTrigger></TabsList>}
               <TabsContent value="text">
                 <FieldGroup className="gap-4">
@@ -607,11 +685,27 @@ export default function KbDetailPage() {
                   <Field><FieldLabel htmlFor="kb-document-body">{t("pages.knowledgeBases.textContent")}</FieldLabel><Textarea id="kb-document-body" name="body" defaultValue={editingDocument?.content} required /></Field>
                 </FieldGroup>
               </TabsContent>
-              <TabsContent value="file"><Field><FieldLabel htmlFor="kb-document-file">{t("pages.knowledgeBases.selectFile")}</FieldLabel><Input id="kb-document-file" name="file" type="file" multiple accept=".txt,.md,.markdown" required /><FieldDescription>{t("pages.knowledgeBases.fileDescription")}</FieldDescription></Field></TabsContent>
+              <TabsContent value="file"><FieldGroup><Field><FieldLabel htmlFor="kb-document-file">{t("pages.knowledgeBases.selectFile")}</FieldLabel><Input id="kb-document-file" name="file" type="file" multiple accept={knowledgeFileAccept} onChange={(event) => setHasSelectedImage(Array.from(event.currentTarget.files ?? []).some((file) => /\.(jpe?g|png)$/i.test(file.name)))} disabled={documentSaving || fileImports.length > 0} required={fileImports.length === 0} /><FieldDescription>{t("pages.knowledgeBases.importDescription")}</FieldDescription></Field>
+                {hasSelectedImage && <Field>
+                  <FieldLabel htmlFor="kb-image-model">{t("pages.knowledgeBases.imageModel")}</FieldLabel>
+                  <Select value={imageModelID} onValueChange={(value) => setImageModelID(value ?? "")} disabled={documentSaving} items={imageModels.map((model) => ({ value: model.id, label: model.display_name }))}>
+                    <SelectTrigger id="kb-image-model" className="w-full"><SelectValue placeholder={t("pages.knowledgeBases.imageModelPlaceholder")} /></SelectTrigger>
+                    <SelectContent><SelectGroup>{imageModels.map((model) => <SelectItem key={model.id} value={model.id}>{model.display_name}</SelectItem>)}</SelectGroup></SelectContent>
+                  </Select>
+                  <FieldDescription>{imageModelsError || t(imageModels.length ? "pages.knowledgeBases.imageModelHint" : "pages.knowledgeBases.imageModelUnavailable")}</FieldDescription>
+                </Field>}
+              </FieldGroup></TabsContent>
             </Tabs>
+            {fileImports.length > 0 && <ul className="flex flex-col gap-2" aria-live="polite">
+              {fileImports.map((item, index) => <li key={index} className="flex flex-col gap-1 text-sm">
+                <span>{item.file.name} — {t(`pages.knowledgeBases.importStage_${item.stage}`)}</span>
+                {item.error && <span className="text-destructive">{item.error}</span>}
+              </li>)}
+            </ul>}
             <DialogFooter>
-              <DialogClose render={<Button type="button" variant="outline" />}>{t("pages.knowledgeBases.cancel")}</DialogClose>
-              <Button type="submit" loading={documentSaving}>{editingDocument ? t("pages.knowledgeBases.saveAndRelearn") : t("pages.knowledgeBases.addAndLearn")}</Button>
+              {documentSaving && documentMode === "file" && <Button type="button" variant="outline" onClick={() => importController.current?.abort()}>{t("pages.knowledgeBases.importCancel")}</Button>}
+              <DialogClose render={<Button type="button" variant="outline" disabled={documentSaving} />}>{t("pages.knowledgeBases.cancel")}</DialogClose>
+              <Button type="submit" loading={documentSaving}>{t(`pages.knowledgeBases.${documentSubmitLabel}`)}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -761,6 +855,21 @@ type DocumentTreeActions = {
   onRestudyDocument: (document: KbDocument) => void
   onDeleteDocument: (document: KbDocument) => void
 }
+const documentFileIcons: Record<string, typeof File01Icon> = {
+  txt: Txt01Icon,
+  md: DocumentCodeIcon,
+  html: HtmlFile01Icon,
+  svg: Svg01Icon,
+  docx: Doc01Icon,
+  xls: Xls01Icon,
+  xlsx: Xls01Icon,
+  csv: Xls01Icon,
+  pptx: Ppt01Icon,
+  pdf: Pdf01Icon,
+  jpg: Image01Icon,
+  png: Image01Icon,
+}
+
 const DocumentTreeContext = createContext<DocumentTreeActions | null>(null)
 
 const DocumentTreeRow = ({
@@ -878,7 +987,7 @@ const DocumentTreeRow = ({
           ) : (
             <>
               <span className="size-7 shrink-0" />
-              <HugeiconsIcon className="shrink-0 text-muted-foreground" icon={File01Icon} />
+              <HugeiconsIcon className="shrink-0 text-muted-foreground" icon={documentFileIcons[item.file_type ?? ""] ?? File01Icon} />
             </>
           )}
           <div className="min-w-0 flex-1">

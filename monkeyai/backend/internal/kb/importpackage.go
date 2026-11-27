@@ -366,11 +366,10 @@ func ParseImportPackage(reader io.ReaderAt, size int64) (*ImportPackage, error) 
 				if e != nil {
 					return nil, e
 				}
-				for _, ref := range importAssetReferences(content) {
-					if _, ok := book.Assets[ref.name]; !ok {
-						return nil, fmt.Errorf("正文引用的图片缺失: ../assets/%s", ref.name)
-					}
+				if _, e = book.importImageContent(content, ""); e != nil {
+					return nil, e
 				}
+
 			} else if node.ContentPath != "" || node.SourceType != "" || node.FileName != "" || node.MIMEType != "" {
 				return nil, fmt.Errorf("文件夹不得声明正文属性")
 			}

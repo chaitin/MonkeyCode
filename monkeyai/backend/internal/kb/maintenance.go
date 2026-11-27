@@ -318,7 +318,7 @@ func (s *Service) rebuildLexicalIndex(ctx context.Context, job sqlc.ClaimKbLearn
 		return err
 	}
 	for _, row := range rows {
-		tokens := tokenizeText(row.Content)
+		tokens := tokenizeDocument(row.Content, row.FileType)
 		if tokens == "" {
 			return fmt.Errorf("分片 %s 未生成可检索词", row.ID)
 		}

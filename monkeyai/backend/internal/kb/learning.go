@@ -158,7 +158,16 @@ func (s *Service) learnDocument(ctx context.Context, id string, job sqlc.ClaimKb
 		}
 	}()
 
+	if !knownFileType(document.String("file_type")) {
+		return resource.Invalid("文档格式未确认，请重新导入")
+	}
+	if len(document.String("content")) > importContentLimit {
+		return resource.Invalid("正文超过 16 MiB")
+	}
 	chunks := splitContent(document.String("content"))
+	if document.String("file_type") == "md" || !textFileType(document.String("file_type")) {
+		chunks = splitMarkdown(document.String("content"))
+	}
 	vectorEnabled := modelID != "" && dimension > 0
 
 	learned := make([]learnedChunk, 0, len(chunks))
@@ -167,7 +176,7 @@ func (s *Service) learnDocument(ctx context.Context, id string, job sqlc.ClaimKb
 		vectorErr = resource.InvalidCode("vector_unavailable", "向量模型服务不可用")
 	}
 	for index, chunk := range chunks {
-		searchTokens := tokenizeText(chunk)
+		searchTokens := tokenizeDocument(chunk, document.String("file_type"))
 		if searchTokens == "" {
 			return fmt.Errorf("文档分片 %d 未生成可检索词", index)
 		}

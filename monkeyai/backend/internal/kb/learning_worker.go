@@ -21,6 +21,9 @@ func (s *Service) Run(ctx context.Context) {
 	// Reconcile independently so a long embedding task cannot delay discovering
 	// newly available models. Stop the reconciler before Run returns.
 	syncCtx, cancelSync := context.WithCancel(ctx)
+	cleanupDone := make(chan struct{})
+	go func() { defer close(cleanupDone); s.runImportCleanup(syncCtx) }()
+	defer func() { cancelSync(); <-cleanupDone }()
 	syncDone := make(chan struct{})
 	go func() {
 		defer close(syncDone)
