@@ -1,10 +1,11 @@
-// [INPUT]: 双通道测试夹具、占满的数据库连接池和可注入读错误的传输连接。
-// [OUTPUT]: 验证失联期限、反向流预算、数据附着换代与撤销，以及确认中断和无效确认的回包与诊断。
+// [INPUT]: 双通道测试夹具、真实 WebSocket 分片、占满的数据库连接池和可注入读错误的传输连接。
+// [OUTPUT]: 验证失联期限、反向流预算、数据附着换代与撤销，以及确认中断、超限和内容无效时的回包与诊断。
 // [POS]: 控制事件协议和传输生命周期回归。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -86,6 +87,7 @@ func (logs attachLogs) Write(data []byte) (int, error) {
 	if json.Unmarshal(data, &event) == nil {
 		switch {
 		case event.Event == "relay.bridge.ready" && event.Channel == "data",
+			event.Event == "relay.bridge.interrupted" && event.Channel == "data" && event.Phase == "ready_ack",
 			event.Event == "relay.bridge.waiting",
 			event.Event == "protocol.response.error",
 			event.Event == "relay.bridge.rejected" && event.Phase == "ready_ack":
@@ -258,6 +260,76 @@ func TestDataAttachAcrossControlPublish(t *testing.T) {
 				t.Fatalf("旧客户端收到非预期错误: %+v %v", failure, err)
 			}
 			logs.expect(t, "protocol.response.error", tc.reason)
+		})
+	}
+}
+
+func TestDataReadyAckMessageBoundary(t *testing.T) {
+	f := newFixture(t)
+	logs := make(attachLogs, 16)
+	f.s.logger = logging.New(logs, slog.LevelDebug)
+	server := httptest.NewServer(logging.HTTP(f.s.logger)(f.server.Config.Handler))
+	t.Cleanup(server.Close)
+	f.server = server
+	r := f.runtime(t)
+	logs.expect(t, "relay.bridge.ready", "")
+	hello := r.hello
+	hello.ChannelKind, hello.Intent, hello.LeaseEpoch = "data", "attach", r.ready.LeaseEpoch
+
+	for _, mode := range []string{"interrupted_json", "missing_final_frame", "at_limit", "over_limit"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			ws := f.prove(t, hello, r.private, "data", f.token)
+			var ready Ready
+			if err := readWS(ctx, ws, &ready); err != nil {
+				t.Fatal(err)
+			}
+			ack, err := json.Marshal(ReadyAck{Type: "ready_ack", RegistrationVersion: ready.RegistrationVersion, LeaseEpoch: ready.LeaseEpoch})
+			if err != nil {
+				t.Fatal(err)
+			}
+			message, err := ws.Writer(ctx, websocket.MessageText)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "interrupted_json" {
+				ack = ack[:1]
+			}
+			if _, err := message.Write(ack); err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "interrupted_json", "missing_final_frame":
+				// Pong 证明服务端已经读过首个分片，此时断开仍缺少 FIN。
+				ws.CloseRead(ctx)
+				if err := ws.Ping(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if err := ws.CloseNow(); err != nil {
+					t.Fatal(err)
+				}
+				logs.expect(t, "relay.bridge.interrupted", "")
+			case "at_limit", "over_limit":
+				size := maxControlMessage
+				if mode == "over_limit" {
+					size++
+				}
+				if _, err := message.Write(bytes.Repeat([]byte(" "), size-len(ack))); err != nil {
+					t.Fatal(err)
+				}
+				if err := message.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if mode == "at_limit" {
+					logs.expect(t, "relay.bridge.ready", "")
+					return
+				}
+				if _, _, err := ws.Read(ctx); websocket.CloseStatus(err) != websocket.StatusMessageTooBig {
+					t.Fatalf("超限确认应收到关闭码 1009，实际为 %v", err)
+				}
+				logs.expect(t, "relay.bridge.rejected", "message_too_big")
+			}
 		})
 	}
 }

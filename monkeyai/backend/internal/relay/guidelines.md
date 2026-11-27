@@ -1,12 +1,14 @@
 # internal/relay/
 
-> L2 | 父级：[MonkeyAI 后端上下文](../../CONTEXT.md)
+> L2 | 父级：[项目地图](../../../../guidelines.md) · [MonkeyAI 后端上下文](../../CONTEXT.md)
 
 relay 为运行端发布控制和数据通道，按设备和连接代次向桌面代理请求。控制就绪或收到有效 Pong 后，路由有 45 秒的存活窗口。路由关闭时，用 `relay.route.closed` 的 `machine_id`、`boot_id`、`lease_epoch`、`reason` 和 `last_seen_age_ms` 对照执行端日志。EOF 只能说明本端观察到连接关闭。
 
 数据通道只能附着在启动标识、授权和代次都匹配的控制路由上。控制发布尚未就绪时，relay 在原数据握手内最多等待 1 秒。等待者被唤醒后先检查原路由。原路由已关闭或被替换时，直接返回 `device_registration_changed`。原路由仍在且就绪时，复核数据库中的设备状态和授权，再确认当前代次。
 
-查 `protocol.response.error` 的 `reason` 可区分未就绪、代次不匹配、路由替换和授权变化。若数据 ready_ack 到达时路由已被替换，查 `relay.bridge.rejected` 的 `phase=ready_ack`。确认读取中断时，relay 以调试级别记录 `relay.bridge.interrupted` 并结束握手。收到完整消息但确认内容无效时，回复 `invalid_tunnel_message`。
+查 `protocol.response.error` 的 `reason` 可区分未就绪、代次不匹配、路由替换和授权变化。若数据 ready_ack 到达时路由已被替换，查 `relay.bridge.rejected` 的 `phase=ready_ack`。
+
+ready_ack 可分片发送，消息上限为 64 KiB。最终分片到达前连接中断时，relay 以调试级别记录 `relay.bridge.interrupted` 并结束握手。消息超限时，WebSocket 发送关闭码 1009，relay 记录 `relay.bridge.rejected` 和 `reason=message_too_big`。消息完整且未超限、但确认内容无效时，回复 `invalid_tunnel_message`。
 
 ## 实现
 
@@ -16,6 +18,7 @@ relay 为运行端发布控制和数据通道，按设备和连接代次向桌�
 - `control_peer_linux.go` 使用 SO_PEERCRED 核对控制 socket 对端的有效用户。
 - `control_peer_other.go` 在无对端凭据校验实现的平台拒绝控制连接。
 - `bridge.go` 校验设备身份与握手证明，发布控制路由，按当前代次附着数据通道，限时等待并记录拒绝原因。
+- `bridgetransport.go` 接管 HTTP 升级连接，在读取 ready_ack 时把底层 EOF 转为意外中断，保留 WebSocket 消息结束边界。
 - `lease.go` 签发与续验访问租约，通知控制路由就绪，推送撤销及控制事件。每 15 秒探测，允许两次 Ping 同时等待应答，按最近有效 Pong 判定失联。
 - `directory.go` 组合授权设备与存活路由，生成分页设备目录及运行状态。
 - `connection.go` 校验业务权限，签发、轮换连接票据并更新访问版本。
@@ -41,7 +44,7 @@ relay 为运行端发布控制和数据通道，按设备和连接代次向桌�
 - `management_test.go` 验证设备目录、撤销权限和旧通知对新路由的隔离。
 - `nginxfixture_test.go` 把测试配置复制到 Nginx 验收容器。
 - `overload_test.go` 验证满额窗口保留拒绝时的流占用。
-- `control_test.go` 验证失联期限、反向控制流限额、事件写超时和数据重连。换代测试等待初始数据通道上线，覆盖确认读取中断、无效确认、授权撤销及连接池满时拒绝旧代次。
+- `control_test.go` 验证失联期限、反向控制流限额、事件写超时和数据重连。换代测试等待初始数据通道上线，覆盖无效确认、授权撤销及连接池满时拒绝旧代次。真实分片测试区分缺少最终帧、恰好 64 KiB 和超限关闭。
 - `cleanup_test.go` 验证并发回收只记一次关闭原因，超时可识别。设备与桌面共用授权时，整条路由只发一次撤销通知。
 - `relay_test.go` 验证票据、授权、文件和代理，覆盖租约宽限、代次切换与通道隔离。
 - `interop_test.go` 验证桌面来源、票据权限、长连接空闲、签名租约与独立撤销。

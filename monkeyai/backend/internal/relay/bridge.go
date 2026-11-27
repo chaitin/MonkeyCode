@@ -1,5 +1,5 @@
-// [INPUT]: 设备身份、签名握手、WebSocket 与对应通道的 yamux 配置。
-// [OUTPUT]: 发布已验证的控制路由，按代次与授权附着数据通道，区分确认中断和无效确认。
+// [INPUT]: 设备身份、签名握手、保留确认读取中断的 bridgeTransport 与对应通道的 yamux 配置。
+// [OUTPUT]: 发布已验证的控制路由，按代次与授权附着数据通道，区分确认中断、消息超限和内容无效。
 // [POS]: 设备隧道入口，与 lease 的存活探测共用进程接管窗口。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -64,7 +64,8 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.workers.Done()
 	defer func() { s.mu.Lock(); s.slots--; s.mu.Unlock() }()
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true, CompressionMode: websocket.CompressionDisabled})
+	var transport bridgeTransport
+	ws, err := transport.accept(w, r)
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
 		return
@@ -208,8 +209,13 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ack ReadyAck
-	readErr := readWS(handshake, ws, &ack)
-	if readErr != nil && !errors.Is(readErr, errProtocol) {
+	readErr := transport.readAck(handshake, ws, &ack)
+	switch {
+	case errors.Is(readErr, websocket.ErrMessageTooBig):
+		// WebSocket 已发送 1009 关闭帧。
+		logging.Event(handshake, s.logger, slog.LevelWarn, "relay.bridge.rejected", "设备确认消息超限", "reason", "message_too_big", "phase", "ready_ack")
+		return
+	case readErr != nil && !errors.Is(readErr, errProtocol):
 		logging.Event(handshake, s.logger, slog.LevelDebug, "relay.bridge.interrupted", "读取设备确认时连接中断", "phase", "ready_ack", "error", readErr)
 		return
 	}
