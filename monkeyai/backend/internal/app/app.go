@@ -262,7 +262,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 			return nil, fmt.Errorf("初始化知识库导入签名密钥: %w", err)
 		}
 	}
-	knowledgeBases := kb.NewService(store, models).WithStorage(storage).WithAnyDoc(kb.AnyDocConfig{URL: cfg.AnyDocURL, CallbackBaseURL: cfg.AnyDocCallbackBaseURL, SigningKey: cfg.AnyDocSigningKey})
+	knowledgeBases := kb.NewService(store, models).WithPublicURL(cfg.PublicURL).WithStorage(storage).WithAnyDoc(kb.AnyDocConfig{URL: cfg.AnyDocURL, CallbackBaseURL: cfg.AnyDocCallbackBaseURL, SigningKey: cfg.AnyDocSigningKey})
 	execution := executionServices{pool: pool, settings: settings, sessions: sessions, identities: identities, executions: executions, keys: keys, charges: charges, modelRepo: modelRepo, models: models, storage: storage, connectors: connectors, knowledgeBases: knowledgeBases}
 	knowledgeBases.WithImageDescriber(knowledgeVision{services: execution, logger: logger})
 	if cfg.Role == config.RoleProxy {

@@ -4940,6 +4940,23 @@ paths:
         '404': {description: 知识库或文档不可访问}
         '413': {description: 请求超过大小限制}
         '503': {description: 导入签名、对象存储或 anydoc 未配置}
+  /api/kb/{id}/assets/{name}:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+      - {name: name, in: path, required: true, schema: {type: string}}
+    get:
+      summary: 读取知识库图片资源或文档原件
+      description: 文档 url 返回此资源地址的完整 URL。原件名称为 document_id.ext，正文图片仍为内容摘要加后缀。每次校验阅读权限；PDF、JPG、PNG 原件内联返回，HTML/SVG 等原件强制附件。支持客户端 Bearer Token 或网页会话，MCP Key 不适用于此 REST 路由。私有响应禁止缓存。
+      responses:
+        '200':
+          description: 原始资源二进制
+          content:
+            application/octet-stream: {schema: {type: string, format: binary}}
+            application/pdf: {schema: {type: string, format: binary}}
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+        '401': {description: 未登录或凭证失效}
+        '404': {description: 资源不存在或无阅读权限}
   /api/v1/kb/{id}/documents/{documentId}/file/detail:
     parameters:
       - {$ref: '#/components/parameters/ResourceID'}
@@ -4962,7 +4979,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
       summary: 查询当前用户可访问的知识库文档
-      description: 返回当前用户有权限的系统或个人知识库文档。系统知识库需同时具备系统资源使用资格及知识库授权；个人知识库允许所有者或明确分享给当前用户的用户读取。支持分页，并可按标题或文件名、学习状态和来源类型筛选；列表不返回正文。
+      description: 返回当前用户有权限的系统或个人知识库文档。系统知识库需同时具备系统资源使用资格及知识库授权；个人知识库允许所有者或明确分享给当前用户的用户读取。支持分页，并可按标题或文件名、学习状态和来源类型筛选；列表不返回 content 字段。
       parameters:
         - $ref: '#/components/parameters/AgentPage'
         - $ref: '#/components/parameters/AgentPageSize'
@@ -8396,7 +8413,7 @@ components:
         document_id: {type: string, format: uuid}
     KbDocument:
       type: object
-      required: [id, kb_id, node_type, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
+      required: [id, kb_id, node_type, title, source_type, status, chunk_count, revision, created_at, updated_at]
       properties:
         updated_by_user_id: {type: [string, 'null'], format: uuid}
         content_updated_at: {type: [string, 'null'], format: date-time}
@@ -8411,7 +8428,8 @@ components:
         file_type: {type: [string, 'null'], enum: [txt, md, html, svg, csv, docx, xls, xlsx, pptx, pdf, jpg, png, null], readOnly: true}
         content_editable: {type: boolean, readOnly: true, description: 正文格式允许编辑；调用方仍须满足当前写权限。}
         has_original: {type: boolean, readOnly: true}
-        content: {type: string}
+        url: {type: string, readOnly: true, description: "原文件完整资源 URL，使用配置的 PublicURL 加 /api/kb/{kb_id}/assets/{document_id}.{ext}；携带客户端 Bearer Token，无原件或文件夹为空字符串。"}
+        content: {type: string, description: 可编辑格式返回正文；不可编辑格式固定返回空字符串，不暴露 AnyDoc 或 LLM 解析正文。}
         file_name: {type: [string, 'null']}
         mime_type: {type: [string, 'null']}
         size_bytes: {type: integer}
@@ -8439,6 +8457,7 @@ components:
         file_type: {type: [string, 'null'], enum: [txt, md, html, svg, csv, docx, xls, xlsx, pptx, pdf, jpg, png, null], readOnly: true}
         content_editable: {type: boolean, readOnly: true, description: 正文格式允许编辑；调用方仍须满足当前写权限。}
         has_original: {type: boolean, readOnly: true}
+        url: {type: string, readOnly: true, description: "原文件完整资源 URL，使用配置的 PublicURL 加 /api/kb/{kb_id}/assets/{document_id}.{ext}；携带客户端 Bearer Token，无原件或文件夹为空字符串。"}
         file_name: {type: [string, 'null']}
         mime_type: {type: [string, 'null']}
         size_bytes: {type: integer}
@@ -8523,7 +8542,8 @@ components:
         document_id: {type: string, format: uuid}
         chunk_id: {type: string, format: uuid}
         chunk_index: {type: integer}
-        content: {type: string}
+        content: {type: string, description: 返回命中的正文分片，包括不可编辑格式的解析分片。}
+        url: {type: string, description: 原文件完整资源 URL，需客户端 Bearer Token；无原件时为空字符串。}
         title: {type: string}
         score: {type: number}
         retrieval_source: {type: string, enum: [lexical, vector, both]}

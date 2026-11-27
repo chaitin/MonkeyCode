@@ -18,6 +18,7 @@ import (
 )
 
 type Service struct {
+	publicURL    string
 	anydoc       AnyDocConfig
 	CRUD         *resource.CRUD
 	store        *resource.Store
@@ -380,4 +381,10 @@ func (s *Service) persistAvatar(ctx context.Context, tx pgx.Tx, in resource.Obje
 		return sqlc.New(tx).SetAvatar(ctx, sqlc.SetAvatarParams{ID: in.String("id"), AvatarS3Key: avatar.key})
 	}
 	return nil
+}
+
+// WithPublicURL configures the externally reachable origin for document assets.
+func (s *Service) WithPublicURL(publicURL string) *Service {
+	s.publicURL = strings.TrimRight(publicURL, "/")
+	return s
 }

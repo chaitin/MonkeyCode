@@ -164,7 +164,7 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		if _, batch := call.Arguments["ids"]; batch {
 			payload = item
 		} else {
-			payload = publicDocument(item)
+			payload = s.agentDocument(item)
 		}
 	case "kb_upload_file", "kb_get_file_import_status":
 		item, err := s.callMCPFileImport(ctx, userID, call.Name, call.Arguments)
@@ -232,8 +232,8 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		if err != nil {
 			return nil, err
 		}
-		out := publicDocument(item)
-		if !includeContent {
+		out := s.agentDocument(item)
+		if !includeContent && out.Bool("content_editable") {
 			delete(out, "content")
 		}
 		payload = out
@@ -246,7 +246,7 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		if err != nil {
 			return nil, err
 		}
-		payload = publicDocument(item)
+		payload = s.agentDocument(item)
 	case "kb_create_document":
 		input, err := mcpDocumentInput(call.Arguments)
 		if err != nil {
@@ -256,7 +256,7 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		if err != nil {
 			return nil, err
 		}
-		payload = publicDocument(item)
+		payload = s.agentDocument(item)
 	case "kb_update_document":
 		kbID, err := mcpRequiredString(call.Arguments, "kb_id")
 		if err != nil {
@@ -280,7 +280,7 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		if err != nil {
 			return nil, err
 		}
-		payload = publicDocument(item)
+		payload = s.agentDocument(item)
 	case "kb_delete_document":
 		if _, ok := call.Arguments["ids"]; ok {
 			result, err := s.writeMCPDocuments(ctx, userID, call.Name, call.Arguments)

@@ -1,5 +1,7 @@
 # 知识库 MCP 设计
 
+Agent 当前多格式接入契约及示例见 [Agent 接入说明](knowledge-base-agent-integration.md)。
+
 新增源码能力：JPEG/JPG/PNG 通过视觉 LLM 生成画面描述（含图中文字），支持按描述检索并返回知识库原图。图片格式过滤、检索结果原图引用及新增 `kb_get_document_image` 的方案见 [文件解析方案第 10 节](knowledge-base-file-parsing.md#10-jpegjpgpng-独立文档导入)。下文既有接口清单保留原有能力说明，新增工具与当前 schema 以代码和文件解析方案为准，真实客户端附图验收范围见该方案。
 
 ## 1. 入口与调用链
@@ -35,7 +37,7 @@
 
 | 接口 | 操作对象 | 功能与调用边界 |
 | --- | --- | --- |
-| `kb_list_documents` | doc：文档列表 | 分页读取元数据，不返回正文；支持关键词、学习状态和来源过滤，并校验知识库权限 |
+| `kb_list_documents` | doc：文档列表 | 分页读取文档元数据，不返回 `content` 字段；支持关键词、学习状态和来源过滤，并校验知识库权限 |
 | `kb_get_document` | doc：文档 | 默认读取元数据和 revision；include_content=true 兼容全文读取，长文档优先分段读取 |
 | `kb_read_document` | doc：文档正文 | 按 Unicode 字符分段读取，默认 4000、最多 16000 字符；续读必须提供首页 expected_revision，文件夹不可读取正文 |
 | `kb_create_folder` | doc：文件夹 | 要求正文读写权限；parent_id 必须为同库文件夹，省略、null 或空字符串表示根目录；返回节点元数据，不进入学习队列 |

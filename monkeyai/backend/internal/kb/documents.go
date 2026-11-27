@@ -183,13 +183,13 @@ func (s *Service) ListAccessibleDocuments(ctx context.Context, userID, kbID stri
 		return DocumentPage{}, err
 	}
 	if strings.TrimSpace(filter.Query) == "" && strings.TrimSpace(filter.Status) == "" && strings.TrimSpace(filter.SourceType) == "" && filter.Page == 0 && filter.PageSize == 0 {
-		tree := publicDocumentTree(buildDocumentTree(items))
+		tree := s.agentDocumentTree(buildDocumentTree(items))
 		return DocumentPage{Items: tree, TotalCount: len(tree), Page: 1, PageSize: len(tree)}, nil
 	}
-	return filterDocumentPage(items, filter)
+	return s.filterDocumentPage(items, filter)
 }
 
-func filterDocumentPage(items []resource.Object, filter DocumentListFilter) (DocumentPage, error) {
+func (s *Service) filterDocumentPage(items []resource.Object, filter DocumentListFilter) (DocumentPage, error) {
 	normalized, err := normalizeDocumentListFilter(filter)
 	if err != nil {
 		return DocumentPage{}, err
@@ -211,7 +211,7 @@ func filterDocumentPage(items []resource.Object, filter DocumentListFilter) (Doc
 	selected := resource.PageSlice(filtered, normalized.Page, normalized.PageSize)
 	out := make([]resource.Object, 0, len(selected))
 	for _, item := range selected {
-		out = append(out, publicDocumentSummary(item))
+		out = append(out, s.agentDocumentSummary(item))
 	}
 	return DocumentPage{
 		Items:      out,
@@ -762,7 +762,7 @@ func (s *Service) SearchLearnedWithResponse(ctx context.Context, userID string, 
 	} else {
 		normalized.KbIDs = ids
 	}
-	return s.searchWithPermissionRecheck(ctx, userID, accessible, normalized)
+	return s.searchWithPermissionRecheck(ctx, userID, accessible, normalized, true)
 }
 
 func (s *Service) SearchWithResponse(ctx context.Context, userID string, input SearchInput) (SearchResponse, error) {
@@ -770,7 +770,7 @@ func (s *Service) SearchWithResponse(ctx context.Context, userID string, input S
 	if err != nil {
 		return SearchResponse{}, err
 	}
-	return s.searchWithPermissionRecheck(ctx, userID, accessible, input)
+	return s.searchWithPermissionRecheck(ctx, userID, accessible, input, false)
 }
 
 func normalizeSearchInput(input SearchInput) (SearchInput, error) {

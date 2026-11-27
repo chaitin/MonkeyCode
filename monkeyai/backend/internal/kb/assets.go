@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -13,12 +14,16 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// Original document assets use document IDs; embedded images keep their content hashes.
+var originalAssetName = regexp.MustCompile(`^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.(txt|md|html|svg|csv|docx|xls|xlsx|pptx|pdf|jpg|png|bin)$`)
+
 // ServeAsset requires an authenticated browser or agent identity supplied by the caller.
 func (s *Service) ServeAsset(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user, ok := identity.UserFromContext(ctx)
 	id, name := chi.URLParam(r, "id"), chi.URLParam(r, "name")
-	if !ok || !assetName.MatchString(name) || s.storage == nil {
+	original := originalAssetName.FindStringSubmatch(name)
+	if !ok || (!assetName.MatchString(name) && original == nil) || s.storage == nil {
 		resource.Fail(ctx, w, resource.NotFound)
 		return
 	}
@@ -40,6 +45,19 @@ func (s *Service) ServeAsset(w http.ResponseWriter, r *http.Request) {
 			resource.Fail(ctx, w, resource.NotFound)
 			return
 		}
+	}
+	if original != nil {
+		doc, err := s.documentInKB(ctx, id, original[1])
+		if err != nil {
+			resource.Fail(ctx, w, err)
+			return
+		}
+		if original[2] != originalDocumentExtension(doc) || doc.String("node_type") == "folder" {
+			resource.Fail(ctx, w, resource.NotFound)
+			return
+		}
+		s.writeOriginal(w, r, doc, true)
+		return
 	}
 	data, mime, err := s.readAsset(ctx, id, name)
 	if err != nil {

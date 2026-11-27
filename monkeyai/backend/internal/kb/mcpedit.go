@@ -100,5 +100,5 @@ func (s *Service) editMCPDocument(ctx context.Context, actor string, arguments m
 	if err != nil {
 		return nil, err
 	}
-	return publicDocumentSummary(item), nil
+	return s.agentDocumentSummary(item), nil
 }

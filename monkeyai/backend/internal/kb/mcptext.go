@@ -52,10 +52,13 @@ func (s *Service) readMCPDocument(ctx context.Context, actor string, arguments m
 	if err := checkDocumentVersion(item, input.ExpectedRevision); err != nil {
 		return nil, err
 	}
+	if !textFileType(item.String("file_type")) {
+		return resource.Object{"content": "", "document": s.agentDocumentSummary(item), "url": s.originalDocumentURL(item)}, nil
+	}
 	page, err := textPage(item.String("content"), input.Offset, input.Limit)
 	if err != nil {
 		return nil, err
 	}
-	page["document"] = publicDocumentSummary(item)
+	page["document"] = s.agentDocumentSummary(item)
 	return page, nil
 }
