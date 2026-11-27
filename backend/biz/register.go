@@ -7,6 +7,7 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
+	"github.com/chaitin/MonkeyCode/backend/biz/endpoint"
 	"github.com/chaitin/MonkeyCode/backend/biz/file"
 	"github.com/chaitin/MonkeyCode/backend/biz/git"
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
@@ -39,6 +40,7 @@ func RegisterAll(i *do.Injector) error {
 	setting.ProvideSetting(i)
 	team.ProvideTeam(i)
 	host.ProvideHost(i)
+	endpoint.ProvideEndpoint(i)
 	agentresource.ProvideAgentResource(i)
 	task.ProvideTask(i)
 	git.ProvideGit(i)
@@ -58,6 +60,7 @@ func InvokeAll(i *do.Injector) {
 	setting.InvokeSetting(i)
 	team.InvokeTeam(i)
 	host.InvokeHost(i)
+	endpoint.InvokeEndpoint(i)
 	task.InvokeTask(i)
 	git.InvokeGit(i)
 	project.InvokeProject(i)
