@@ -1,5 +1,5 @@
 // [INPUT]: 签名租约、授权存储、控制事件流与 yamux Ping。
-// [OUTPUT]: 核验访问租约，定期探测并按最近有效 Pong 判定失联，传递撤销。
+// [OUTPUT]: 通知控制发布就绪，核验访问租约，定期探测并按最近有效 Pong 判定失联，传递撤销。
 // [POS]: 设备控制路由的存活与授权检查，网络读写在服务锁外执行。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -318,6 +318,7 @@ func (s *Service) control(ctx context.Context, r *route) {
 		return
 	}
 	r.ready = true
+	r.finishPublish()
 	r.seen = time.Now()
 	s.mu.Unlock()
 	logging.Event(ctx, s.logger, slog.LevelInfo, "relay.bridge.ready", "设备控制通道已就绪", "channel_kind", "control")

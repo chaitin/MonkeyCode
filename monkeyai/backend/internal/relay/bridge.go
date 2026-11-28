@@ -1,5 +1,5 @@
-// [INPUT]: 设备身份、签名握手、WebSocket 与对应通道的 yamux 配置。
-// [OUTPUT]: 验证设备证明，发布控制路由，按代次附着数据通道。
+// [INPUT]: 设备身份、签名握手、保留确认读取中断的 bridgeTransport 与对应通道的 yamux 配置。
+// [OUTPUT]: 发布已验证的控制路由，按代次与授权附着数据通道，区分确认中断、消息超限和内容无效。
 // [POS]: 设备隧道入口，与 lease 的存活探测共用进程接管窗口。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
@@ -64,7 +64,8 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.workers.Done()
 	defer func() { s.mu.Lock(); s.slots--; s.mu.Unlock() }()
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true, CompressionMode: websocket.CompressionDisabled})
+	var transport bridgeTransport
+	ws, err := transport.accept(w, r)
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
 		return
@@ -146,37 +147,33 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		s.wsError(handshake, ws, &resource.Error{Status: 403, Code: "invalid_device_proof", Message: "设备证明无效"})
 		return
 	}
-	valid, err := s.identity.VerifyGrant(handshake, p)
-	if err != nil {
+	if err := s.verifyBridgeGrant(handshake, p); err != nil {
 		s.wsError(handshake, ws, err)
 		return
 	}
-	if !valid {
-		s.wsError(handshake, ws, &resource.Error{Status: 403, Code: "permission_denied", Message: "设备授权已失效"})
-		return
-	}
 	gate := s.gate(key)
-	gate.Lock()
-	s.mu.Lock()
-	old := s.routes[key]
-	conflict := channel == "control" && hello.Intent == "publish" && old != nil && time.Since(old.seen) < controlSilenceLimit && old.hello.BootID != hello.BootID
-	s.mu.Unlock()
-	if conflict {
-		gate.Unlock()
-		s.wsError(handshake, ws, &resource.Error{Status: 409, Code: "device_process_conflict", Message: "设备已有活动执行进程"})
-		return
-	}
+	var old, current *route
 	if channel == "data" {
-		s.mu.Lock()
-		attached := old != nil && state.RemoteAccessState == "enabled" && state.ActiveGrantID == p.GrantID && state.GrantVersion == old.state.GrantVersion && state.LeaseEpoch == hello.LeaseEpoch && old.hello.BootID == hello.BootID && old.state.LeaseEpoch == hello.LeaseEpoch && old.principal.GrantID == p.GrantID && old.ready
-		s.mu.Unlock()
-		if !attached {
-			s.wsError(handshake, ws, &resource.Error{Status: 409, Code: "device_registration_changed", Message: "数据通道不能附着当前执行连接"})
-			gate.Unlock()
+		logging.Bind(handshake, slog.Int64("lease_epoch", hello.LeaseEpoch))
+		old, err = s.dataRoute(handshake, key, p, hello, state)
+		if err != nil {
+			if handshake.Err() == nil {
+				s.wsError(handshake, ws, err)
+			}
 			return
 		}
 		state = old.state
 	} else {
+		gate.Lock()
+		s.mu.Lock()
+		old = s.routes[key]
+		conflict := hello.Intent == "publish" && old != nil && time.Since(old.seen) < controlSilenceLimit && old.hello.BootID != hello.BootID
+		s.mu.Unlock()
+		if conflict {
+			gate.Unlock()
+			s.wsError(handshake, ws, &resource.Error{Status: 409, Code: "device_process_conflict", Message: "设备已有活动执行进程"})
+			return
+		}
 		state, err = s.devices.Enroll(handshake, p, endpoint.Enrollment{MachineID: hello.MachineID, PublicKey: public, DisplayName: hello.DisplayName, Platform: hello.Platform, Arch: hello.Arch,
 			Intent: hello.Intent, DeploymentMode: hello.DeploymentMode, RestoreRevoked: hello.RestoreRevoked, Protocols: hello.Protocols, RuntimeVersion: hello.RuntimeVersion, EngineVersion: hello.EngineVersion}, challenge.RegistrationVersion)
 		if err != nil {
@@ -184,22 +181,19 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 			s.wsError(handshake, ws, err)
 			return
 		}
-	}
-	if channel == "control" {
 		logging.Event(r.Context(), s.logger, slog.LevelInfo, "relay.bridge.proved", "设备证明已提交", "module", "relay", "operation", "bridge", "server_id", s.config.ServerID, "user_id", p.UserID, "machine_id", hello.MachineID, "boot_id", hello.BootID, "intent", hello.Intent, "registration_version", state.RegistrationVersion, "grant_version", state.GrantVersion, "lease_epoch", state.LeaseEpoch)
-	}
-	var current *route
-	if channel == "control" && hello.Intent == "publish" {
-		if p.IsRuntime() {
-			// 首次握手开始时授权尚未绑定，路由使用登记事务确认的身份。
-			p.MachineID, p.KeyID = state.MachineID, state.KeyID
+		if hello.Intent == "publish" {
+			if p.IsRuntime() {
+				// 首次握手开始时授权尚未绑定，路由使用登记事务确认的身份。
+				p.MachineID, p.KeyID = state.MachineID, state.KeyID
+			}
+			current = &route{publishDone: make(chan struct{}), runtimeStatus: "online", engineHealth: "unknown", controlQueue: make(chan any, 16), target: key, principal: p, hello: hello, state: state, ws: ws, seen: time.Now(), slotsControl: make(chan struct{}, 64), opensControl: make(chan struct{}, 64), streams: make(map[*access]struct{}), connectionVersions: make(map[string]connectionVersion)}
+			s.mu.Lock()
+			s.routes[key] = current
+			s.mu.Unlock()
 		}
-		current = &route{runtimeStatus: "online", engineHealth: "unknown", controlQueue: make(chan any, 16), target: key, principal: p, hello: hello, state: state, ws: ws, seen: time.Now(), slotsControl: make(chan struct{}, 64), opensControl: make(chan struct{}, 64), streams: make(map[*access]struct{}), connectionVersions: make(map[string]connectionVersion)}
-		s.mu.Lock()
-		s.routes[key] = current
-		s.mu.Unlock()
+		gate.Unlock()
 	}
-	gate.Unlock()
 	closeReason := "control_handshake_incomplete"
 	if current != nil {
 		s.closeRoute(old, "epoch_replaced")
@@ -215,10 +209,17 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ack ReadyAck
-	if err := readWS(handshake, ws, &ack); err != nil || ack.Type != "ready_ack" || ack.RegistrationVersion != ready.RegistrationVersion || !identityOnly && ack.LeaseEpoch != ready.LeaseEpoch {
-		if err != nil {
-			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
-		}
+	readErr := transport.readAck(handshake, ws, &ack)
+	switch {
+	case errors.Is(readErr, websocket.ErrMessageTooBig):
+		// WebSocket 已发送 1009 关闭帧。
+		logging.Event(handshake, s.logger, slog.LevelWarn, "relay.bridge.rejected", "设备确认消息超限", "reason", "message_too_big", "phase", "ready_ack")
+		return
+	case readErr != nil && !errors.Is(readErr, errProtocol):
+		logging.Event(handshake, s.logger, slog.LevelDebug, "relay.bridge.interrupted", "读取设备确认时连接中断", "phase", "ready_ack", "error", readErr)
+		return
+	}
+	if readErr != nil || ack.Type != "ready_ack" || ack.RegistrationVersion != ready.RegistrationVersion || !identityOnly && ack.LeaseEpoch != ready.LeaseEpoch {
 		s.wsError(handshake, ws, errProtocol)
 		return
 	}
@@ -241,9 +242,10 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	if channel == "data" {
 		gate.Lock()
 		s.mu.Lock()
-		if s.routes[key] != old || !old.ready {
+		if reason := s.dataRouteChange(old); reason != "" {
 			s.mu.Unlock()
 			gate.Unlock()
+			logging.Event(r.Context(), s.logger, slog.LevelWarn, "relay.bridge.rejected", "数据确认时控制路由已失效", "reason", reason, "phase", "ready_ack")
 			return
 		}
 		previous := old.data
@@ -283,6 +285,104 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	closeReason = "control_transport_closed"
 	s.control(r.Context(), current)
+}
+
+func (s *Service) verifyBridgeGrant(ctx context.Context, p identity.Principal) error {
+	valid, err := s.identity.VerifyGrant(ctx, p)
+	if err != nil {
+		return err
+	}
+	if !valid {
+		logging.Bind(ctx, slog.String("reason", "grant_invalid"))
+		return &resource.Error{Status: 403, Code: "permission_denied", Message: "设备授权已失效"}
+	}
+	return nil
+}
+
+// 调用方持有 s.mu。从等待发布到安装数据通道，握手只接受原控制路由。
+func (s *Service) dataRouteChange(expected *route) string {
+	current := s.routes[expected.target]
+	switch {
+	case current == nil:
+		return "control_missing"
+	case current != expected:
+		return "route_replaced"
+	case !expected.ready || expected.control == nil || expected.control.IsClosed():
+		return "control_closed"
+	default:
+		return ""
+	}
+}
+
+func (s *Service) dataRoute(ctx context.Context, key target, p identity.Principal, hello Hello, state endpoint.ExecutionState) (*route, error) {
+	r, pending, reason := s.matchDataRoute(key, p.GrantID, hello, state)
+	if pending != nil {
+		// 在锁外等待本次发布。超时沿用原错误码，就绪或关闭后重新核验。
+		logging.Event(ctx, s.logger, slog.LevelDebug, "relay.bridge.waiting", "数据通道等待控制就绪", "reason", reason)
+		wait, stop := context.WithTimeout(ctx, time.Second)
+		defer stop()
+		select {
+		case <-wait.Done():
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		case <-pending:
+			s.mu.Lock()
+			reason = s.dataRouteChange(r)
+			s.mu.Unlock()
+			if reason != "" {
+				break
+			}
+			fresh, err := s.devices.State(ctx, key.user, key.machine)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.verifyBridgeGrant(ctx, p); err != nil {
+				return nil, err
+			}
+			r, _, reason = s.matchDataRoute(key, p.GrantID, hello, fresh)
+			if reason == "" && (fresh.RegistrationVersion != state.RegistrationVersion || !bytes.Equal(fresh.PublicKey, state.PublicKey)) {
+				reason = "registration_changed"
+			}
+		}
+	}
+	if reason != "" {
+		logging.Bind(ctx, slog.String("reason", reason))
+		return nil, &resource.Error{Status: 409, Code: "device_registration_changed", Message: "数据通道不能附着当前执行连接"}
+	}
+	return r, nil
+}
+
+// 只有身份、授权和代次都匹配且控制发布未完成时才返回等待通知。
+func (s *Service) matchDataRoute(key target, grantID string, hello Hello, state endpoint.ExecutionState) (*route, <-chan struct{}, string) {
+	gate := s.gate(key)
+	gate.Lock()
+	defer gate.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.routes[key]
+	switch {
+	case state.RemoteAccessState != "enabled":
+		return nil, nil, "remote_access_disabled"
+	case state.ActiveGrantID != grantID:
+		return nil, nil, "grant_mismatch"
+	case r == nil || r.closed:
+		return nil, nil, "control_missing"
+	case state.LeaseEpoch != hello.LeaseEpoch || r.state.LeaseEpoch != hello.LeaseEpoch:
+		return nil, nil, "lease_epoch_mismatch"
+	case r.hello.BootID != hello.BootID:
+		return nil, nil, "boot_id_mismatch"
+	case r.principal.GrantID != grantID:
+		return nil, nil, "grant_mismatch"
+	case r.state.GrantVersion != state.GrantVersion:
+		return nil, nil, "grant_version_mismatch"
+	case !r.ready:
+		return r, r.publishDone, "control_not_ready"
+	case r.control == nil || r.control.IsClosed():
+		return nil, nil, "control_closed"
+	default:
+		return r, nil, ""
+	}
 }
 
 func readWS(ctx context.Context, ws *websocket.Conn, out any) error {

@@ -1,3 +1,7 @@
+// [INPUT]: 依赖 PostgreSQL 设备记录、OAuth 设备授权与审计事件。
+// [OUTPUT]: 提供执行设备状态读取、登记、身份核验与撤销。
+// [POS]: endpoint 的执行设备持久化入口，为 relay 提供登记版本、授权版本和租约代次。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package endpoint
 
 import (
@@ -126,19 +130,22 @@ func (e *Execution) Snapshot(ctx context.Context, userID string, executeOnly boo
 }
 
 func (e *Execution) ReadState(ctx context.Context, tx pgx.Tx, userID, machineID string) (ExecutionState, error) {
-	row, err := sqlc.New(tx).Get(ctx, sqlc.GetParams{UserID: userID, MachineID: machineID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ExecutionState{}, executionFailure(404, "device_not_found")
-	}
-	return executionState(row), err
+	return readExecutionState(ctx, tx, userID, machineID)
 }
 
 func (e *Execution) State(ctx context.Context, userID, machineID string) (ExecutionState, error) {
-	row, err := sqlc.New(e.pool).Get(ctx, sqlc.GetParams{UserID: userID, MachineID: machineID})
+	return readExecutionState(ctx, e.pool, userID, machineID)
+}
+
+func readExecutionState(ctx context.Context, db sqlc.DBTX, userID, machineID string) (ExecutionState, error) {
+	row, err := sqlc.New(db).Get(ctx, sqlc.GetParams{UserID: userID, MachineID: machineID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ExecutionState{}, executionFailure(http.StatusNotFound, "device_not_found")
 	}
-	return executionState(row), err
+	if err != nil {
+		return ExecutionState{}, err
+	}
+	return executionState(row), nil
 }
 
 func KeyID(key []byte) string {

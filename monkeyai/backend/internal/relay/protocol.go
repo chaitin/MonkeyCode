@@ -1,3 +1,7 @@
+// [INPUT]: JSON 字段定义、Ed25519 公钥和客户端声明的隧道版本。
+// [OUTPUT]: 定义握手消息与 Version，提供 ProofBytes 构造跨端签名输入。
+// [POS]: relay 的握手协议。bridge 调用此处校验消息字段和协议版本。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (

@@ -1,20 +1,31 @@
-// [INPUT]: 双通道测试夹具、真实 yamux 和不回应 Pong 的连接。
-// [OUTPUT]: 验证失联期限、事件写出边界、反向流预算及数据重连。
+// [INPUT]: 双通道测试夹具、真实 WebSocket 分片、占满的数据库连接池和可注入读错误的传输连接。
+// [OUTPUT]: 验证失联期限、反向流预算、数据附着换代与撤销，以及确认中断、超限和内容无效时的回包与诊断。
 // [POS]: 控制事件协议和传输生命周期回归。
 // [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package relay
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
+	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
+	"uuid"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestHTTPDataReattachStatus(t *testing.T) {
@@ -62,6 +73,306 @@ func TestHTTPDataReattachStatus(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("数据附着完成后 status 未上线")
+}
+
+type attachLog struct {
+	Event, Reason, Code, Phase string
+	Channel                    string `json:"channel_kind"`
+}
+
+type attachLogs chan attachLog
+
+func (logs attachLogs) Write(data []byte) (int, error) {
+	var event attachLog
+	if json.Unmarshal(data, &event) == nil {
+		switch {
+		case event.Event == "relay.bridge.ready" && event.Channel == "data",
+			event.Event == "relay.bridge.interrupted" && event.Channel == "data" && event.Phase == "ready_ack",
+			event.Event == "relay.bridge.waiting",
+			event.Event == "protocol.response.error",
+			event.Event == "relay.bridge.rejected" && event.Phase == "ready_ack":
+			logs <- event
+		}
+	}
+	return len(data), nil
+}
+
+func (logs attachLogs) expect(t *testing.T, event, reason string) {
+	t.Helper()
+	select {
+	case got := <-logs:
+		if got.Event != event || got.Reason != reason {
+			t.Fatalf("收到 %+v，期望 %s / %s", got, event, reason)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("未收到 %s / %s", event, reason)
+	}
+}
+
+// 让服务端的真实 WebSocket 读操作在对端断开时收到指定的底层错误。
+type ackFaultListener struct {
+	net.Listener
+	cause error
+}
+
+func (l ackFaultListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return ackFaultConn{c, l.cause}, nil
+}
+
+type ackFaultConn struct {
+	net.Conn
+	cause error
+}
+
+func (c ackFaultConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if errors.Is(err, io.EOF) {
+		return n, &net.OpError{Op: "read", Net: "tcp", Err: c.cause}
+	}
+	return n, err
+}
+
+func TestDataAttachAcrossControlPublish(t *testing.T) {
+	for _, tc := range []struct {
+		action string
+		reason string
+	}{
+		{"ready", ""},
+		{"timeout", "control_not_ready"},
+		{"stale", "lease_epoch_mismatch"},
+		{"wrong_boot", "boot_id_mismatch"},
+		{"closed", "control_missing"},
+		{"tcp_reset", "control_missing"},
+		{"short_frame", "control_missing"},
+		{"invalid_ack", "control_missing"},
+		{"malformed_ack", "control_missing"},
+		{"replaced", "route_replaced"},
+		{"revoked", "remote_access_disabled"},
+		{"grant_revoked", "grant_invalid"},
+		{"replaced_after_ready", "route_replaced"},
+	} {
+		t.Run(tc.action, func(t *testing.T) {
+			f := newFixture(t)
+			logs := make(attachLogs, 16)
+			f.s.logger = logging.New(logs, slog.LevelDebug)
+			server := httptest.NewUnstartedServer(logging.HTTP(f.s.logger)(f.server.Config.Handler))
+			switch tc.action {
+			case "tcp_reset":
+				server.Listener = ackFaultListener{server.Listener, syscall.ECONNRESET}
+			case "short_frame":
+				server.Listener = ackFaultListener{server.Listener, io.ErrUnexpectedEOF}
+			}
+			server.Start()
+			t.Cleanup(server.Close)
+			f.server = server
+			r := f.runtime(t)
+			logs.expect(t, "relay.bridge.ready", "")
+			ctx, cancel := context.WithTimeout(t.Context(), 6*time.Second)
+			defer cancel()
+
+			// 已完成证明，暂缓控制 ready_ack，让数据握手在真实发布窗口抵达。
+			control := f.prove(t, r.hello, r.private, "control", f.token)
+			var published Ready
+			if err := readWS(ctx, control, &published); err != nil {
+				t.Fatal(err)
+			}
+			ack := ReadyAck{Type: "ready_ack", RegistrationVersion: published.RegistrationVersion, LeaseEpoch: published.LeaseEpoch}
+			h := r.hello
+			h.ChannelKind, h.Intent, h.LeaseEpoch = "data", "attach", published.LeaseEpoch
+			switch tc.action {
+			case "stale":
+				h.LeaseEpoch = r.ready.LeaseEpoch
+			case "wrong_boot":
+				h.BootID = uuid.New().String()
+			}
+			data := f.prove(t, h, r.private, "data", f.token)
+			if tc.action != "stale" && tc.action != "wrong_boot" {
+				logs.expect(t, "relay.bridge.waiting", "control_not_ready")
+			}
+			switch tc.action {
+			case "closed", "tcp_reset", "short_frame":
+				control.CloseNow()
+			case "invalid_ack", "malformed_ack":
+				var err error
+				if tc.action == "malformed_ack" {
+					err = control.Write(ctx, websocket.MessageText, []byte("{"))
+				} else {
+					ack.LeaseEpoch++
+					err = writeWS(ctx, control, ack)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				var reply map[string]string
+				if err := readWS(ctx, control, &reply); err != nil || reply["code"] != "invalid_tunnel_message" {
+					t.Fatalf("错误确认未收到协议拒绝: %v %v", reply, err)
+				}
+				logs.expect(t, "protocol.response.error", "")
+			case "replaced":
+				f.handshake(t, r.hello, r.private, "control", f.token)
+			case "ready", "revoked", "grant_revoked", "replaced_after_ready":
+				if tc.action == "revoked" {
+					// 只更新持久状态，验证就绪通知后确实重读了授权。
+					if _, err := f.pool.Exec(ctx, "UPDATE endpoints SET remote_access_state='revoked' WHERE user_id=$1 AND machine_id=$2", f.user, h.MachineID); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if tc.action == "grant_revoked" {
+					if _, err := f.pool.Exec(ctx, "UPDATE oauth_grants SET revoked_at=now() WHERE id=$1", f.grant); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := writeWS(ctx, control, ack); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.action == "ready" || tc.action == "replaced_after_ready" {
+				var ready Ready
+				if err := readWS(ctx, data, &ready); err != nil || ready.LeaseEpoch != published.LeaseEpoch {
+					t.Fatalf("数据通道没有附着原代次: %+v %v", ready, err)
+				}
+				if tc.action == "replaced_after_ready" {
+					f.handshake(t, r.hello, r.private, "control", f.token)
+				}
+				if err := writeWS(ctx, data, ack); err != nil {
+					t.Fatal(err)
+				}
+				if tc.action == "replaced_after_ready" {
+					logs.expect(t, "relay.bridge.rejected", tc.reason)
+				} else {
+					logs.expect(t, "relay.bridge.ready", "")
+				}
+				return
+			}
+			var failure struct {
+				Type string `json:"type"`
+				Code string `json:"code"`
+			}
+			code := "device_registration_changed"
+			if tc.action == "grant_revoked" {
+				code = "permission_denied"
+			}
+			if err := readWS(ctx, data, &failure); err != nil || failure.Type != "error" || failure.Code != code {
+				t.Fatalf("旧客户端收到非预期错误: %+v %v", failure, err)
+			}
+			logs.expect(t, "protocol.response.error", tc.reason)
+		})
+	}
+}
+
+func TestDataReadyAckMessageBoundary(t *testing.T) {
+	f := newFixture(t)
+	logs := make(attachLogs, 16)
+	f.s.logger = logging.New(logs, slog.LevelDebug)
+	server := httptest.NewServer(logging.HTTP(f.s.logger)(f.server.Config.Handler))
+	t.Cleanup(server.Close)
+	f.server = server
+	r := f.runtime(t)
+	logs.expect(t, "relay.bridge.ready", "")
+	hello := r.hello
+	hello.ChannelKind, hello.Intent, hello.LeaseEpoch = "data", "attach", r.ready.LeaseEpoch
+
+	for _, mode := range []string{"interrupted_json", "missing_final_frame", "at_limit", "over_limit"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			ws := f.prove(t, hello, r.private, "data", f.token)
+			var ready Ready
+			if err := readWS(ctx, ws, &ready); err != nil {
+				t.Fatal(err)
+			}
+			ack, err := json.Marshal(ReadyAck{Type: "ready_ack", RegistrationVersion: ready.RegistrationVersion, LeaseEpoch: ready.LeaseEpoch})
+			if err != nil {
+				t.Fatal(err)
+			}
+			message, err := ws.Writer(ctx, websocket.MessageText)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "interrupted_json" {
+				ack = ack[:1]
+			}
+			if _, err := message.Write(ack); err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "interrupted_json", "missing_final_frame":
+				// Pong 证明服务端已经读过首个分片，此时断开仍缺少 FIN。
+				ws.CloseRead(ctx)
+				if err := ws.Ping(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if err := ws.CloseNow(); err != nil {
+					t.Fatal(err)
+				}
+				logs.expect(t, "relay.bridge.interrupted", "")
+			case "at_limit", "over_limit":
+				size := maxControlMessage
+				if mode == "over_limit" {
+					size++
+				}
+				if _, err := message.Write(bytes.Repeat([]byte(" "), size-len(ack))); err != nil {
+					t.Fatal(err)
+				}
+				if err := message.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if mode == "at_limit" {
+					logs.expect(t, "relay.bridge.ready", "")
+					return
+				}
+				if _, _, err := ws.Read(ctx); websocket.CloseStatus(err) != websocket.StatusMessageTooBig {
+					t.Fatalf("超限确认应收到关闭码 1009，实际为 %v", err)
+				}
+				logs.expect(t, "relay.bridge.rejected", "message_too_big")
+			}
+		})
+	}
+}
+
+func TestReplacedDataAttachWithBusyPool(t *testing.T) {
+	f := newFixture(t)
+	cfg := f.pool.Config()
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	held, err := pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+	f.s.devices = endpoint.NewExecution(pool, f.ids)
+	logs := make(attachLogs, 8)
+	f.s.logger = logging.New(logs, slog.LevelDebug)
+	key := target{f.user, uuid.New().String()}
+	hello := Hello{BootID: uuid.New().String(), LeaseEpoch: 1}
+	principal := identity.Principal{GrantID: f.grant}
+	state := endpoint.ExecutionState{ActiveGrantID: f.grant, RemoteAccessState: "enabled", LeaseEpoch: 1}
+	old := &route{target: key, hello: hello, state: state, principal: principal, publishDone: make(chan struct{})}
+	f.s.routes[key] = old
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := f.s.dataRoute(ctx, key, principal, hello, state)
+		result <- err
+	}()
+	logs.expect(t, "relay.bridge.waiting", "control_not_ready")
+	f.s.mu.Lock()
+	f.s.routes[key] = &route{target: key, state: endpoint.ExecutionState{LeaseEpoch: 2}}
+	f.s.mu.Unlock()
+	f.s.closeRoute(old, "epoch_replaced")
+	var rejected *resource.Error
+	if err := <-result; !errors.As(err, &rejected) || rejected.Code != "device_registration_changed" {
+		t.Fatalf("数据库无可用连接时旧代次仍应收到登记变化回包: %v", err)
+	}
 }
 
 func TestControlBlackholeClosesRoute(t *testing.T) {

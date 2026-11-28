@@ -1,19 +1,31 @@
 # internal/relay/
 
-> L2 | 父级：[MonkeyAI 后端上下文](../../CONTEXT.md)
+> L2 | 父级：[项目地图](../../../../guidelines.md) · [MonkeyAI 后端上下文](../../CONTEXT.md)
 
 relay 为运行端发布控制和数据通道，按设备和连接代次向桌面代理请求。控制就绪或收到有效 Pong 后，路由有 45 秒的存活窗口。路由关闭时，用 `relay.route.closed` 的 `machine_id`、`boot_id`、`lease_epoch`、`reason` 和 `last_seen_age_ms` 对照执行端日志。EOF 只能说明本端观察到连接关闭。
 
+数据通道只能附着在启动标识、授权和代次都匹配的控制路由上。控制发布尚未就绪时，relay 在原数据握手内最多等待 1 秒。等待者被唤醒后先检查原路由。原路由已关闭或被替换时，直接返回 `device_registration_changed`。原路由仍在且就绪时，复核数据库中的设备状态和授权，再确认当前代次。
+
+查 `protocol.response.error` 的 `reason` 可区分未就绪、代次不匹配、路由替换和授权变化。若数据 ready_ack 到达时路由已被替换，查 `relay.bridge.rejected` 的 `phase=ready_ack`。
+
+ready_ack 可分片发送，消息上限为 64 KiB。最终分片到达前连接中断时，relay 以调试级别记录 `relay.bridge.interrupted` 并结束握手。消息超限时，WebSocket 发送关闭码 1009，relay 记录 `relay.bridge.rejected` 和 `reason=message_too_big`。消息完整且未超限、但确认内容无效时，回复 `invalid_tunnel_message`。
+
 ## 实现
 
-- `service.go` 注册 HTTP 入口，维护路由与服务生命周期，按通道配置 yamux，按代次记录首次关闭并释放访问。
-- `bridge.go` 校验设备身份与握手证明，发布控制路由，按当前代次附着数据通道。
-- `lease.go` 签发与续验访问租约，推送撤销及控制事件。每 15 秒探测，允许两次 Ping 同时等待应答，按最近有效 Pong 判定失联。
+- `service.go` 注册 HTTP 入口，维护路由与服务生命周期，按通道配置 yamux，按代次唤醒等待发布的握手，记录首次关闭并释放访问。
+- `control.go` 通过 Unix socket 查询运行状态、断开连接并传递设备或授权撤销。
+- `control_peer_darwin.go` 使用 LOCAL_PEERCRED 核对控制 socket 对端的有效用户。
+- `control_peer_linux.go` 使用 SO_PEERCRED 核对控制 socket 对端的有效用户。
+- `control_peer_other.go` 在无对端凭据校验实现的平台拒绝控制连接。
+- `bridge.go` 校验设备身份与握手证明，发布控制路由，按当前代次附着数据通道，限时等待并记录拒绝原因。
+- `bridgetransport.go` 接管 HTTP 升级连接，在读取 ready_ack 时把底层 EOF 转为意外中断，保留 WebSocket 消息结束边界。
+- `lease.go` 签发与续验访问租约，通知控制路由就绪，推送撤销及控制事件。每 15 秒探测，允许两次 Ping 同时等待应答，按最近有效 Pong 判定失联。
 - `directory.go` 组合授权设备与存活路由，生成分页设备目录及运行状态。
 - `connection.go` 校验业务权限，签发、轮换连接票据并更新访问版本。
 - `proxy.go` 检查来源、路由与票据，向运行端转发 ACP、HTTP 和终端流量。
 - `stream.go` 打开代理流，约束取消后的资源回收，复制和计量双向流量。
 - `budget.go` 分配数据与终端流名额，记录占用与释放。
+- `overload.go` 按窗口汇总数据通道拒绝次数、占用峰值和最老占用时长。
 - `terminal.go` 验证终端 WebSocket 升级和响应，协调终端连接接管。
 - `file.go` 校验独立文件授权并转发读写请求。
 - `preview.go` 为产物分配隔离来源，校验预览地址和凭据后转发内容。
@@ -25,9 +37,14 @@ relay 为运行端发布控制和数据通道，按设备和连接代次向桌�
 
 ## 回归
 
-- `fixture_test.go` 以隔离 PostgreSQL schema、真实 WebSocket 与 yamux 构造设备和桌面连接。
+- `fixture_test.go` 以隔离 PostgreSQL schema、真实 WebSocket 与 yamux 构造设备和桌面连接；可分别发送设备证明和 ready_ack。
 - `heartbeat_test.go` 验证原路由在漏回一次 Pong、Pong 迟到或开流 ACK 迟到后恢复。另测过期路由回收和旧代次隔离。
-- `control_test.go` 验证持续失联、反向控制流限额、事件写超时与同代次数据重连。
+- `control_socket_test.go` 验证 Unix socket 控制接口。
+- `firstpublish_test.go` 验证独立 runtime 首次发布后签发票据及撤销后的拒绝。
+- `management_test.go` 验证设备目录、撤销权限和旧通知对新路由的隔离。
+- `nginxfixture_test.go` 把测试配置复制到 Nginx 验收容器。
+- `overload_test.go` 验证满额窗口保留拒绝时的流占用。
+- `control_test.go` 验证失联期限、反向控制流限额、事件写超时和数据重连。换代测试等待初始数据通道上线，覆盖无效确认、授权撤销及连接池满时拒绝旧代次。真实分片测试区分缺少最终帧、恰好 64 KiB 和超限关闭。
 - `cleanup_test.go` 验证并发回收只记一次关闭原因，超时可识别。设备与桌面共用授权时，整条路由只发一次撤销通知。
 - `relay_test.go` 验证票据、授权、文件和代理，覆盖租约宽限、代次切换与通道隔离。
 - `interop_test.go` 验证桌面来源、票据权限、长连接空闲、签名租约与独立撤销。

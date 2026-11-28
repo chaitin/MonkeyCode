@@ -1,3 +1,7 @@
+// [INPUT]: 依赖设备桥接夹具、Nginx 容器和生产 app.conf。
+// [OUTPUT]: 验证经 Nginx 升级的 WebSocket 能完成 hello 并收到设备目录。
+// [POS]: endpoint 的代理集成回归，使用临时后端接收真实升级请求。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package endpoint
 
 import (
@@ -25,7 +29,14 @@ func TestNginxUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := fmt.Sprintf("events {}\nhttp { upstream monkeyai_backend { server host.docker.internal:%s; } server { listen 8080; include /etc/nginx/bridge-app.conf; } }\n", upstream.Port())
+	config := fmt.Sprintf(`events {}
+http {
+    map $uri $monkeyai_target { default monkeyai_backend; }
+    upstream monkeyai_backend { server host.docker.internal:%s; }
+    upstream monkeyai_admin { server 127.0.0.1:1; }
+    server { listen 8080; include /etc/nginx/bridge-app.conf; }
+}
+`, upstream.Port())
 	configPath := filepath.Join(t.TempDir(), "nginx.conf")
 	if err = os.WriteFile(configPath, []byte(config), 0600); err != nil {
 		t.Fatal(err)
