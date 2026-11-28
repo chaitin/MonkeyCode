@@ -1,10 +1,16 @@
+// [INPUT]: 依赖 PostgreSQL 测试库、设备登记与 OAuth 授权服务。
+// [OUTPUT]: 验证执行状态读取、设备绑定、发布、接管、撤销和恢复。
+// [POS]: endpoint 的执行设备持久化回归，覆盖事务与连接池入口。
+// [PROTOCOL]: 变更时更新此头部，然后检查 guidelines.md
 package endpoint
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"log/slog"
 	"net/http"
 	"sync"
 	"testing"
@@ -12,8 +18,43 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+func TestExecutionStateReadErrors(t *testing.T) {
+	pool := testDatabase(t)
+	execution := NewExecution(pool, nil)
+	user, machine := uuid.New().String(), uuid.New().String()
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	_, err = execution.State(t.Context(), user, machine)
+	requireExecutionError(t, err, "device_not_found")
+	_, err = execution.ReadState(t.Context(), tx, user, machine)
+	requireExecutionError(t, err, "device_not_found")
+
+	var logs bytes.Buffer
+	logger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(logger) })
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := execution.State(ctx, user, machine); !errors.Is(err, context.Canceled) {
+		t.Fatalf("连接池读取返回 %v，期望 context.Canceled", err)
+	}
+	if err := tx.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execution.ReadState(t.Context(), tx, user, machine); !errors.Is(err, pgx.ErrTxClosed) {
+		t.Fatalf("事务读取返回 %v，期望 pgx.ErrTxClosed", err)
+	}
+	if bytes.Contains(logs.Bytes(), []byte("executionState")) {
+		t.Fatalf("查询失败后仍解析了设备记录：%s", &logs)
+	}
+}
 
 func executionPrincipal(t *testing.T, pool *pgxpool.Pool, userID string, scopes []string) identity.Principal {
 	t.Helper()
