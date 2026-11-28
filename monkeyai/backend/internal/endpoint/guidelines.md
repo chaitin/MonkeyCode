@@ -30,7 +30,7 @@ endpoint 保存用户的设备登记，提供设备目录和消息桥接。执�
 - `lifecycle_test.go` 检查来源、凭据轮换、存储故障、超时、探活及消息上限。
 - `names_test.go` 检查独立运行端设备的显示名称。
 - `protocol_test.go` 验证消息和 hello 的校验、响应序列化、连接错误和回滚日志。
-- `proxy_test.go` 通过 Nginx 验证 WebSocket 升级。
+- `proxy_test.go` 加载生产 app.conf，将设备请求指向测试后端，验证 WebSocket 升级后能收到设备目录。
 - `register_test.go` 检查设备注册参数、平台、频率限制和登记数量。
 - `unlimited_test.go` 验证执行设备登记不设数量上限。
 
